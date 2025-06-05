@@ -1,0 +1,278 @@
+let noise;
+const chunkSize = 16;
+let scene = new THREE.Scene();
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(600, 600);
+document.body.appendChild(renderer.domElement);
+const renderList = [];
+const frustum = new THREE.Frustum();
+const camMat = new THREE.Matrix4();
+const lastCamMatrix = new THREE.Matrix4();
+let lastCull = 0;
+const CULL_INTERVAL = 100; // ms
+function render(){
+  let displayRadius = 2
+  //player position relative to current chunk
+  //display certain amount of meshes: displayRadius
+}
+function updateVisibility(camera) {
+  const now = performance.now();
+  if (now - lastCull < CULL_INTERVAL) return;
+
+  if (camera.matrixWorld.equals(lastCamMatrix)) return;
+
+  lastCull = now;
+  lastCamMatrix.copy(camera.matrixWorld);
+
+  camMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(camMat);
+
+  for (const mesh of renderList) {
+    mesh.visible = frustum.intersectsObject(mesh);
+  }
+}
+
+class ChunkManager {
+  constructor(chunkSize = 16) {
+    this.chunkSize = chunkSize;
+    this.chunks = new Map(); // key: "cx,cz" => Chunk instance
+    this.pending = []; // Queue of [cx, cz] to build
+    this.lastCenter = { cx: null, cz: null };
+  }
+
+  getChunkKey(cx, cz) {
+    return `${cx},${cz}`;
+  }
+
+  scheduleChunk(cx, cz) {
+    const key = this.getChunkKey(cx, cz);
+    if (!this.chunks.has(key) && !this.pending.find(p => p[0] === cx && p[1] === cz)) {
+      this.pending.push([cx, cz]);
+    }
+  }
+
+  generateChunk(cx, cz, getHeight, placeBlockAt) {
+    const key = this.getChunkKey(cx, cz);
+    if (this.chunks.has(key)) return;
+
+    const chunk = new Chunk(cx, cz, this.chunkSize);
+    chunk.generateBlocks(getHeight, placeBlockAt);
+    this.chunks.set(key, chunk);
+  }
+
+  unloadChunk(cx, cz, scene) {
+    const key = this.getChunkKey(cx, cz);
+    const chunk = this.chunks.get(key);
+    if (!chunk) return;
+
+    for (const name of chunk.meshRefs) {
+      const obj = scene.getObjectByName(name);
+      if (obj) {
+        obj.geometry.dispose();
+        obj.material.dispose();
+        scene.remove(obj);
+      }
+    }
+
+    this.chunks.delete(key);
+  }
+
+  updateVisibleChunks(playerPos, getChunkCoord, LOAD_RADIUS, scene, getHeight, placeBlockAt) {
+    const { cx, cz } = getChunkCoord(playerPos, this.chunkSize);
+    if (cx === this.lastCenter.cx && cz === this.lastCenter.cz) return;
+    this.lastCenter = { cx, cz };
+
+    const needed = new Set();
+    for (let dx = -LOAD_RADIUS; dx <= LOAD_RADIUS; dx++) {
+      for (let dz = -LOAD_RADIUS; dz <= LOAD_RADIUS; dz++) {
+        const nx = cx + dx, nz = cz + dz;
+        needed.add(this.getChunkKey(nx, nz));
+        this.scheduleChunk(nx, nz);
+      }
+    }
+
+    for (const key of this.chunks.keys()) {
+      if (!needed.has(key)) {
+        const [oldX, oldZ] = key.split(',').map(Number);
+        this.unloadChunk(oldX, oldZ, scene);
+      }
+    }
+  }
+  processChunkQueue(limit = 1, getHeight, placeBlockAt) {
+    for (let i = 0; i < limit && this.pending.length; i++) {
+      const [cx, cz] = this.pending.shift();
+      this.generateChunk(cx, cz, getHeight, placeBlockAt);
+    }
+  }
+  addBlock(x, y, z, id, scene) {
+    const cx = Math.floor(x / this.chunkSize);
+    const cz = Math.floor(z / this.chunkSize);
+    const key = this.getChunkKey(cx, cz);
+    const chunk = this.chunks.get(key);
+    if (chunk) {
+      chunk.addBlock(x, y, z, id, scene);
+    }
+  }
+
+  removeBlock(x, y, z, scene) {
+    const cx = Math.floor(x / this.chunkSize);
+    const cz = Math.floor(z / this.chunkSize);
+    const key = this.getChunkKey(cx, cz);
+    const chunk = this.chunks.get(key);
+    if (chunk) {
+      chunk.removeBlock(x, y, z, scene);
+    }
+  }
+}
+function getHeight(x, z) {
+  const scale = 0.1;
+  const height = noise.noise2D(x * scale, z * scale);
+  return Math.floor(height * 5) + 4;
+}
+function generateInitialChunks(seed, controls) {
+  console.log("Generating initial chunks")
+  noise = new SimplexNoise(seed.toString());
+  const chunkManager = new ChunkManager(16);
+  chunkManager.generateChunk(0, 0);
+  chunkManager.generateChunk(1, 0);
+  chunkManager.generateChunk(0, 1);
+  chunkManager.generateChunk(1, 1);
+  controls.getObject().position.set(8, getHeight(8, 8) + 2, 8);
+  return chunkManager;
+}
+function getChunkCoord(pos, chunkSize) {
+  return {
+    cx: Math.floor(pos.x / chunkSize),
+    cz: Math.floor(pos.z / chunkSize)
+  };
+}
+//perChunk
+class Chunk {
+  constructor(cx, cz, chunkSize) {
+    this.cx = cx; // Chunk X coordinate
+    this.cz = cz; // Chunk Z coordinate
+    this.chunkSize = chunkSize; // Size of the chunk
+    this.blocks = []; // Array to store block data
+    this.meshRefs = []; // Array to store mesh references
+    this.mesh = null; // Single mesh for the chunk
+  }
+
+  generateBlocks() {
+    const baseX = this.cx * this.chunkSize;
+    const baseZ = this.cz * this.chunkSize;
+    const geometries = []; // Array to store individual block geometries
+
+    for (let x = 0; x < this.chunkSize; x++) {
+      for (let z = 0; z < this.chunkSize; z++) {
+        const wx = baseX + x;
+        const wz = baseZ + z;
+        const h = getHeight(wx, wz);
+
+        for (let y = 0; y <= h; y++) {
+          const id = y === h ? 2 : 1; // Top block has a different ID
+          const geometry = new THREE.BoxGeometry(1, 1, 1);
+          geometry.translate(wx, y, wz); // Position the block geometry
+          geometries.push(geometry); // Add to the array
+        }
+      }
+    }
+
+    // Merge all block geometries into one
+    const mergedGeometry = THREE.BufferGeometryUtils.mergeBufferGeometries(geometries);
+    const material = new THREE.MeshBasicMaterial({ color: 0x808080 }); // Default material
+    this.mesh = new THREE.Mesh(mergedGeometry, material);
+    this.mesh.name = `chunk-${this.cx}-${this.cz}`; // Name the chunk mesh
+    scene.add(this.mesh); // Add the chunk mesh to the scene
+  }
+
+  unload(scene) {
+    if (this.mesh) {
+      this.mesh.geometry.dispose();
+      this.mesh.material.dispose();
+      scene.remove(this.mesh);
+      this.mesh = null;
+    }
+  }
+}
+
+//player
+let player = { x:0, y:0, z:0, vx:0, vy:0, vz:0 }
+let cameraData = { x:0, y:0, z:0, vx:0, vy:0, vz:0 }
+//pre-defined collisionBoxes
+const standardSize = 1;
+const playerSize = standardSize;
+const blockSize = standardSize;
+const half = playerSize / 2;
+const height = playerSize * 2;
+const checkRadius = {x:Math.ceil(playerSize/blockSize), y:Math.ceil(height/blockSize), z:Math.ceil(playerSize/blockSize)}
+
+function collision(){
+   grounded = false;
+   const min = {x: player.x - half, y: player.y, z: player.z - half};
+   const max = {x: player.x + half, y: player.y + height, z: player.z + half};
+   const gridX = Math.floor(player.x / blockSize);
+   const gridY = Math.floor(player.y / blockSize);
+   const gridZ = Math.floor(player.z / blockSize);
+
+   for(let dx = -checkRadius.x; dx <= checkRadius.x; dx++){
+     for(let dy = -checkRadius.y; dy <= checkRadius.y; dy++){
+        for(let dz = -checkRadius.z; dz <= checkRadius.z; dz++){
+           let key = `${gridX + dx},${gridY + dy},${gridZ + dz}`;
+           let block = blockMap.get(key); //change blockMap to whatever data chunk is
+           if (!block) continue;
+           let bx = block.x;
+           let by = block.y;
+           let bz = block.z;
+           let bmin = {x: bx, y:by, z: bz};
+           let bmax = {x: bx + blockSize, y: by + blockSize, z: bz + blockSize}
+           
+           if (
+             max.x > bmin.x && min.x < bmax.x &&
+             max.y > bmin.y && min.y < bmax.y &&
+             max.z > bmin.z && min.z < bmax.z
+           ) {
+             const overlapX = Math.min(max.x - bmin.x, bmax.x - min.x)
+             const overlapY = Math.min(max.y - bmin.y, bmax.y - min.y)
+             const overlapZ = Math.min(max.z - bmin.z, bmax.z - min.z)
+             if (overlapY <= overlapX && overlapY <= overlapZ){
+                if (player.y > by){
+                   player.y += overlapY;
+                   grounded = true;
+                } else {
+                   player.y -= overlapY;
+                }
+                player.vy = 0
+             }
+             else if (overlapX <=overlapY && overlapX <= overlapZ){
+                if (player.x > bx) player.x += overlapX;
+                else player.x -= overlapX;
+                player.vx = 0
+             } else {
+                if (player.z > bz) player.z += overlapZ;
+                else player.z -= overlapZ;
+                player.vz = 0;
+             }
+             min.x = player.x - half;
+             max.x = player.x + half;
+             min.y = player.x;
+             max.y = player.x + height;
+             min.z = player.x - half;
+             max.z = player.x + half;
+           }
+        }
+     }
+   }
+}
+function init(){
+  controls = new THREE.PointerLockControls(camera, renderer.domElement);
+  worldSeed = Date.now();  // or fixed seed if you want consistent testing
+  chunkManager = generateInitialChunks(worldSeed, controls);
+}
+function animate(){
+    requestAnimationFrame(animate);
+    updateVisibility(camera);
+    renderer.render(scene, camera);
+}
+init();
+animate();
