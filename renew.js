@@ -3,6 +3,9 @@ const chunkSize = 16;
 let scene = new THREE.Scene();
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
 let renderer = new THREE.WebGLRenderer();
+let controls;
+let grounded = false;
+
 renderer.setSize(600, 600);
 document.body.appendChild(renderer.domElement);
 const keys   = Object.create(null);
@@ -16,6 +19,7 @@ const camMat = new THREE.Matrix4();
 const lastCamMatrix = new THREE.Matrix4();
 let lastCull = 0;
 const CULL_INTERVAL = 100; // ms
+
 function render(){
   let displayRadius = 2
   //player position relative to current chunk
@@ -43,7 +47,24 @@ const sphere = new THREE.Mesh(
   new THREE.SphereGeometry(0.05),
   new THREE.MeshBasicMaterial({ color: 0xff0000 })
 ); 
+function pickBlock(){
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir).normalize();
+  raycaster.set(camera.position, dir);
+  raycaster.far = RAY_LEN
+  const hit = raycaster.instersectObjects(renderList, false)[0];
+  if (!hit) return null;
+  const target = hit.point.clone()
+  .addScaledVector(hit.face.normal, -EPS + offset)
+  .floor();
 
+  return {
+    x: target.x,
+    y: target.y,
+    z: target.z,
+    face: hit.face.normal.clone()
+  }
+}
 function updateRayViz() {
   camera.getWorldDirection(dirV);
   const origin = controls.getObject().position.clone();
@@ -218,7 +239,7 @@ class Chunk {
         for (let y = 0; y <= h; y++) {
           const id = y === h ? 2 : 1;
           const geometry = new THREE.BoxGeometry(1, 1, 1);
-          geometry.translate(wx, y, wz); 
+          geometry.translate(wx + 0.5, y + 0.5, wz + 0.5);
           geometries.push(geometry); 
           const key = `${wx},${y},${wz}`;
           this.blocks.set(key, { x: wx, y: y, z: wz, id: id });
@@ -231,6 +252,7 @@ class Chunk {
     this.mesh = new THREE.Mesh(mergedGeometry, material);
     this.mesh.name = `chunk-${this.cx}-${this.cz}`; 
     scene.add(this.mesh); 
+    renderList.push(this.mesh)
   }
 
   unload(scene) {
@@ -244,6 +266,8 @@ class Chunk {
   updateMesh(scene) {
     if (this.mesh) {
         scene.remove(this.mesh);
+        const idx = renderList.indexOf(this.mesh);
+        if (idx !== -1) renderList.splice(idx, 1);
         this.mesh.geometry.dispose();
         this.mesh.material.dispose();
     }
@@ -251,21 +275,27 @@ class Chunk {
     const geometries = [];
     for (const block of this.blocks.values()) {
         const geometry = new THREE.BoxGeometry(1, 1, 1);
-        geometry.translate(block.x + 0.5, block.y, block.z + 0.5); // Center the block
+        geometry.translate(block.x + 0.5, block.y + 0.5, block.z + 0.5);
         geometries.push(geometry);
     }
 
     const mergedGeometry = THREE.BufferGeometryUtils.mergeBufferGeometries(geometries);
     const material = new THREE.MeshNormalMaterial({ flatShading: true });
     this.mesh = new THREE.Mesh(mergedGeometry, material);
-    this.mesh.name = `chunk-${this.cx}-${this.cz}`; // Name the chunk mesh
+    this.mesh.name = `chunk-${this.cx}-${this.cz}`;
     scene.add(this.mesh);
+    renderList.push(this.mesh)
 }
-  addBlock(x, y, z, id) {
+addBlock(x, y, z, id, scene) {
     const key = `${x},${y},${z}`;
-    this.blocks.set(key, { x, y, z, id }); 
-    this.updateMesh(scene)
-  }
+    if (!this.blocks.has(key)) { 
+        this.blocks.set(key, { x, y, z, id }); 
+        console.log(`Block added at (${x}, ${y}, ${z}) with ID ${id}`);
+        this.updateMesh(scene); 
+    } else {
+        console.warn(`Block already exists at (${x}, ${y}, ${z})`);
+    }
+}
   removeBlock(x, y, z) {
     const key = `${x},${y},${z}`;
     this.blocks.delete(key); 
@@ -329,90 +359,33 @@ class Player extends Entity {
     this.vy *= 0.95;
     this.vz *= 0.95;
   };
-rayCastHit(offset = 0) {
-    camera.getWorldDirection(dirV); 
+  rayCastHit(offset = 0) {
+    camera.getWorldDirection(dirV);
     const origin = controls.getObject().position.clone();
-    const step = new THREE.Vector3(
-        dirV.x > 0 ? 1 : -1,
-        dirV.y > 0 ? 1 : -1,
-        dirV.z > 0 ? 1 : -1
-    );
-
-    const currentCell = new THREE.Vector3(
-        Math.floor(origin.x),
-        Math.floor(origin.y),
-        Math.floor(origin.z)
-    );
-
-    const tDelta = new THREE.Vector3(
-        Math.abs(1 / dirV.x),
-        Math.abs(1 / dirV.y),
-        Math.abs(1 / dirV.z)
-    );
-
-    const nextBoundary = new THREE.Vector3(
-        dirV.x > 0 ? currentCell.x + 1 : currentCell.x,
-        dirV.y > 0 ? currentCell.y + 1 : currentCell.y,
-        dirV.z > 0 ? currentCell.z + 1 : currentCell.z
-    );
-
-    const tMax = new THREE.Vector3(
-        (nextBoundary.x - origin.x) / dirV.x,
-        (nextBoundary.y - origin.y) / dirV.y,
-        (nextBoundary.z - origin.z) / dirV.z
-    );
-
-    let closestHit = null;
-
-    for (let i = 0; i < RAY_LEN; i++) {
-        const chunkKey = `${Math.floor(currentCell.x / chunkSize)},${Math.floor(currentCell.z / chunkSize)}`;
-        const chunk = chunkManager.chunks.get(chunkKey);
-        if (chunk) {
-            const block = chunk.getBlock(currentCell.x, currentCell.y, currentCell.z);
-            if (block) {
-                closestHit = {
-                    x: block.x,
-                    y: block.y,
-                    z: block.z,
-                    face: dirV.clone().normalize(),
-                    hitPos: origin.clone().addScaledVector(dirV, i),
-                    block: block
-                };
-                break; 
-            }
-        }
-
-        if (tMax.x < tMax.y && tMax.x < tMax.z) {
-            currentCell.x += step.x;
-            tMax.x += tDelta.x;
-        } else if (tMax.y < tMax.z) {
-            currentCell.y += step.y;
-            tMax.y += tDelta.y;
-        } else {
-            currentCell.z += step.z;
-            tMax.z += tDelta.z;
-        }
-    }
-
-    if (!closestHit) return null;
-
-    const targetPos = new THREE.Vector3(
-        closestHit.x,
-        closestHit.y,
-        closestHit.z
-    ).addScaledVector(closestHit.face, offset).floor();
-
+    raycaster.set(origin, dirV);
+    raycaster.far = RAY_LEN;
+  
+    const hit = raycaster.intersectObjects(renderList, false)[0];
+    if (!hit) return null;
+    const hitPoint = hit.point;
+    let bx = Math.floor(hitPoint.x);
+    let by = Math.floor(hitPoint.y);
+    let bz = Math.floor(hitPoint.z);
+    const normal = hit.face.normal.clone();
+    bx += offset * normal.x;
+    by += offset * normal.y;
+    bz += offset * normal.z;
+  
     return {
-        x: targetPos.x,
-        y: targetPos.y,
-        z: targetPos.z,
-        face: closestHit.face,
-        hitPos: closestHit.hitPos,
-        block: closestHit.block
+      x: bx,
+      y: by,
+      z: bz,
+      face: normal,
+      hitPos: hit.point,
     };
-}
+  }
   placeBlock() {
-    const hit = this.rayCastHit(1);
+    const hit = this.rayCastHit(0);
     if (hit) {
       chunkManager.addBlock(hit.x, hit.y, hit.z, this.blockHolding, scene); 
     }
@@ -514,6 +487,7 @@ function collision(entity){
                    entity.y -= overlapY;
                 }
                 entity.vy = 0
+                break
              }
              else if (overlapX <=overlapY && overlapX <= overlapZ){
                 if (entity.x > bx) entity.x += overlapX;
@@ -557,11 +531,10 @@ function initKeys(){
   });
   window.addEventListener("mousedown", ev => {
   if (ev.button === 2) { 
-    player.rayCastHit();
+    console.log(renderList)
     player.placeBlock();
   }
-  if (ev.button === 0) { 
-    player.rayCastHit();
+  if (ev.button === 0) {
     player.removeBlock();
   }
   });
