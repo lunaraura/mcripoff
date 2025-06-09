@@ -8,8 +8,8 @@ document.body.appendChild(renderer.domElement);
 const keys   = Object.create(null);
 const renderList = [];
 const frustum = new THREE.Frustum();
-raycaster = new THREE.Raycaster(); // Initialize raycaster
-dirV = new THREE.Vector3(); // Direction vector
+raycaster = new THREE.Raycaster();
+dirV = new THREE.Vector3();
 
 
 const camMat = new THREE.Matrix4();
@@ -24,13 +24,6 @@ function render(){
 let cameraData = { x:0, y:0, z:0, vx:0, vy:0, vz:0 }
 
 function updateVisibility(camera) {
-  // cameraData.x += cameraData.vx
-  // cameraData.y += cameraData.vy
-  // cameraData.z += cameraData.vz
-  // camera.position.set(cameraData.x, cameraData.y, cameraData.z);
-  // cameraData.vx *=0.9;
-  // cameraData.vy *=0.9;
-  // cameraData.vz *=0.9;
   const now = performance.now();
   if (now - lastCull < CULL_INTERVAL) return;
 
@@ -46,21 +39,46 @@ function updateVisibility(camera) {
     mesh.visible = frustum.intersectsObject(mesh);
   }
 }
+const sphere = new THREE.Mesh(
+  new THREE.SphereGeometry(0.05),
+  new THREE.MeshBasicMaterial({ color: 0xff0000 })
+); 
+
 function updateRayViz() {
-  // copy current origin + direction
   camera.getWorldDirection(dirV);
   const origin = controls.getObject().position.clone();
 
   raycaster.set(origin, dirV);
   raycaster.far = RAY_LEN;
+  const rayGeom = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -RAY_LEN) 
+  ]);
+  const rayMat = new THREE.LineBasicMaterial({
+    color: 0xffff00,
+    depthTest: false,
+    transparent: true,
+    opacity: 1.0,
+    linewidth: 2
+  });
+  rayViz = new THREE.Line(rayGeom, rayMat);
+    const hit = raycaster.intersectObjects(renderList, false)[0];
 
+  const end = hit ? hit.point : origin.clone().addScaledVector(dirV, RAY_LEN);
+
+  const pos = rayViz.geometry.attributes.position.array;
+  pos[0] = origin.x; pos[1] = origin.y; pos[2] = origin.z;
+  pos[3] = end.x;    pos[4] = end.y;    pos[5] = end.z;
+  rayViz.geometry.attributes.position.needsUpdate = true;
+  sphere.position.copy(end);
 }
 
+  scene.add(sphere);
 class ChunkManager {
   constructor(chunkSize = 16) {
     this.chunkSize = chunkSize;
-    this.chunks = new Map(); // key: "cx,cz" => Chunk instance
-    this.pending = []; // Queue of [cx, cz] to build
+    this.chunks = new Map();
+    this.pending = [];  
     this.lastCenter = { cx: null, cz: null };
   }
 
@@ -163,7 +181,6 @@ function generateInitialChunks(seed, controls) {
   chunkManager.generateChunk(0, -1);
   chunkManager.generateChunk(-1, 0);
   chunkManager.generateChunk(-1, -1);
-  // chunkManager.generateChunk(-1, -2);
   controls.getObject().position.set(8, getHeight(8, 8) + 2, 8);
   return chunkManager;
 }
@@ -201,7 +218,7 @@ class Chunk {
         for (let y = 0; y <= h; y++) {
           const id = y === h ? 2 : 1;
           const geometry = new THREE.BoxGeometry(1, 1, 1);
-          geometry.translate(wx+0.5, y, wz+0.5); 
+          geometry.translate(wx, y, wz); 
           geometries.push(geometry); 
           const key = `${wx},${y},${wz}`;
           this.blocks.set(key, { x: wx, y: y, z: wz, id: id });
@@ -209,12 +226,11 @@ class Chunk {
       }
     }
 
-    // Merge all block geometries into one
     const mergedGeometry = THREE.BufferGeometryUtils.mergeBufferGeometries(geometries);
     const material = new THREE.MeshNormalMaterial({ flatShading: true });
     this.mesh = new THREE.Mesh(mergedGeometry, material);
-    this.mesh.name = `chunk-${this.cx}-${this.cz}`; // Name the chunk mesh
-    scene.add(this.mesh); // Add the chunk mesh to the scene
+    this.mesh.name = `chunk-${this.cx}-${this.cz}`; 
+    scene.add(this.mesh); 
   }
 
   unload(scene) {
@@ -226,14 +242,12 @@ class Chunk {
     }
   }
   updateMesh(scene) {
-    // Remove the existing mesh from the scene
     if (this.mesh) {
         scene.remove(this.mesh);
         this.mesh.geometry.dispose();
         this.mesh.material.dispose();
     }
 
-    // Generate new geometry based on the current blocks
     const geometries = [];
     for (const block of this.blocks.values()) {
         const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -241,13 +255,10 @@ class Chunk {
         geometries.push(geometry);
     }
 
-    // Merge all block geometries into one
     const mergedGeometry = THREE.BufferGeometryUtils.mergeBufferGeometries(geometries);
     const material = new THREE.MeshNormalMaterial({ flatShading: true });
     this.mesh = new THREE.Mesh(mergedGeometry, material);
     this.mesh.name = `chunk-${this.cx}-${this.cz}`; // Name the chunk mesh
-
-    // Add the new mesh to the scene
     scene.add(this.mesh);
 }
   addBlock(x, y, z, id) {
@@ -263,14 +274,13 @@ class Chunk {
 
   getBlock(x, y, z) {
     const key = `${x},${y},${z}`;
-    return this.blocks.get(key); // Retrieve block from the map
+    return this.blocks.get(key);
   }
 }
 
 //player
 let speed = 0.1;
 const RAY_LEN = 10; 
-const blockMeshes = []; 
 class Entity {
   constructor(x,y,z,size){
     this.x = x;
@@ -319,29 +329,88 @@ class Player extends Entity {
     this.vy *= 0.95;
     this.vz *= 0.95;
   };
-  rayCastHit(offset = 0) {
+rayCastHit(offset = 0) {
     camera.getWorldDirection(dirV); 
     const origin = controls.getObject().position.clone();
-    raycaster.set(origin, dirV);
-    raycaster.far = RAY_LEN;
+    const step = new THREE.Vector3(
+        dirV.x > 0 ? 1 : -1,
+        dirV.y > 0 ? 1 : -1,
+        dirV.z > 0 ? 1 : -1
+    );
 
-    const hit = raycaster.intersectObjects(blockMeshes, false)[0];
+    const currentCell = new THREE.Vector3(
+        Math.floor(origin.x),
+        Math.floor(origin.y),
+        Math.floor(origin.z)
+    );
 
-    if (!hit) return null;
-    console.log(hit)
-    const normal = hit.face.normal.clone(); 
-    const basePos = hit.object.position.clone(); 
-    const targetPos = basePos.clone().addScaledVector(normal, offset).floor(); 
+    const tDelta = new THREE.Vector3(
+        Math.abs(1 / dirV.x),
+        Math.abs(1 / dirV.y),
+        Math.abs(1 / dirV.z)
+    );
+
+    const nextBoundary = new THREE.Vector3(
+        dirV.x > 0 ? currentCell.x + 1 : currentCell.x,
+        dirV.y > 0 ? currentCell.y + 1 : currentCell.y,
+        dirV.z > 0 ? currentCell.z + 1 : currentCell.z
+    );
+
+    const tMax = new THREE.Vector3(
+        (nextBoundary.x - origin.x) / dirV.x,
+        (nextBoundary.y - origin.y) / dirV.y,
+        (nextBoundary.z - origin.z) / dirV.z
+    );
+
+    let closestHit = null;
+
+    for (let i = 0; i < RAY_LEN; i++) {
+        const chunkKey = `${Math.floor(currentCell.x / chunkSize)},${Math.floor(currentCell.z / chunkSize)}`;
+        const chunk = chunkManager.chunks.get(chunkKey);
+        if (chunk) {
+            const block = chunk.getBlock(currentCell.x, currentCell.y, currentCell.z);
+            if (block) {
+                closestHit = {
+                    x: block.x,
+                    y: block.y,
+                    z: block.z,
+                    face: dirV.clone().normalize(),
+                    hitPos: origin.clone().addScaledVector(dirV, i),
+                    block: block
+                };
+                break; 
+            }
+        }
+
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            currentCell.x += step.x;
+            tMax.x += tDelta.x;
+        } else if (tMax.y < tMax.z) {
+            currentCell.y += step.y;
+            tMax.y += tDelta.y;
+        } else {
+            currentCell.z += step.z;
+            tMax.z += tDelta.z;
+        }
+    }
+
+    if (!closestHit) return null;
+
+    const targetPos = new THREE.Vector3(
+        closestHit.x,
+        closestHit.y,
+        closestHit.z
+    ).addScaledVector(closestHit.face, offset).floor();
 
     return {
-      x: targetPos.x,
-      y: targetPos.y,
-      z: targetPos.z,
-      face: normal,
-      hitPos: hit.point,
-      block: basePos
+        x: targetPos.x,
+        y: targetPos.y,
+        z: targetPos.z,
+        face: closestHit.face,
+        hitPos: closestHit.hitPos,
+        block: closestHit.block
     };
-  }
+}
   placeBlock() {
     const hit = this.rayCastHit(1);
     if (hit) {
@@ -355,21 +424,40 @@ class Player extends Entity {
     }
   }
 }
+function rayIntersectsBox(origin, direction, boxMin, boxMax) {
+    const tMin = boxMin.clone().sub(origin).divide(direction);
+    const tMax = boxMax.clone().sub(origin).divide(direction);
 
+    const t1 = new THREE.Vector3(
+        Math.min(tMin.x, tMax.x),
+        Math.min(tMin.y, tMax.y),
+        Math.min(tMin.z, tMax.z)
+    );
+
+    const t2 = new THREE.Vector3(
+        Math.max(tMin.x, tMax.x),
+        Math.max(tMin.y, tMax.y),
+        Math.max(tMin.z, tMax.z)
+    );
+
+    const tNear = Math.max(t1.x, t1.y, t1.z);
+    const tFar = Math.min(t2.x, t2.y, t2.z);
+
+    if (tNear > tFar || tFar < 0) return null;
+
+    const face = new THREE.Vector3();
+    if (tNear === t1.x) face.set(-1, 0, 0);
+    else if (tNear === t2.x) face.set(1, 0, 0);
+    else if (tNear === t1.y) face.set(0, -1, 0);
+    else if (tNear === t2.y) face.set(0, 1, 0);
+    else if (tNear === t1.z) face.set(0, 0, -1);
+    else if (tNear === t2.z) face.set(0, 0, 1);
+
+    const intersectionPoint = origin.clone().addScaledVector(direction, tNear);
+    return { point: intersectionPoint, face };
+}
 
 document.addEventListener('keydown', (event) => {
-    // if(event.key === 'w'){
-    //     player.vz -= speed ;
-    // }
-    // if(event.key === 's'){
-    //     player.vz += speed ;
-    // }
-    // if(event.key === 'a'){
-    //     player.vx -= speed ;
-    // }
-    // if(event.key === 'd'){
-    //     player.vx += speed ;
-    // }
     if(event.key === 'e'){
         player.vy += speed * 2;
     }    
@@ -439,9 +527,9 @@ function collision(entity){
             min.x = entity.x - half;
             max.x = entity.x + half;
             min.y = entity.y;
-            max.y = entity.y + height; // Corrected
-            min.z = entity.z - half;   // Corrected
-            max.z = entity.z + half;   // Corrected
+            max.y = entity.y + height;
+            min.z = entity.z - half; 
+            max.z = entity.z + half;
            }
         }
      }
