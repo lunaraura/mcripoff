@@ -2,7 +2,7 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 /* =========================
-   shared helpers (merged concepts)
+   helpers
 ========================= */
 function clamp(v, min, max) {
     return Math.max(min, Math.min(max, v));
@@ -13,9 +13,6 @@ function dist(ax, az, bx, bz) {
 function norm2D(x, z) {
     const len = Math.hypot(x, z) || 1;
     return { x: x / len, z: z / len };
-}
-function deepClone(obj) {
-    return JSON.parse(JSON.stringify(obj));
 }
 function makeStats(fill = 0) {
     return {
@@ -32,6 +29,11 @@ function makeStats(fill = 0) {
         recoverEnergy: fill,
     };
 }
+
+
+function deepClone(obj) {
+    return JSON.parse(JSON.stringify(obj));
+}
 function addStats(a, b) {
     return {
         pAtk: (a.pAtk ?? 0) + (b.pAtk ?? 0),
@@ -47,64 +49,96 @@ function addStats(a, b) {
         recoverEnergy: (a.recoverEnergy ?? 0) + (b.recoverEnergy ?? 0),
     };
 }
-
-/* =========================
-   merged combat dictionaries
-   - poke4 loop/AI + pokeCreature composites + pok.js typing tools
-========================= */
-const composites = {
-    animal: {
-        name: "animal",
-        effectiveness: { physical: 1, energy: 1 },
-    },
-    plant: {
-        name: "plant",
-        effectiveness: { physical: 1, energy: 1.1 },
-    },
-    water: {
-        name: "water",
-        effectiveness: { physical: 0.8, energy: 1.25 },
-    },
-    voltage: {
-        name: "voltage",
-        effectiveness: { physical: 1.3, energy: 0.8 },
-    },
-    fire: {
-        name: "fire",
-        effectiveness: { physical: 0.7, energy: 1.4 },
-    },
-    rock: {
-        name: "rock",
-        effectiveness: { physical: 1.2, energy: 0.7 },
-    },
-    metal: {
-        name: "metal",
-        effectiveness: { physical: 1.15, energy: 0.85 },
-    },
-};
-
-const typeChart = {
-    normal: { immune: ["ghost"], weak: ["rock", "steel"], strong: [] },
-    fire: { immune: [], weak: ["fire", "water", "rock", "dragon"], strong: ["grass", "ice", "bug", "steel"] },
-    water: { immune: [], weak: ["water", "grass", "dragon"], strong: ["fire", "ground", "rock"] },
-    electric: { immune: ["ground"], weak: ["electric", "grass", "dragon"], strong: ["water", "flying"] },
-    grass: { immune: [], weak: ["fire", "grass", "poison", "flying", "bug", "dragon", "steel"], strong: ["water", "ground", "rock"] },
-    rock: { immune: [], weak: ["fighting", "ground", "steel"], strong: ["fire", "ice", "flying", "bug"] },
-    steel: { immune: [], weak: ["fire", "water", "electric", "steel"], strong: ["ice", "rock", "fairy"] },
-    ghost: { immune: ["normal"], weak: ["dark"], strong: ["ghost", "psychic"] },
-    none: { immune: [], weak: [], strong: [] },
-};
-
-function getTypeEffectiveness(moveType, targetType) {
-    if (!targetType || targetType === "none") return 1;
-    const move = typeChart[moveType];
-    if (!move) return 1;
-    if (move.immune.includes(targetType)) return 0;
-    if (move.strong.includes(targetType)) return 2;
-    if (move.weak.includes(targetType)) return 0.5;
-    return 1;
+function multStats(a, b) {
+    return {
+        pAtk: (a.pAtk ?? 1) * (b.pAtk ?? 1),
+        eAtk: (a.eAtk ?? 1) * (b.eAtk ?? 1),
+        range: (a.range ?? 1) * (b.range ?? 1),
+        maxHP: (a.maxHP ?? 1) * (b.maxHP ?? 1),
+        spd: (a.spd ?? 1) * (b.spd ?? 1),
+        castSpd: (a.castSpd ?? 1) * (b.castSpd ?? 1),
+        size: (a.size ?? 1) * (b.size ?? 1),
+        stamina: (a.stamina ?? 1) * (b.stamina ?? 1),
+        energy: (a.energy ?? 1) * (b.energy ?? 1),
+        recoverStamina: (a.recoverStamina ?? 1) * (b.recoverStamina ?? 1),
+        recoverEnergy: (a.recoverEnergy ?? 1) * (b.recoverEnergy ?? 1),
+    };
 }
 
+/* =========================
+   consolidated concept bank
+   compiled from: pokeCreature, poke2, poke3, pokefull, pokeprev, pok
+========================= */
+const conceptBank = {
+    fromPokeCreature: {
+        composites: {
+            animal: { effectiveness: { physical: 1, energy: 1 }, specialEffects: [] },
+            water: { effectiveness: { physical: 0.75, energy: 1.25 }, specialEffects: ["waterAdd"] },
+            voltage: { effectiveness: { physical: 1.5, energy: 0.75 }, specialEffects: ["waterVolt"] },
+            fire: { effectiveness: { physical: 0.5, energy: 1.75 }, specialEffects: ["fireUp", "burnoff"] },
+            rock: { effectiveness: { physical: 1, energy: 0.5 }, specialEffects: ["hardSurface"] },
+            metal: { effectiveness: { physical: 0.75, energy: 1.25 }, specialEffects: [] },
+        },
+        soakEffects: {
+            water: { effect: "none", vulnerability: ["electric"] },
+            electric: { effect: "damage", boost: "energy" },
+            chemical: { effect: "damage", boost: "none" },
+        },
+    },
+    fromPoke2AndPokePrev: {
+        moveCategories: ["melee", "projectile", "projectileSeek", "AOEInstant", "AOELinger", "hitscan"],
+        damageLanes: ["physical", "energy"],
+        compositionAxes: ["tough", "hard", "elastic", "chemResist", "electroResist", "thermCond"],
+    },
+    fromPoke3AndPokeFull: {
+        runtimePatterns: [
+            "abilityRegistryWithCooldownTable",
+            "worldEntityBaseClass",
+            "abilityManagerQueue",
+            "projectileAndAreaEffectSpecializations",
+        ],
+    },
+    fromPok: {
+        typeChart: {
+            normal: { immune: ["ghost"], weak: ["rock", "steel"], strong: [] },
+            fire: { immune: [], weak: ["fire", "water", "rock", "dragon"], strong: ["grass", "ice", "bug", "steel"] },
+            water: { immune: [], weak: ["water", "grass", "dragon"], strong: ["fire", "ground", "rock"] },
+            electric: { immune: ["ground"], weak: ["electric", "grass", "dragon"], strong: ["water", "flying"] },
+            grass: { immune: [], weak: ["fire", "grass", "poison", "flying", "bug", "dragon", "steel"], strong: ["water", "ground", "rock"] },
+            ghost: { immune: ["normal"], weak: ["dark"], strong: ["ghost", "psychic"] },
+            steel: { immune: [], weak: ["fire", "water", "electric", "steel"], strong: ["ice", "rock", "fairy"] },
+            none: { immune: [], weak: [], strong: [] },
+        },
+    },
+};
+
+const TypeCoverageTools = {
+    getEffectiveness(moveType, targetType) {
+        const moveData = conceptBank.fromPok.typeChart[moveType];
+        if (!moveData || !targetType || targetType === "none") return 1;
+        if (moveData.immune.includes(targetType)) return 0;
+        if (moveData.strong.includes(targetType)) return 2;
+        if (moveData.weak.includes(targetType)) return 0.5;
+        return 1;
+    },
+
+    scoreMoveset(moveset, encounters) {
+        let total = 0;
+        for (const enc of encounters) {
+            let best = 0;
+            for (const move of moveset) {
+                const eff = this.getEffectiveness(move, enc.priType) * this.getEffectiveness(move, enc.secType);
+                if (eff > best) best = eff;
+            }
+            total += best * (enc.amt ?? 1);
+        }
+        return total;
+    },
+};
+
+/* =========================
+   tiny defs
+========================= */
 const abilities = {
     ram: {
         name: "Ram",
@@ -113,8 +147,7 @@ const abilities = {
         resourceUse: { stamina: 5, energy: 0 },
         flatDmg: { p: 10, e: 0 },
         dmgScale: { p: 0.4, e: 0 },
-        range: 24,
-        moveType: "normal",
+        range: 24
     },
     zap: {
         name: "Zap",
@@ -123,71 +156,49 @@ const abilities = {
         resourceUse: { stamina: 0, energy: 5 },
         flatDmg: { p: 0, e: 16 },
         dmgScale: { p: 0, e: 0.7 },
-        range: 120,
-        moveType: "electric",
-    },
-    stoneThrow: {
-        name: "Stone Throw",
-        category: "projectile",
-        cooldown: 1.7,
-        resourceUse: { stamina: 3, energy: 0 },
-        flatDmg: { p: 8, e: 0 },
-        dmgScale: { p: 0.3, e: 0 },
-        range: 150,
-        moveType: "rock",
-    },
+        range: 120
+    }
 };
 
 const species = {
     dog: {
         name: "Dog",
-        tags: { typeA: "normal", typeB: "none", composite: "animal" },
         baseStats: {
-            pAtk: 12, eAtk: 2, range: 24, maxHP: 110, spd: 70,
-            castSpd: 1, size: 10, stamina: 25, energy: 10, recoverStamina: 6, recoverEnergy: 3,
+            pAtk: 12,
+            eAtk: 2,
+            range: 24,
+            maxHP: 110,
+            spd: 70,
+            castSpd: 1,
+            size: 10,
+            stamina: 25,
+            energy: 10,
+            recoverStamina: 6,
+            recoverEnergy: 3,
         },
         moveset: ["ram"]
     },
     sparkit: {
         name: "Sparkit",
-        tags: { typeA: "electric", typeB: "none", composite: "voltage" },
         baseStats: {
-            pAtk: 4, eAtk: 12, range: 100, maxHP: 85, spd: 65,
-            castSpd: 1, size: 9, stamina: 16, energy: 24, recoverStamina: 4, recoverEnergy: 6,
+            pAtk: 4,
+            eAtk: 12,
+            range: 100,
+            maxHP: 85,
+            spd: 65,
+            castSpd: 1,
+            size: 9,
+            stamina: 16,
+            energy: 24,
+            recoverStamina: 4,
+            recoverEnergy: 6,
         },
         moveset: ["zap"]
-    },
-    pebblit: {
-        name: "Pebblit",
-        tags: { typeA: "rock", typeB: "none", composite: "rock" },
-        baseStats: {
-            pAtk: 10, eAtk: 3, range: 90, maxHP: 120, spd: 55,
-            castSpd: 1, size: 13, stamina: 22, energy: 12, recoverStamina: 4, recoverEnergy: 3,
-        },
-        moveset: ["stoneThrow", "ram"]
     }
 };
 
 /* =========================
-   optional analyzer (from pok.js concept)
-========================= */
-const MoveCoverageAnalyzer = {
-    scoreMoveset(moveset, encounters) {
-        let total = 0;
-        for (const enc of encounters) {
-            let best = 0;
-            for (const moveType of moveset) {
-                const eff = getTypeEffectiveness(moveType, enc.typeA) * getTypeEffectiveness(moveType, enc.typeB);
-                if (eff > best) best = eff;
-            }
-            total += best * enc.weight;
-        }
-        return total;
-    }
-};
-
-/* =========================
-   input / camera
+   input
 ========================= */
 class InputManager {
     constructor() {
@@ -196,7 +207,7 @@ class InputManager {
         this.mouse = { x: 0, y: 0, down: false, pressed: false };
     }
 
-    bind(canvasEl) {
+    bind(canvas) {
         window.addEventListener("keydown", (e) => {
             if (!this.keys.get(e.code)) this.pressed.set(e.code, true);
             this.keys.set(e.code, true);
@@ -205,18 +216,18 @@ class InputManager {
             this.keys.set(e.code, false);
         });
 
-        canvasEl.addEventListener("mousemove", (e) => {
-            const rect = canvasEl.getBoundingClientRect();
+        canvas.addEventListener("mousemove", (e) => {
+            const rect = canvas.getBoundingClientRect();
             this.mouse.x = e.clientX - rect.left;
             this.mouse.y = e.clientY - rect.top;
         });
 
-        canvasEl.addEventListener("mousedown", () => {
+        canvas.addEventListener("mousedown", () => {
             if (!this.mouse.down) this.mouse.pressed = true;
             this.mouse.down = true;
         });
 
-        canvasEl.addEventListener("mouseup", () => {
+        canvas.addEventListener("mouseup", () => {
             this.mouse.down = false;
         });
     }
@@ -243,6 +254,9 @@ class InputManager {
     }
 }
 
+/* =========================
+   camera
+========================= */
 class Camera {
     constructor() {
         this.x = 0;
@@ -278,17 +292,18 @@ class Camera {
 }
 
 /* =========================
-   entities + AI
+   player
 ========================= */
 class PlayerEntity {
     constructor(x, z) {
         this.pos = { x, z };
         this.vel = { x: 0, z: 0 };
         this.spd = 140;
+
         this.petIds = [];
         this.activePetIndex = 0;
         this.commandTargetId = null;
-        this.stance = "aggressive";
+        this.stance = "aggressive"; // aggressive | hold | follow
     }
 
     get activePetId() {
@@ -308,15 +323,22 @@ class PlayerEntity {
         this.vel.x = mv.x * this.spd;
         this.vel.z = mv.z * this.spd;
 
-        this.pos.x = clamp(this.pos.x + this.vel.x * dt, 0, world.width);
-        this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
+        this.pos.x += this.vel.x * dt;
+        this.pos.z += this.vel.z * dt;
+
+        this.pos.x = clamp(this.pos.x, 0, world.width);
+        this.pos.z = clamp(this.pos.z, 0, world.height);
 
         if (input.consumePress("Digit1")) this.activePetIndex = 0;
         if (input.consumePress("Digit2")) this.activePetIndex = 1;
         if (input.consumePress("Digit3")) this.activePetIndex = 2;
 
         if (input.consumePress("KeyQ")) {
-            this.stance = this.stance === "aggressive" ? "follow" : this.stance === "follow" ? "hold" : "aggressive";
+            this.stance = this.stance === "aggressive"
+                ? "follow"
+                : this.stance === "follow"
+                ? "hold"
+                : "aggressive";
         }
 
         if (input.consumeMousePress()) {
@@ -327,6 +349,9 @@ class PlayerEntity {
     }
 }
 
+/* =========================
+   creature
+========================= */
 let NEXT_ID = 1;
 
 class Creature {
@@ -334,24 +359,23 @@ class Creature {
         const def = species[speciesKey];
         this.id = NEXT_ID++;
         this.speciesKey = speciesKey;
-        this.team = team;
+        this.team = team; // 0 = player pets, 1 = wilds
         this.pos = { x, z };
         this.vel = { x: 0, z: 0 };
         this.angle = 0;
 
-        this.tags = deepClone(def.tags ?? { typeA: "none", typeB: "none", composite: "animal" });
-        this.baseStats = deepClone(def.baseStats);
-        this.modifiedStats = addStats(makeStats(0), def.baseStats);
+        this.baseStats = { ...def.baseStats };
+        this.modifiedStats = { ...def.baseStats };
 
         this.currentHP = this.modifiedStats.maxHP;
         this.currentStamina = this.modifiedStats.stamina;
         this.currentEnergy = this.modifiedStats.energy;
 
         this.moveset = [...def.moveset];
-        this.cooldowns = Object.fromEntries(this.moveset.map((k) => [k, 0]));
+        this.cooldowns = Object.fromEntries(this.moveset.map(k => [k, 0]));
 
         this.isDead = false;
-        this.mode = team === 0 ? "pet" : "wild";
+        this.mode = team === 0 ? "pet" : "wild"; // pet | wild
         this.brain = null;
         this.intent = this.makeEmptyIntent();
     }
@@ -372,15 +396,24 @@ class Creature {
             this.cooldowns[key] = Math.max(0, this.cooldowns[key] - dt);
         }
 
-        this.currentStamina = Math.min(this.modifiedStats.stamina, this.currentStamina + this.modifiedStats.recoverStamina * dt);
-        this.currentEnergy = Math.min(this.modifiedStats.energy, this.currentEnergy + this.modifiedStats.recoverEnergy * dt);
+        this.currentStamina = Math.min(
+            this.modifiedStats.stamina,
+            this.currentStamina + this.modifiedStats.recoverStamina * dt
+        );
+        this.currentEnergy = Math.min(
+            this.modifiedStats.energy,
+            this.currentEnergy + this.modifiedStats.recoverEnergy * dt
+        );
 
         const mv = norm2D(this.intent.move.x, this.intent.move.z);
         this.vel.x = mv.x * this.modifiedStats.spd;
         this.vel.z = mv.z * this.modifiedStats.spd;
 
-        this.pos.x = clamp(this.pos.x + this.vel.x * dt, 0, world.width);
-        this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
+        this.pos.x += this.vel.x * dt;
+        this.pos.z += this.vel.z * dt;
+
+        this.pos.x = clamp(this.pos.x, 0, world.width);
+        this.pos.z = clamp(this.pos.z, 0, world.height);
 
         if (mv.x !== 0 || mv.z !== 0) {
             this.angle = Math.atan2(mv.z, mv.x);
@@ -392,10 +425,13 @@ class Creature {
     }
 }
 
+/* =========================
+   brain
+========================= */
 class Brain {
     constructor() {
         this.host = null;
-        this.role = "fighter";
+        this.role = "fighter"; // fighter | ranged
     }
 
     attach(creature) {
@@ -403,16 +439,20 @@ class Brain {
         creature.brain = this;
     }
 
-    think(world) {
+    think(world, dt) {
         const h = this.host;
         if (!h || h.isDead) return;
 
         h.intent = h.makeEmptyIntent();
-        if (h.mode === "pet") this.thinkPet(world);
-        else this.thinkWild(world);
+
+        if (h.mode === "pet") {
+            this.thinkPet(world, dt);
+        } else {
+            this.thinkWild(world, dt);
+        }
     }
 
-    thinkPet(world) {
+    thinkPet(world, dt) {
         const h = this.host;
         const player = world.player;
         const activePetId = player.activePetId;
@@ -420,51 +460,66 @@ class Brain {
         const followAnchor = world.getPetFollowAnchor(h.id);
 
         let target = null;
+
         if (isActive && player.commandTargetId != null) {
             target = world.getCreatureById(player.commandTargetId);
             if (target?.isDead) target = null;
         }
 
-        if (!target) target = world.findNearestEnemyOf(h, 180);
+        if (!target) {
+            target = world.findNearestEnemyOf(h, 180);
+        }
+
         if (target) {
-            this.fightTarget(world, h, target);
+            this.fightTarget(world, h, target, isActive);
             return;
         }
 
-        if (player.stance === "hold" && !isActive) return;
+        // no target: obey stance and follow player
+        if (player.stance === "hold" && !isActive) {
+            h.intent.move = { x: 0, z: 0 };
+            return;
+        }
 
         const dx = followAnchor.x - h.pos.x;
         const dz = followAnchor.z - h.pos.z;
         const d = Math.hypot(dx, dz);
+
         if (d > 12) {
             const n = norm2D(dx, dz);
             h.intent.move = { x: n.x, z: n.z };
         }
     }
 
-    thinkWild(world) {
+    thinkWild(world, dt) {
         const h = this.host;
         const target = world.findNearestEnemyOf(h, 140);
-        if (target) this.fightTarget(world, h, target);
+        if (!target) return;
+        this.fightTarget(world, h, target, false);
     }
 
-    fightTarget(world, host, target) {
-        const dx = target.pos.x - host.pos.x;
-        const dz = target.pos.z - host.pos.z;
+    fightTarget(world, h, target, isActive) {
+        const dx = target.pos.x - h.pos.x;
+        const dz = target.pos.z - h.pos.z;
         const d = Math.hypot(dx, dz);
         const n = norm2D(dx, dz);
 
         const preferredRange = this.role === "ranged" ? 95 : 18;
         const leash = this.role === "ranged" ? 20 : 8;
 
-        if (d > preferredRange + leash) host.intent.move = { x: n.x, z: n.z };
-        else if (d < preferredRange - leash) host.intent.move = { x: -n.x, z: -n.z };
+        if (d > preferredRange + leash) {
+            h.intent.move = { x: n.x, z: n.z };
+        } else if (d < preferredRange - leash) {
+            h.intent.move = { x: -n.x, z: -n.z };
+        } else {
+            h.intent.move = { x: 0, z: 0 };
+        }
 
-        const bestAbility = this.pickAbility(host, d);
+        const bestAbility = this.pickAbility(h, d);
         if (bestAbility) {
-            host.intent.abilityKey = bestAbility;
-            host.intent.targetId = target.id;
-            host.intent.aimAt = { x: target.pos.x, z: target.pos.z };
+            h.intent.abilityKey = bestAbility;
+            h.intent.targetId = target.id;
+            h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
         }
     }
 
@@ -491,10 +546,14 @@ class Brain {
                 best = key;
             }
         }
+
         return best;
     }
 }
 
+/* =========================
+   spawnfield
+========================= */
 class SpawnField {
     constructor(radius = 240, innerNoSpawn = 80, maxWild = 6, interval = 2.0) {
         this.radius = radius;
@@ -502,7 +561,7 @@ class SpawnField {
         this.maxWild = maxWild;
         this.interval = interval;
         this.timer = 0;
-        this.pool = ["dog", "sparkit", "pebblit"];
+        this.pool = ["dog", "sparkit"];
     }
 
     update(dt, world) {
@@ -515,7 +574,7 @@ class SpawnField {
     }
 
     trySpawn(world) {
-        const currentWild = world.creatures.filter((c) => c.mode === "wild" && !c.isDead).length;
+        const currentWild = world.creatures.filter(c => c.mode === "wild" && !c.isDead).length;
         if (currentWild >= this.maxWild) return;
 
         const player = world.player;
@@ -524,12 +583,13 @@ class SpawnField {
             const d = this.innerNoSpawn + Math.random() * (this.radius - this.innerNoSpawn);
             const x = player.pos.x + Math.cos(angle) * d;
             const z = player.pos.z + Math.sin(angle) * d;
+
             if (x < 0 || x > world.width || z < 0 || z > world.height) continue;
 
             const speciesKey = this.pool[(Math.random() * this.pool.length) | 0];
             const wild = new Creature(speciesKey, 1, x, z);
             const brain = new Brain();
-            brain.role = speciesKey === "sparkit" || speciesKey === "pebblit" ? "ranged" : "fighter";
+            brain.role = speciesKey === "sparkit" ? "ranged" : "fighter";
             brain.attach(wild);
 
             world.creatures.push(wild);
@@ -539,22 +599,26 @@ class SpawnField {
 
     cleanup(world) {
         const p = world.player.pos;
-        world.creatures = world.creatures.filter((c) => {
+        world.creatures = world.creatures.filter(c => {
             if (c.mode !== "wild") return true;
             if (c.isDead) return false;
-            if (world.isCreatureEngaged(c)) return true;
+
+            const engaged = world.isCreatureEngaged(c);
+            if (engaged) return true;
+
             return dist(c.pos.x, c.pos.z, p.x, p.z) < this.radius * 1.6;
         });
     }
 }
 
 /* =========================
-   world + combat
+   world
 ========================= */
 class World {
     constructor() {
         this.width = 1400;
         this.height = 1000;
+
         this.camera = new Camera();
         this.player = new PlayerEntity(this.width / 2, this.height / 2);
         this.creatures = [];
@@ -566,11 +630,11 @@ class World {
 
         const petA = new Creature("dog", 0, this.player.pos.x - 20, this.player.pos.z + 30);
         const petB = new Creature("sparkit", 0, this.player.pos.x + 20, this.player.pos.z + 30);
-        const petC = new Creature("pebblit", 0, this.player.pos.x, this.player.pos.z + 55);
+        const petC = new Creature("dog", 0, this.player.pos.x, this.player.pos.z + 55);
 
         const b1 = new Brain(); b1.role = "fighter"; b1.attach(petA);
-        const b2 = new Brain(); b2.role = "ranged"; b2.attach(petB);
-        const b3 = new Brain(); b3.role = "ranged"; b3.attach(petC);
+        const b2 = new Brain(); b2.role = "ranged";  b2.attach(petB);
+        const b3 = new Brain(); b3.role = "fighter"; b3.attach(petC);
 
         this.creatures.push(petA, petB, petC);
         this.player.petIds = [petA.id, petB.id, petC.id];
@@ -580,8 +644,13 @@ class World {
         this.player.update(dt, input, this);
         this.spawnField.update(dt, this);
 
-        for (const c of this.creatures) if (c.brain) c.brain.think(this, dt);
-        for (const c of this.creatures) c.tick(dt, this);
+        for (const c of this.creatures) {
+            if (c.brain) c.brain.think(this, dt);
+        }
+
+        for (const c of this.creatures) {
+            c.tick(dt, this);
+        }
 
         this.resolveSimpleSeparation();
         this.removeDeadCommandTarget();
@@ -589,18 +658,20 @@ class World {
     }
 
     getCreatureById(id) {
-        return this.creatures.find((c) => c.id === id) ?? null;
+        return this.creatures.find(c => c.id === id) ?? null;
     }
 
     getPetFollowAnchor(petId) {
         const ids = this.player.petIds;
         const idx = ids.indexOf(petId);
         const p = this.player.pos;
+
         const anchors = [
             { x: p.x - 28, z: p.z + 26 },
             { x: p.x + 28, z: p.z + 26 },
-            { x: p.x, z: p.z + 52 },
+            { x: p.x,      z: p.z + 52 },
         ];
+
         return anchors[idx] ?? { x: p.x, z: p.z + 30 };
     }
 
@@ -611,6 +682,7 @@ class World {
         for (const other of this.creatures) {
             if (other.id === creature.id || other.isDead) continue;
             if (other.team === creature.team) continue;
+
             const d = dist(creature.pos.x, creature.pos.z, other.pos.x, other.pos.z);
             if (d < bestD && d <= maxRange) {
                 bestD = d;
@@ -623,6 +695,7 @@ class World {
     findNearestEnemyToPoint(x, z, maxRange = 30) {
         let best = null;
         let bestD = Infinity;
+
         for (const c of this.creatures) {
             if (c.team === 0 || c.isDead) continue;
             const d = dist(x, z, c.pos.x, c.pos.z);
@@ -638,40 +711,17 @@ class World {
         for (const other of this.creatures) {
             if (other.id === creature.id || other.isDead) continue;
             if (other.team === creature.team) continue;
-            if (dist(creature.pos.x, creature.pos.z, other.pos.x, other.pos.z) < 160) return true;
+            if (dist(creature.pos.x, creature.pos.z, other.pos.x, other.pos.z) < 160) {
+                return true;
+            }
         }
         return false;
-    }
-
-    computeAbilityDamage(source, target, abilityDef) {
-        const baseDamage =
-            (abilityDef.flatDmg?.p ?? 0) +
-            (abilityDef.flatDmg?.e ?? 0) +
-            (abilityDef.dmgScale?.p ?? 0) * source.modifiedStats.pAtk +
-            (abilityDef.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
-
-        const typeA = target.tags?.typeA ?? "none";
-        const typeB = target.tags?.typeB ?? "none";
-        const typeMult = getTypeEffectiveness(abilityDef.moveType, typeA) * getTypeEffectiveness(abilityDef.moveType, typeB);
-
-        const sourceComp = composites[source.tags?.composite ?? "animal"] ?? composites.animal;
-        const targetComp = composites[target.tags?.composite ?? "animal"] ?? composites.animal;
-        const physicalShare = (abilityDef.flatDmg?.p ?? 0) + (abilityDef.dmgScale?.p ?? 0) * source.modifiedStats.pAtk;
-        const energyShare = (abilityDef.flatDmg?.e ?? 0) + (abilityDef.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
-
-        const sourceBoost =
-            (physicalShare > 0 ? sourceComp.effectiveness.physical : 1) *
-            (energyShare > 0 ? sourceComp.effectiveness.energy : 1);
-        const targetMitigation =
-            (physicalShare > 0 ? 1 / targetComp.effectiveness.physical : 1) *
-            (energyShare > 0 ? 1 / targetComp.effectiveness.energy : 1);
-
-        return Math.max(0, baseDamage * typeMult * sourceBoost * targetMitigation);
     }
 
     tryUseAbility(source, abilityKey, targetId) {
         const a = abilities[abilityKey];
         const target = this.getCreatureById(targetId);
+
         if (!a || !target || target.isDead || source.isDead) return false;
         if (source.team === target.team) return false;
         if ((source.cooldowns[abilityKey] ?? 0) > 0) return false;
@@ -686,7 +736,12 @@ class World {
         source.currentEnergy -= a.resourceUse?.energy ?? 0;
         source.cooldowns[abilityKey] = a.cooldown;
 
-        const dmg = this.computeAbilityDamage(source, target, a);
+        const dmg =
+            (a.flatDmg?.p ?? 0) +
+            (a.flatDmg?.e ?? 0) +
+            (a.dmgScale?.p ?? 0) * source.modifiedStats.pAtk +
+            (a.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
+
         target.currentHP = Math.max(0, target.currentHP - dmg);
         if (target.currentHP <= 0) target.isDead = true;
 
@@ -702,6 +757,7 @@ class World {
 
     resolveSimpleSeparation() {
         const minDist = 16;
+
         for (let i = 0; i < this.creatures.length; i++) {
             const a = this.creatures[i];
             if (a.isDead) continue;
@@ -713,6 +769,7 @@ class World {
                 const dx = b.pos.x - a.pos.x;
                 const dz = b.pos.z - a.pos.z;
                 const d = Math.hypot(dx, dz) || 0.001;
+
                 if (d >= minDist) continue;
 
                 const push = (minDist - d) * 0.5;
@@ -726,77 +783,88 @@ class World {
         }
     }
 
-    draw(ctx2d) {
-        ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+    draw(ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        ctx2d.fillStyle = "#89a87c";
-        ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+        // ground
+        ctx.fillStyle = "#89a87c";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        // map border
         const tl = this.camera.worldToScreen(0, 0);
-        ctx2d.strokeStyle = "#3d4b36";
-        ctx2d.lineWidth = 2;
-        ctx2d.strokeRect(tl.sx, tl.sz, this.width * this.camera.zoom, this.height * this.camera.zoom);
+        ctx.strokeStyle = "#3d4b36";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(
+            tl.sx,
+            tl.sz,
+            this.width * this.camera.zoom,
+            this.height * this.camera.zoom
+        );
 
+        // player
         const ps = this.camera.worldToScreen(this.player.pos.x, this.player.pos.z);
-        ctx2d.fillStyle = "#ffffff";
-        ctx2d.beginPath();
-        ctx2d.arc(ps.sx, ps.sz, 7, 0, Math.PI * 2);
-        ctx2d.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(ps.sx, ps.sz, 7, 0, Math.PI * 2);
+        ctx.fill();
 
+        // creatures
         for (const c of this.creatures) {
             const s = this.camera.worldToScreen(c.pos.x, c.pos.z);
             const isActive = c.id === this.player.activePetId;
             const isCommandTarget = c.id === this.player.commandTargetId;
 
             if (c.isDead) {
-                ctx2d.strokeStyle = "#222";
-                ctx2d.beginPath();
-                ctx2d.moveTo(s.sx - 6, s.sz - 6);
-                ctx2d.lineTo(s.sx + 6, s.sz + 6);
-                ctx2d.moveTo(s.sx + 6, s.sz - 6);
-                ctx2d.lineTo(s.sx - 6, s.sz + 6);
-                ctx2d.stroke();
+                ctx.strokeStyle = "#222";
+                ctx.beginPath();
+                ctx.moveTo(s.sx - 6, s.sz - 6);
+                ctx.lineTo(s.sx + 6, s.sz + 6);
+                ctx.moveTo(s.sx + 6, s.sz - 6);
+                ctx.lineTo(s.sx - 6, s.sz + 6);
+                ctx.stroke();
                 continue;
             }
 
-            ctx2d.fillStyle = c.team === 0 ? "#4a90d9" : "#d95c5c";
-            ctx2d.beginPath();
-            ctx2d.arc(s.sx, s.sz, 9, 0, Math.PI * 2);
-            ctx2d.fill();
+            ctx.fillStyle = c.team === 0 ? "#4a90d9" : "#d95c5c";
+            ctx.beginPath();
+            ctx.arc(s.sx, s.sz, 9, 0, Math.PI * 2);
+            ctx.fill();
 
             if (isActive) {
-                ctx2d.strokeStyle = "#fff799";
-                ctx2d.lineWidth = 2;
-                ctx2d.beginPath();
-                ctx2d.arc(s.sx, s.sz, 13, 0, Math.PI * 2);
-                ctx2d.stroke();
-            }
-            if (isCommandTarget) {
-                ctx2d.strokeStyle = "#ffefef";
-                ctx2d.lineWidth = 2;
-                ctx2d.strokeRect(s.sx - 12, s.sz - 12, 24, 24);
+                ctx.strokeStyle = "#fff799";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(s.sx, s.sz, 13, 0, Math.PI * 2);
+                ctx.stroke();
             }
 
+            if (isCommandTarget) {
+                ctx.strokeStyle = "#ffefef";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(s.sx - 12, s.sz - 12, 24, 24);
+            }
+
+            // hp bar
             const hpRatio = c.currentHP / c.modifiedStats.maxHP;
-            ctx2d.fillStyle = "#222";
-            ctx2d.fillRect(s.sx - 14, s.sz - 18, 28, 4);
-            ctx2d.fillStyle = hpRatio > 0.5 ? "#5ad15a" : hpRatio > 0.25 ? "#e7c04a" : "#df5a5a";
-            ctx2d.fillRect(s.sx - 14, s.sz - 18, 28 * hpRatio, 4);
+            ctx.fillStyle = "#222";
+            ctx.fillRect(s.sx - 14, s.sz - 18, 28, 4);
+            ctx.fillStyle = hpRatio > 0.5 ? "#5ad15a" : hpRatio > 0.25 ? "#e7c04a" : "#df5a5a";
+            ctx.fillRect(s.sx - 14, s.sz - 18, 28 * hpRatio, 4);
         }
 
-        ctx2d.fillStyle = "rgba(0,0,0,0.55)";
-        ctx2d.fillRect(8, 8, 440, 88);
-        ctx2d.fillStyle = "#fff";
-        ctx2d.font = "12px monospace";
-        ctx2d.fillText(`Active Pet: ${this.player.activePetIndex + 1}`, 16, 28);
-        ctx2d.fillText(`Stance: ${this.player.stance}`, 16, 46);
-        ctx2d.fillText("1/2/3 switch pet, Q stance, click enemy to focus", 16, 64);
-        ctx2d.fillText("Merged build: poke4 runtime + composites + typing analyzer", 16, 82);
+        // UI
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(8, 8, 270, 72);
+        ctx.fillStyle = "#fff";
+        ctx.font = "12px monospace";
+        ctx.fillText(`Active Pet: ${this.player.activePetIndex + 1}`, 16, 28);
+        ctx.fillText(`Stance: ${this.player.stance}`, 16, 46);
+        ctx.fillText(`1/2/3 switch pet, Q stance, click enemy to focus`, 16, 64);
     }
 }
 
 /* =========================
-   game bootstrap
+   game
 ========================= */
 class Game {
     constructor() {
@@ -808,6 +876,7 @@ class Game {
     start() {
         this.input.bind(canvas);
         this.world.initialize();
+
         requestAnimationFrame((ts) => this.loop(ts));
     }
 
