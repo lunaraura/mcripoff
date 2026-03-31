@@ -375,6 +375,7 @@ class Camera {
    creature + factory (single creation path)
 ========================= */
 let NEXT_ID = 1;
+let NEXT_OWNED_ID = 1;
 
 class Creature {
     constructor(id, speciesKey, team, x, z, def) {
@@ -385,15 +386,17 @@ class Creature {
         this.vel = { x: 0, z: 0 };
         this.angle = 0;
 
-        this.baseStats = { ...def.baseStats };
+        this.speciesBaseStats = { ...def.baseStats };
+        this.growthStats = { pAtk: 0, eAtk: 0, range: 0, maxHP: 0, spd: 0, castSpd: 0, size: 0, stamina: 0, energy: 0, recoverStamina: 0, recoverEnergy: 0 };
+        this.permanentStats = { ...def.baseStats };
         this.modifiedStats = { ...def.baseStats };
         this.compositeKey = def.compositeKey;
         this.effectState = EffectEngine.createState();
         this.statusEffects = [];
 
-        this.currentHP = this.modifiedStats.maxHP;
-        this.currentStamina = this.modifiedStats.stamina;
-        this.currentEnergy = this.modifiedStats.energy;
+        this.currentHP = this.permanentStats.maxHP;
+        this.currentStamina = this.permanentStats.stamina;
+        this.currentEnergy = this.permanentStats.energy;
 
         this.level = 1;
         this.xp = 0;
@@ -406,7 +409,9 @@ class Creature {
         this.runtimeSpeedMult = 1;
         this.hitFlash = 0;
         this.isDead = false;
+        this.lifecycle = "alive"; // alive | defeated | captured | despawned
         this.mode = team === 0 ? "pet" : "wild";
+        this.ownedId = null;
         this.brain = null;
         this.intent = this.makeEmptyIntent();
 
@@ -418,24 +423,43 @@ class Creature {
         return { move: { x: 0, z: 0 }, abilityKey: null, targetId: null, aimAt: null };
     }
 
-    addXP(amount, world) {
+    addXP(amount) {
+        const events = [];
         this.xp += amount;
         while (this.xp >= this.nextXP) {
             this.xp -= this.nextXP;
             this.level += 1;
             this.nextXP = xpNeededForLevel(this.level);
-            this.baseStats.maxHP += 8;
-            this.baseStats.pAtk += 1.5;
-            this.baseStats.eAtk += 1.5;
-            this.baseStats.spd += 1.2;
-            this.modifiedStats = { ...this.baseStats };
+            this.growthStats.maxHP += 8;
+            this.growthStats.pAtk += 1.5;
+            this.growthStats.eAtk += 1.5;
+            this.growthStats.spd += 1.2;
+            this.rebuildStats();
             this.currentHP = Math.min(this.currentHP + 14, this.modifiedStats.maxHP);
-            world.pushFloatingText(this.pos.x, this.pos.z - 14, `Lv Up! ${this.level}`, "#fff799");
+            events.push({ type: "leveledUp", newLevel: this.level });
         }
+        return events;
+    }
+
+    rebuildStats() {
+        this.permanentStats = {
+            pAtk: this.speciesBaseStats.pAtk + this.growthStats.pAtk,
+            eAtk: this.speciesBaseStats.eAtk + this.growthStats.eAtk,
+            range: this.speciesBaseStats.range + this.growthStats.range,
+            maxHP: this.speciesBaseStats.maxHP + this.growthStats.maxHP,
+            spd: this.speciesBaseStats.spd + this.growthStats.spd,
+            castSpd: this.speciesBaseStats.castSpd + this.growthStats.castSpd,
+            size: this.speciesBaseStats.size + this.growthStats.size,
+            stamina: this.speciesBaseStats.stamina + this.growthStats.stamina,
+            energy: this.speciesBaseStats.energy + this.growthStats.energy,
+            recoverStamina: this.speciesBaseStats.recoverStamina + this.growthStats.recoverStamina,
+            recoverEnergy: this.speciesBaseStats.recoverEnergy + this.growthStats.recoverEnergy,
+        };
+        this.modifiedStats = { ...this.permanentStats };
     }
 
     tick(dt, world) {
-        if (this.isDead) return;
+        if (this.lifecycle !== "alive") return;
         for (const key of Object.keys(this.cooldowns)) this.cooldowns[key] = Math.max(0, this.cooldowns[key] - dt);
 
         this.currentStamina = Math.min(this.modifiedStats.stamina, this.currentStamina + this.modifiedStats.recoverStamina * dt);
@@ -462,8 +486,19 @@ class CreatureFactory {
         if (!def) throw new Error(`Unknown species ${speciesKey}`);
         const c = new Creature(NEXT_ID++, speciesKey, team, x, z, def);
         if (opts.level && opts.level > 1) {
-            for (let i = 1; i < opts.level; i++) c.addXP(c.nextXP, { pushFloatingText() {} });
+            for (let i = 1; i < opts.level; i++) c.addXP(c.nextXP);
         }
+        if (opts.xp) c.xp = opts.xp;
+        if (opts.nextXP) c.nextXP = opts.nextXP;
+        if (opts.growthStats) {
+            c.growthStats = { ...c.growthStats, ...opts.growthStats };
+            c.rebuildStats();
+        }
+        if (opts.moveset) {
+            c.moveset = [...opts.moveset];
+            c.cooldowns = Object.fromEntries(c.moveset.map(k => [k, 0]));
+        }
+        if (opts.ownedId != null) c.ownedId = opts.ownedId;
         if (opts.mode) c.mode = opts.mode;
         return c;
     }
@@ -484,7 +519,7 @@ class Brain {
     }
     think(world) {
         const h = this.host;
-        if (!h || h.isDead) return;
+        if (!h || h.lifecycle !== "alive") return;
         h.intent = h.makeEmptyIntent();
         if (h.mode === "pet") this.thinkPet(world);
         else this.thinkWild(world);
@@ -539,7 +574,7 @@ class Brain {
         }
         if (cmd.type === "attack") {
             const target = world.getCreatureById(cmd.targetId);
-            if (!target || target.isDead || target.team === h.team) return true;
+            if (!target || target.lifecycle !== "alive" || target.team === h.team) return true;
             this.fightTarget(world, h, target, null);
             return false;
         }
@@ -653,7 +688,7 @@ class SpawnField {
         this.cleanup(world);
     }
     trySpawn(world) {
-        const currentWild = world.creatures.filter(c => c.mode === "wild" && !c.isDead).length;
+        const currentWild = world.creatures.filter(c => c.mode === "wild" && c.lifecycle === "alive").length;
         if (currentWild >= this.maxWild) return;
 
         const player = world.player;
@@ -677,7 +712,7 @@ class SpawnField {
         const p = world.player.pos;
         world.creatures = world.creatures.filter(c => {
             if (c.mode !== "wild") return true;
-            if (c.isDead) return false;
+            if (c.lifecycle !== "alive") return false;
             if (world.isCreatureEngaged(c)) return true;
             return dist(c.pos.x, c.pos.z, p.x, p.z) < this.radius * 1.75;
         });
@@ -708,13 +743,14 @@ class PlayerEntity {
         this.spd = 140;
 
         this.petIds = [];
+        this.partyOwnedIds = [];
         this.activePetIndex = 0;
         this.commandTargetId = null;
         this.stance = "aggressive";
 
         this.inventory = { berry_red: 3, battery_seed: 2, lure_meat: 2 };
-        this.reserve = [];
-        this.owned = [];
+        this.reserveOwnedIds = [];
+        this.ownedCreatures = [];
         this.lastLog = "";
     }
 
@@ -808,22 +844,82 @@ class World {
         this.camera.follow(this.player);
 
         const p = this.player.pos;
-        const petA = this.spawnPet("dog", p.x - 20, p.z + 30);
-        const petB = this.spawnPet("sparkit", p.x + 20, p.z + 30);
-        const petC = this.spawnPet("cinderpup", p.x, p.z + 55);
-        this.player.petIds = [petA.id, petB.id, petC.id];
-
-        this.player.owned = this.player.petIds.map(id => this.dehydrateCreature(this.getCreatureById(id)));
+        const ownedA = this.createOwnedCreatureRecord("dog");
+        const ownedB = this.createOwnedCreatureRecord("sparkit");
+        const ownedC = this.createOwnedCreatureRecord("cinderpup");
+        this.player.partyOwnedIds = [ownedA.ownedId, ownedB.ownedId, ownedC.ownedId];
+        this.hydratePartyRuntime();
         this.spawnBiomeNodesAroundPlayer(8);
     }
 
-    spawnPet(speciesKey, x, z) {
-        const pet = this.factory.create(speciesKey, 0, x, z, { mode: "pet" });
+    spawnPetFromOwned(ownedId, x, z) {
+        const owned = this.getOwnedCreatureById(ownedId);
+        if (!owned) return null;
+        const pet = this.factory.create(owned.speciesKey, 0, x, z, {
+            mode: "pet",
+            level: owned.level,
+            xp: owned.xp,
+            nextXP: owned.nextXP,
+            growthStats: owned.growthStats,
+            moveset: owned.moveset,
+            ownedId: owned.ownedId,
+        });
+        pet.level = owned.level;
+        pet.xp = owned.xp;
+        pet.nextXP = owned.nextXP;
         const brain = new Brain();
         brain.attach(pet);
         pet.command = { type: "follow", issuedAt: this.time };
         this.creatures.push(pet);
+        this.syncOwnedCreatureFromRuntime(pet);
         return pet;
+    }
+
+    hydratePartyRuntime() {
+        this.creatures = this.creatures.filter(c => c.mode !== "pet");
+        this.player.petIds = [];
+        const p = this.player.pos;
+        const offsets = [{ x: -20, z: 30 }, { x: 20, z: 30 }, { x: 0, z: 55 }];
+        for (let i = 0; i < this.player.partyOwnedIds.length; i++) {
+            const ownedId = this.player.partyOwnedIds[i];
+            if (ownedId == null) continue;
+            const off = offsets[i] ?? { x: 0, z: 40 + i * 14 };
+            const pet = this.spawnPetFromOwned(ownedId, p.x + off.x, p.z + off.z);
+            if (pet) this.player.petIds[i] = pet.id;
+        }
+    }
+
+    createOwnedCreatureRecord(speciesKey, runtime = null) {
+        const def = species[speciesKey];
+        const owned = {
+            ownedId: NEXT_OWNED_ID++,
+            speciesKey,
+            nickname: def?.name ?? speciesKey,
+            level: runtime?.level ?? 1,
+            xp: runtime?.xp ?? 0,
+            nextXP: runtime?.nextXP ?? xpNeededForLevel(runtime?.level ?? 1),
+            growthStats: { ...(runtime?.growthStats ?? { pAtk: 0, eAtk: 0, range: 0, maxHP: 0, spd: 0, castSpd: 0, size: 0, stamina: 0, energy: 0, recoverStamina: 0, recoverEnergy: 0 }) },
+            moveset: [...(runtime?.moveset ?? def.moveset)],
+            compositeKey: runtime?.compositeKey ?? def.compositeKey,
+        };
+        this.player.ownedCreatures.push(owned);
+        return owned;
+    }
+
+    getOwnedCreatureById(ownedId) {
+        return this.player.ownedCreatures.find(o => o.ownedId === ownedId) ?? null;
+    }
+
+    syncOwnedCreatureFromRuntime(runtimeCreature) {
+        if (runtimeCreature.ownedId == null) return;
+        const owned = this.getOwnedCreatureById(runtimeCreature.ownedId);
+        if (!owned) return;
+        owned.level = runtimeCreature.level;
+        owned.xp = runtimeCreature.xp;
+        owned.nextXP = runtimeCreature.nextXP;
+        owned.growthStats = { ...runtimeCreature.growthStats };
+        owned.moveset = [...runtimeCreature.moveset];
+        owned.compositeKey = runtimeCreature.compositeKey;
     }
 
     update(dt, input) {
@@ -843,21 +939,30 @@ class World {
 
         this.resolveSimpleSeparation();
         this.cleanupDefeatedCreatures();
+        this.rebuildPartyPetIds();
         this.removeDeadCommandTarget();
         this.updateFx(dt);
         this.camera.update(dt);
     }
 
+    rebuildPartyPetIds() {
+        this.player.petIds = this.player.partyOwnedIds.map((ownedId) => {
+            if (ownedId == null) return null;
+            const runtime = this.creatures.find(c => c.mode === "pet" && c.ownedId === ownedId && c.lifecycle === "alive");
+            return runtime?.id ?? null;
+        });
+    }
+
     commandActivePet(command) {
         const pet = this.getCreatureById(this.player.activePetId);
-        if (!pet || pet.isDead) return;
+        if (!pet || pet.lifecycle !== "alive") return;
         pet.command = { ...command };
     }
 
     commandAllPets(command) {
         for (const id of this.player.petIds) {
             const pet = this.getCreatureById(id);
-            if (!pet || pet.isDead) continue;
+            if (!pet || pet.lifecycle !== "alive") continue;
             pet.command = { ...command };
         }
     }
@@ -882,7 +987,7 @@ class World {
         let best = null;
         let bestD = Infinity;
         for (const other of this.creatures) {
-            if (other.id === creature.id || other.isDead || other.team === creature.team) continue;
+            if (other.id === creature.id || other.lifecycle !== "alive" || other.team === creature.team) continue;
             const d = dist(creature.pos.x, creature.pos.z, other.pos.x, other.pos.z);
             if (d < bestD && d <= maxRange) {
                 bestD = d;
@@ -896,7 +1001,7 @@ class World {
         let best = null;
         let bestD = Infinity;
         for (const c of this.creatures) {
-            if (c.team === 0 || c.isDead) continue;
+            if (c.team === 0 || c.lifecycle !== "alive") continue;
             const d = dist(x, z, c.pos.x, c.pos.z);
             if (d < bestD && d <= maxRange) {
                 bestD = d;
@@ -908,7 +1013,7 @@ class World {
 
     isCreatureEngaged(creature) {
         for (const other of this.creatures) {
-            if (other.id === creature.id || other.isDead || other.team === creature.team) continue;
+            if (other.id === creature.id || other.lifecycle !== "alive" || other.team === creature.team) continue;
             if (dist(creature.pos.x, creature.pos.z, other.pos.x, other.pos.z) < 160) return true;
         }
         return false;
@@ -917,7 +1022,7 @@ class World {
     tryUseAbility(source, abilityKey, targetId) {
         const a = abilities[abilityKey];
         const target = this.getCreatureById(targetId);
-        if (!a || !target || target.isDead || source.isDead) return false;
+        if (!a || !target || target.lifecycle !== "alive" || source.lifecycle !== "alive") return false;
         if (source.team === target.team) return false;
         if ((source.cooldowns[abilityKey] ?? 0) > 0) return false;
 
@@ -945,7 +1050,7 @@ class World {
         if (a.category === "aoe") {
             const radius = a.area?.radius ?? 30;
             for (const other of this.creatures) {
-                if (other.team === source.team || other.isDead) continue;
+                if (other.team === source.team || other.lifecycle !== "alive") continue;
                 if (dist(target.pos.x, target.pos.z, other.pos.x, other.pos.z) > radius) continue;
                 this.applyDamagePacket(source, other, dmg * 0.9, a);
             }
@@ -966,6 +1071,7 @@ class World {
         const physicalPart = (abilityDef.flatDmg?.p ?? 0) + (abilityDef.dmgScale?.p ?? 0) * source.modifiedStats.pAtk;
         const energyPart = (abilityDef.flatDmg?.e ?? 0) + (abilityDef.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
         const scaled = (physicalPart * physicalMod + energyPart * energyMod) * effBonus;
+        // Keep a minimum 1 damage floor so very low scaling attacks still provide gameplay feedback.
         const finalDmg = Math.max(1, scaled || dmg);
 
         target.currentHP = Math.max(0, target.currentHP - finalDmg);
@@ -973,12 +1079,15 @@ class World {
         target.combatContributors.set(source.id, this.time);
         this.pushFloatingText(target.pos.x, target.pos.z - 12, `${Math.round(finalDmg)}`, "#ffd7d7");
 
-        if (target.currentHP <= 0) target.isDead = true;
+        if (target.currentHP <= 0) {
+            target.isDead = true;
+            target.lifecycle = "defeated";
+        }
     }
 
     cleanupDefeatedCreatures() {
         for (const c of this.creatures) {
-            if (!c.isDead || c._deathHandled) continue;
+            if (c.lifecycle !== "defeated" || c._deathHandled) continue;
             c._deathHandled = true;
             this.pushFloatingText(c.pos.x, c.pos.z, "KO", "#ff8a8a");
             this.handleCreatureDefeat(c);
@@ -991,17 +1100,23 @@ class World {
         for (const [id, t] of dead.combatContributors.entries()) {
             if (this.time - t > 14) continue;
             const c = this.getCreatureById(id);
-            if (c && !c.isDead && c.team === 0) contributors.push(c);
+            if (c && c.lifecycle === "alive" && c.team === 0) contributors.push(c);
         }
         // XP loop: nearby allies get a small share.
         for (const pid of this.player.petIds) {
             const pet = this.getCreatureById(pid);
-            if (!pet || pet.isDead) continue;
+            if (!pet || pet.lifecycle !== "alive") continue;
             if (!contributors.includes(pet) && dist(pet.pos.x, pet.pos.z, dead.pos.x, dead.pos.z) < 140) contributors.push(pet);
         }
 
         const baseXP = 24;
-        for (const pet of contributors) pet.addXP(baseXP, this);
+        for (const pet of contributors) {
+            const events = pet.addXP(baseXP);
+            this.syncOwnedCreatureFromRuntime(pet);
+            for (const ev of events) {
+                if (ev.type === "leveledUp") this.pushFloatingText(pet.pos.x, pet.pos.z - 14, `Lv Up! ${ev.newLevel}`, "#fff799");
+            }
+        }
     }
 
     useItem(itemKey, targetMode) {
@@ -1011,7 +1126,7 @@ class World {
 
         if (targetMode === "activePet") {
             const pet = this.getCreatureById(this.player.activePetId);
-            if (!pet || pet.isDead) return false;
+            if (!pet || pet.lifecycle !== "alive") return false;
             if (def.type === "heal") {
                 pet.currentHP = Math.min(pet.modifiedStats.maxHP, pet.currentHP + def.amount);
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `+${def.amount} HP`, "#8dff9d");
@@ -1028,7 +1143,7 @@ class World {
 
         if (targetMode === "wildTarget") {
             const t = this.getCreatureById(this.player.commandTargetId);
-            if (!t || t.team !== 1 || t.isDead) return false;
+            if (!t || t.team !== 1 || t.lifecycle !== "alive") return false;
             const activePet = this.getCreatureById(this.player.activePetId);
             if (!activePet || dist(activePet.pos.x, activePet.pos.z, t.pos.x, t.pos.z) > 90) return false;
             if (!this.tryTameWild(t, def)) {
@@ -1052,48 +1167,32 @@ class World {
         const chance = clamp((1 - hpRatio) * 0.45 + (itemDef.tameBonus ?? 0), 0.1, 0.85);
         if (Math.random() > chance) return false;
 
-        wild.isDead = true;
-        const data = this.dehydrateCreature(wild);
-        data.owner = "player";
-
-        if (this.player.petIds.length < 3) {
-            const newPet = this.spawnPet(wild.speciesKey, this.player.pos.x + 24, this.player.pos.z + 20);
-            this.player.petIds.push(newPet.id);
+        wild.lifecycle = "captured";
+        const owned = this.createOwnedCreatureRecord(wild.speciesKey, wild);
+        if (this.player.partyOwnedIds.length < 3) {
+            this.player.partyOwnedIds.push(owned.ownedId);
+            this.hydratePartyRuntime();
             this.player.lastLog = `Tamed ${wild.speciesKey} into party`;
         } else {
-            this.player.reserve.push(data);
+            this.player.reserveOwnedIds.push(owned.ownedId);
             this.player.lastLog = `Tamed ${wild.speciesKey} -> reserve`;
         }
 
-        this.player.owned.push(data);
         this.pushFloatingText(wild.pos.x, wild.pos.z - 18, "Captured!", "#ffe38e");
         return true;
     }
 
-    dehydrateCreature(creature) {
-        return {
-            speciesKey: creature.speciesKey,
-            level: creature.level,
-            xp: creature.xp,
-            baseStats: { ...creature.baseStats },
-            nickname: species[creature.speciesKey]?.name ?? creature.speciesKey,
-        };
-    }
-
     swapActiveWithReserve(reserveIndex) {
-        const reserveData = this.player.reserve[reserveIndex];
-        const activeId = this.player.activePetId;
-        const active = this.getCreatureById(activeId);
-        if (!reserveData || !active) return false;
-
+        const reserveOwnedId = this.player.reserveOwnedIds[reserveIndex];
+        if (reserveOwnedId == null) return false;
         const slotIndex = this.player.activePetIndex;
-        this.player.reserve.splice(reserveIndex, 1, this.dehydrateCreature(active));
-
-        active.isDead = true;
-        const newPet = this.spawnPet(reserveData.speciesKey, this.player.pos.x + 8, this.player.pos.z + 36);
-        newPet.level = reserveData.level;
-        this.player.petIds[slotIndex] = newPet.id;
-        this.player.lastLog = `Swapped in ${reserveData.speciesKey}`;
+        const activeOwnedId = this.player.partyOwnedIds[slotIndex];
+        if (activeOwnedId == null) return false;
+        this.player.reserveOwnedIds[reserveIndex] = activeOwnedId;
+        this.player.partyOwnedIds[slotIndex] = reserveOwnedId;
+        this.hydratePartyRuntime();
+        const reserveData = this.getOwnedCreatureById(reserveOwnedId);
+        this.player.lastLog = `Swapped in ${reserveData?.speciesKey ?? "pet"}`;
         return true;
     }
 
@@ -1136,17 +1235,17 @@ class World {
         const id = this.player.commandTargetId;
         if (id == null) return;
         const t = this.getCreatureById(id);
-        if (!t || t.isDead) this.player.commandTargetId = null;
+        if (!t || t.lifecycle !== "alive") this.player.commandTargetId = null;
     }
 
     resolveSimpleSeparation() {
         const minDist = 16;
         for (let i = 0; i < this.creatures.length; i++) {
             const a = this.creatures[i];
-            if (a.isDead) continue;
+            if (a.lifecycle !== "alive") continue;
             for (let j = i + 1; j < this.creatures.length; j++) {
                 const b = this.creatures[j];
-                if (b.isDead) continue;
+                if (b.lifecycle !== "alive") continue;
                 const dx = b.pos.x - a.pos.x;
                 const dz = b.pos.z - a.pos.z;
                 const d = Math.hypot(dx, dz) || 0.001;
@@ -1243,7 +1342,8 @@ class World {
             const isActive = c.id === this.player.activePetId;
             const isCommandTarget = c.id === this.player.commandTargetId;
 
-            if (c.isDead) {
+            if (c.lifecycle === "captured" || c.lifecycle === "despawned") continue;
+            if (c.lifecycle === "defeated") {
                 ctx.strokeStyle = "#222";
                 ctx.beginPath();
                 ctx.moveTo(s.sx - 6, s.sz - 6);
@@ -1283,7 +1383,7 @@ class World {
 
             if (c.command?.type === "attack" && c.command?.targetId) {
                 const t = this.getCreatureById(c.command.targetId);
-                if (t && !t.isDead) {
+                if (t && t.lifecycle === "alive") {
                     const ts = this.camera.worldToScreen(t.pos.x, t.pos.z);
                     ctx.strokeStyle = "rgba(255,230,120,0.8)";
                     ctx.setLineDash([4, 3]);
@@ -1328,7 +1428,7 @@ class World {
         ctx.fillText(`Inv berry:${this.player.inventory.berry_red ?? 0} battery:${this.player.inventory.battery_seed ?? 0} lure:${this.player.inventory.lure_meat ?? 0}`, 16, 62);
         ctx.fillText(`1/2/3 switch | Q stance | LMB attack | RMB move | R regroup | H hold | F follow`, 16, 80);
         ctx.fillText(`Z heal | X energy | V tame target | G gather | T swap reserve | ${this.player.lastLog}`, 16, 98);
-        ctx.fillText(`Reserve: ${this.player.reserve.length}`, 16, 116);
+        ctx.fillText(`Reserve: ${this.player.reserveOwnedIds.length}`, 16, 116);
     }
 }
 
