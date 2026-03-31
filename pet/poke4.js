@@ -84,6 +84,36 @@ const conceptBank = {
             electric: { effect: "damage", boost: "energy" },
             chemical: { effect: "damage", boost: "none" },
         },
+        specialEffects: {
+            waterVolt(ctx) {
+                if ((ctx.targetState.soak.water ?? 0) <= 0) return;
+                ctx.targetState.buff.energyBonus += 0.1;
+            },
+            waterAdd(ctx) {
+                const water = ctx.targetState.soak.water ?? 0;
+                if (water <= 0) return;
+                const heal = Math.min(water * 0.25, ctx.target.modifiedStats.maxHP * 0.01);
+                ctx.target.currentHP = Math.min(ctx.target.modifiedStats.maxHP, ctx.target.currentHP + heal);
+                ctx.targetState.soak.water = Math.max(0, water - heal);
+            },
+            fireUp(ctx) {
+                if ((ctx.targetState.soak.heat ?? 0) <= 0) return;
+                ctx.targetState.buff.energyBonus += 0.15;
+            },
+            burnoff(ctx) {
+                for (const key of Object.keys(ctx.targetState.soak)) {
+                    ctx.targetState.soak[key] = Math.max(0, ctx.targetState.soak[key] - ctx.dt * 2);
+                }
+            },
+            hardSurface(ctx) {
+                const burst = (ctx.targetState.soak.chemical ?? 0) + (ctx.targetState.soak.electric ?? 0);
+                if (burst <= 0) return;
+                const dmg = burst * 0.1;
+                ctx.target.currentHP = Math.max(0, ctx.target.currentHP - dmg);
+                ctx.targetState.soak.chemical = 0;
+                ctx.targetState.soak.electric = 0;
+            },
+        },
     },
     fromPoke2AndPokePrev: {
         moveCategories: ["melee", "projectile", "projectileSeek", "AOEInstant", "AOELinger", "hitscan"],
@@ -133,6 +163,47 @@ const TypeCoverageTools = {
             total += best * (enc.amt ?? 1);
         }
         return total;
+    },
+};
+
+const EffectEngine = {
+    createState() {
+        return {
+            soak: { water: 0, electric: 0, chemical: 0, heat: 0 },
+            buff: { energyBonus: 0 },
+        };
+    },
+
+    tickCreature(creature, dt) {
+        const compositeKey = creature.compositeKey;
+        const composite = conceptBank.fromPokeCreature.composites[compositeKey] ?? conceptBank.fromPokeCreature.composites.animal;
+        const effects = composite.specialEffects ?? [];
+        creature.effectState.buff.energyBonus = 0;
+
+        const ctx = {
+            dt,
+            target: creature,
+            targetState: creature.effectState,
+        };
+
+        for (const effectKey of effects) {
+            const fn = conceptBank.fromPokeCreature.specialEffects[effectKey];
+            if (typeof fn === "function") fn(ctx);
+        }
+
+        const s = creature.effectState.soak;
+        s.water = Math.max(0, s.water - dt * 0.25);
+        s.electric = Math.max(0, s.electric - dt * 0.4);
+        s.chemical = Math.max(0, s.chemical - dt * 0.35);
+        s.heat = Math.max(0, s.heat - dt * 0.2);
+    },
+
+    onHit(source, target, abilityDef) {
+        if (abilityDef.category === "hitscan") target.effectState.soak.electric += 0.75;
+        if (abilityDef.category === "melee") target.effectState.soak.heat += 0.2;
+
+        const bonus = 1 + (source.effectState?.buff?.energyBonus ?? 0);
+        return bonus;
     },
 };
 
@@ -366,6 +437,8 @@ class Creature {
 
         this.baseStats = { ...def.baseStats };
         this.modifiedStats = { ...def.baseStats };
+        this.compositeKey = this.speciesKey === "sparkit" ? "voltage" : "animal";
+        this.effectState = EffectEngine.createState();
 
         this.currentHP = this.modifiedStats.maxHP;
         this.currentStamina = this.modifiedStats.stamina;
@@ -404,6 +477,7 @@ class Creature {
             this.modifiedStats.energy,
             this.currentEnergy + this.modifiedStats.recoverEnergy * dt
         );
+        EffectEngine.tickCreature(this, dt);
 
         const mv = norm2D(this.intent.move.x, this.intent.move.z);
         this.vel.x = mv.x * this.modifiedStats.spd;
@@ -741,8 +815,9 @@ class World {
             (a.flatDmg?.e ?? 0) +
             (a.dmgScale?.p ?? 0) * source.modifiedStats.pAtk +
             (a.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
+        const effBonus = EffectEngine.onHit(source, target, a);
 
-        target.currentHP = Math.max(0, target.currentHP - dmg);
+        target.currentHP = Math.max(0, target.currentHP - dmg * effBonus);
         if (target.currentHP <= 0) target.isDead = true;
 
         return true;
