@@ -408,7 +408,6 @@ class Creature {
 
         this.runtimeSpeedMult = 1;
         this.hitFlash = 0;
-        this.isDead = false;
         this.lifecycle = "alive"; // alive | defeated | captured | despawned
         this.mode = team === 0 ? "pet" : "wild";
         this.ownedId = null;
@@ -742,8 +741,8 @@ class PlayerEntity {
         this.vel = { x: 0, z: 0 };
         this.spd = 140;
 
-        this.petIds = [];
-        this.partyOwnedIds = [];
+        this.petIds = [null, null, null];
+        this.partyOwnedIds = [null, null, null];
         this.activePetIndex = 0;
         this.commandTargetId = null;
         this.stance = "aggressive";
@@ -877,16 +876,23 @@ class World {
 
     hydratePartyRuntime() {
         this.creatures = this.creatures.filter(c => c.mode !== "pet");
-        this.player.petIds = [];
+        this.player.petIds = [null, null, null];
         const p = this.player.pos;
         const offsets = [{ x: -20, z: 30 }, { x: 20, z: 30 }, { x: 0, z: 55 }];
-        for (let i = 0; i < this.player.partyOwnedIds.length; i++) {
+        for (let i = 0; i < 3; i++) {
             const ownedId = this.player.partyOwnedIds[i];
             if (ownedId == null) continue;
             const off = offsets[i] ?? { x: 0, z: 40 + i * 14 };
             const pet = this.spawnPetFromOwned(ownedId, p.x + off.x, p.z + off.z);
             if (pet) this.player.petIds[i] = pet.id;
         }
+    }
+
+    getFirstOpenPartySlot() {
+        for (let i = 0; i < this.player.partyOwnedIds.length; i++) {
+            if (this.player.partyOwnedIds[i] == null) return i;
+        }
+        return -1;
     }
 
     createOwnedCreatureRecord(speciesKey, runtime = null) {
@@ -1080,7 +1086,6 @@ class World {
         this.pushFloatingText(target.pos.x, target.pos.z - 12, `${Math.round(finalDmg)}`, "#ffd7d7");
 
         if (target.currentHP <= 0) {
-            target.isDead = true;
             target.lifecycle = "defeated";
         }
     }
@@ -1169,8 +1174,9 @@ class World {
 
         wild.lifecycle = "captured";
         const owned = this.createOwnedCreatureRecord(wild.speciesKey, wild);
-        if (this.player.partyOwnedIds.length < 3) {
-            this.player.partyOwnedIds.push(owned.ownedId);
+        const openSlot = this.getFirstOpenPartySlot();
+        if (openSlot >= 0) {
+            this.player.partyOwnedIds[openSlot] = owned.ownedId;
             this.hydratePartyRuntime();
             this.player.lastLog = `Tamed ${wild.speciesKey} into party`;
         } else {
