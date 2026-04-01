@@ -1424,6 +1424,7 @@ class World {
             ctx.fillRect(s.sx - 16, s.sz - 20, 32, 4);
             ctx.fillStyle = hpRatio > 0.5 ? "#5ad15a" : hpRatio > 0.25 ? "#e7c04a" : "#df5a5a";
             ctx.fillRect(s.sx - 16, s.sz - 20, 32 * hpRatio, 4);
+            
 
             if (c.team === 0) {
                 ctx.fillStyle = "#fff";
@@ -1431,15 +1432,16 @@ class World {
                 ctx.fillText(`Lv${c.level}`, s.sx - 12, s.sz - 25);
             }
         }
-
         for (const fx of this.floatingTexts) {
             const s = this.camera.worldToScreen(fx.x, fx.z);
             ctx.fillStyle = fx.color;
             ctx.font = "12px monospace";
             ctx.fillText(fx.text, s.sx - 10, s.sz);
         }
-
         const biome = BiomeSystem.getBiomeAt(this.player.pos.x, this.player.pos.z).key;
+        this.HUDDraw(biome)
+    }
+    HUDDraw(biome){
         ctx.fillStyle = "rgba(0,0,0,0.56)";
         ctx.fillRect(8, 8, 420, 122);
         ctx.fillStyle = "#fff";
@@ -1453,6 +1455,7 @@ class World {
         ctx.fillText(`1/2/3 switch | Q stance | LMB attack | RMB move | R regroup | H hold | F follow`, 16, 80);
         ctx.fillText(`Z heal | X energy | V tame target | G gather | T swap reserve | ${this.player.lastLog}`, 16, 98);
         ctx.fillText(`Reserve: ${this.player.reserveOwnedIds.length}`, 16, 116);
+
     }
 }
 
@@ -1462,7 +1465,7 @@ class World {
 class Game {
     constructor() {
         this.input = new InputManager();
-        this.world = new World();
+        this.SceneManager = new SceneManager({mainScene: new Scene()});
         this.last = 0;
     }
     start() {
@@ -1490,7 +1493,6 @@ class SceneManager{
 
         this.clickables = new Set();
         this.runTimeEntities = new Set();
-        this.player = player;
 
         this.set(startId);
     }
@@ -1529,16 +1531,23 @@ class SceneManager{
 
 class Scene {
     constructor(){
-        //world nests into scene or other way?
+        this.world = new World();
         this.messageQueue = [];
         this.messageIndex = 0;
     }
-    onEnter(sm, player, payload ){}
+    onEnter(sm, player, payload ){
+        this.world.initialize();
+    }
     onEnter(sm, player, payload ){}
     rebuildClickables(){}
     startMessages(msg){}
     advanceMesage(msg){}
-    update(){}
+    update(sm, dt, input){
+        super.update(sm, dt);
+        this.world.update(dt, input);
+        this.world.draw(ctx);
+        input.endFrame();
+    }
 }
 const game = new Game();
 game.start();
