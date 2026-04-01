@@ -788,6 +788,9 @@ class PlayerEntity {
         this.pos.x = clamp(this.pos.x + this.vel.x * dt, 0, world.width);
         this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
 
+        //eventually replace pet and item selection
+        // with menus to scroll index and choose
+
         // ── Pet selection ─────────────────────────────────────
         if (input.consumePress("Digit1")) { this.activePetIndex = 0; this.selectAll = false; }
         if (input.consumePress("Digit2")) { this.activePetIndex = 1; this.selectAll = false; }
@@ -1533,8 +1536,9 @@ class Scene {
     onEnter(sm, player, payload ){}
     onEnter(sm, player, payload ){}
     rebuildClickables(){}
-
-
+    startMessages(msg){}
+    advanceMesage(msg){}
+    update(){}
 }
 const game = new Game();
 game.start();
