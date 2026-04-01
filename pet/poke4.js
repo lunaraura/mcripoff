@@ -672,7 +672,6 @@ const BiomeSystem = {
     },
     getBiomeAt(x, z) {
         const key = this.getBiomeKeyAt(x, z);
-        console.log('Biome key:', key);
         if (!biomeDefs[key]) {
             console.warn('No biome data for key:', key);
             return null;
@@ -1465,20 +1464,18 @@ class World {
 class Game {
     constructor() {
         this.input = new InputManager();
-        this.SceneManager = new SceneManager({mainScene: new Scene()});
+        this.SceneManager = new SceneManager({mainScene: new Scene()}, "mainScene");
         this.last = 0;
     }
     start() {
         this.input.bind(canvas);
-        this.world.initialize();
         requestAnimationFrame((ts) => this.loop(ts));
     }
     loop(ts) {
         const dt = this.last ? Math.min((ts - this.last) / 1000, 0.05) : 0.016;
         this.last = ts;
-        this.world.update(dt, this.input);
-        this.world.draw(ctx);
-        this.input.endFrame();
+        this.SceneManager.update(dt, this.input)
+        this.input.endFrame()
         requestAnimationFrame((next) => this.loop(next));
     }
 }
@@ -1523,7 +1520,7 @@ class SceneManager{
     }
     reloadClickables() {
         this.clickables.clear();
-        for (const e of this.entities) e.addToClickable?.(this);
+        for (const e of this.runtimeEntities) e.addToClickable?.(this);
         if (this.scene?.addClickables) this.scene.addClickables(this);
     }
     goto(id, payload) { this.set(id, payload); }
@@ -1538,15 +1535,13 @@ class Scene {
     onEnter(sm, player, payload ){
         this.world.initialize();
     }
-    onEnter(sm, player, payload ){}
+    onExit(sm, player, payload ){}
     rebuildClickables(){}
     startMessages(msg){}
     advanceMesage(msg){}
     update(sm, dt, input){
-        super.update(sm, dt);
         this.world.update(dt, input);
         this.world.draw(ctx);
-        input.endFrame();
     }
 }
 const game = new Game();
