@@ -265,6 +265,7 @@ const EffectEngine = {
             if (st.type === "shock") creature.currentEnergy = Math.max(0, creature.currentEnergy - st.magnitude * 5 * dt);
             if (st.type === "slow") slowMult *= 1 - st.magnitude;
             if (st.type === "regen") creature.currentHP = Math.min(creature.modifiedStats.maxHP, creature.currentHP + st.magnitude * dt);
+            if (st.type === "boost") creature.effectState.buff.energyBonus += st.magnitude;
             if (st.duration <= 0) creature.statusEffects.splice(i, 1);
         }
         creature.runtimeSpeedMult = clamp(slowMult, 0.35, 1);
@@ -535,6 +536,7 @@ class Brain {
         const h = this.host;
         const player = world.player;
         const isActive = h.id === player.activePetId;
+        const activeControlMode = player.activeControlMode ?? "AUTO";
         const followAnchor = world.getPetFollowAnchor(h.id);
         const stance = isActive ? "aggressive" : player.stance;
 
@@ -547,6 +549,12 @@ class Brain {
         if (h.command?.type && (isActive || h.command.type === "hold" || h.command.type === "follow")) {
             const done = this.executeCommand(world, h, h.command, isActive, followAnchor);
             if (!done) return;
+        }
+
+        if (isActive && activeControlMode === "MANUAL") {
+            // MANUAL mode: no autonomous target acquisition / auto-casting.
+            this.moveTowardAnchor(h, followAnchor, 20);
+            return;
         }
 
         if (stance === "hold" && !isActive) {
@@ -837,9 +845,9 @@ class PlayerEntity {
         this.activePetIndex = 0;
         this.commandTargetId = null;
         this.stance = "aggressive";
-        this.selectedItemKey = null
         this.selectedItemIndex = 0
         this.itemBar =  ['berry_red', 'battery_seed', "lure_meat", "revive_berry"]
+        this.selectedItemKey = this.itemBar[this.selectedItemIndex] ?? null;
         this.inventory = { berry_red: 10, battery_seed: 5, lure_meat: 5, revive_berry: 3};
         this.reserveOwnedIds = [];
         this.selectedReserveIndex = 0;
@@ -1156,7 +1164,7 @@ class World {
             
             const runtime = this.creatures.find(c =>
                 c.mode === "pet" &&
-                c.ownedId == ownedId &&
+                c.ownedId === ownedId &&
                 c.lifecycle !== "captured" &&
                 c.lifecycle !== "despawned"
             );
@@ -1367,6 +1375,7 @@ class World {
             if (def.type === "revive") {
                 if (pet.lifecycle !== "defeated") return false;
                 pet.lifecycle = "alive"
+                // Revive berries intentionally restore by ratio (50% from amount: 0.5).
                 pet.currentHP = Math.max(1, Math.floor(pet.modifiedStats.maxHP*def.amount))
                 pet.currentEnergy = Math.max(1, Math.floor(pet.modifiedStats.energy * 0.5))
                 pet.currentStamina = Math.max(1, Math.floor(pet.modifiedStats.stamina * 0.5))
@@ -1374,7 +1383,7 @@ class World {
                 this.player.inventory[itemKey] -= 1;
                 return true;
             }
-            if (!pet || pet.lifecycle !== "alive") return false;
+            if (pet.lifecycle !== "alive") return false;
             if (def.type === "heal") {
                 pet.currentHP = Math.min(pet.modifiedStats.maxHP, pet.currentHP + def.amount);
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `+${def.amount} HP`, "#8dff9d");
@@ -1383,6 +1392,10 @@ class World {
                 pet.currentEnergy = Math.min(pet.modifiedStats.energy, pet.currentEnergy + def.amount);
                 pet.currentStamina = Math.min(pet.modifiedStats.stamina, pet.currentStamina + (def.stamina ?? 0));
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, "+energy", "#9de7ff");
+            }
+            if (def.type === "buff") {
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("boost", def.duration ?? 8, def.amount ?? 0.1, pet.id));
+                this.pushFloatingText(pet.pos.x, pet.pos.z - 16, "Boosted!", "#fff79a");
             }
             if (def.type === "bait") {
                 this.player.lastLog = "Bait ready - use V on weakened wild";
@@ -1722,7 +1735,7 @@ class World {
         ctx.fillStyle = "rgba(0,0,0,0.58)";
         ctx.fillRect(reserveX, reserveY, reserveW, reserveH);
         ctx.fillStyle = "#fff";
-        ctx.fillText("Reserve (Up/Down select, T swap)", reserveX + 10, reserveY + 18);
+        ctx.fillText("Reserve ([ / ] select, T swap)", reserveX + 10, reserveY + 18);
 
         const selected = this.player.selectedReserveIndex;
         const maxRows = 8;
@@ -1790,7 +1803,7 @@ class World {
         ctx.fillStyle = "rgba(0,0,0,0.62)";
         ctx.fillRect(10, barY, canvas.width - 20, barH);
         ctx.fillStyle = "#fff";
-        ctx.fillText(`Controls: 1/2/3 pet  WASD/Arrows move(AUTO)  M mode  LMB target  RMB move  A/S cast  [/ ] reserve  T swap  | ${this.player.lastLog}`, 18, barY + 40);
+        ctx.fillText(`Controls: 1/2/3 pet  W/D + Arrows move(AUTO)  M mode  LMB target  RMB move  A/S cast  [ / ] reserve  T swap  | ${this.player.lastLog}`, 18, barY + 40);
         ctx.fillText(
             `Mode: ${this.player.activeControlMode}  Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}   [ Q / E cycle ] [ Z use ]`,
             18,
