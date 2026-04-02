@@ -205,7 +205,7 @@ const itemDefs = {
     berry_red: { name: "Red Berry", type: "heal", amount: 40 },
     berry_blue: { name: "Blue Berry", type: "heal", amount: 25 },
     berry_yellow: { name: "Yellow Berry", type: "heal", amount: 30 },
-    revive_berry: { name: "Revive Berry", type: "revive", amount: 50 },
+    revive_berry: { name: "Revive Berry", type: "revive", amount: 0.5 },
     boost_berry: { name: "Boost Berry", type: "buff", amount: 0.15, duration: 20 },
     battery_seed: { name: "Battery Seed", type: "energy", amount: 16, stamina: 10 },
     lure_meat: { name: "Lure Meat", type: "bait", tameBonus: 0.25, requiredHPRatio: 0.45 },
@@ -752,14 +752,15 @@ class PlayerEntity {
         this.activePetIndex = 0;
         this.commandTargetId = null;
         this.stance = "aggressive";
-
+        this.selectedItemIndex = 0
+        this.selectedItemKey = null;
+        this.itemBar =  ['berry_red', 'battery_seed', "lure_meat", "revive_berry"]
         this.inventory = { berry_red: 10, battery_seed: 5, lure_meat: 5, revive_berry: 3};
         this.reserveOwnedIds = [];
         this.selectedReserveIndex = 0;
         this.ownedCreatures = [];
         this.lastLog = "";
     }
-
     get activePetId() {
         return this.petIds[this.activePetIndex] ?? null;
     }
@@ -767,6 +768,15 @@ class PlayerEntity {
         return this.selectAll
             ? this.petIds.filter(Boolean)
             : [this.activePetId].filter(Boolean);
+    }
+    get selectedKeyItem(){
+        return this.itemBar[this.selectedItemIndex] ?? null;
+    }
+    cycleItem(dir){
+        const len = this.itemBar.length;
+        if (!len) return;
+        this.selectedItemIndex = (this.selectedItemIndex + dir + len) % len;
+        this.selectedItemKey = this.itemBar[this.selectedItemIndex];
     }
     update(dt, input, world) {
         let mx = 0;
@@ -788,30 +798,28 @@ class PlayerEntity {
             this.selectAll = !this.selectAll;
             this.lastLog = this.selectAll ? "All Pets Selected" : `Pet ${this.activePetIndex + 1} selected`;
         }
-        if (input.consumePress("KeyQ")) {
-            this.stance = this.stance === "aggressive" ? "follow" : this.stance === "follow" ? "hold" : "aggressive";
-            this.lastLog = `Stance: ${this.stance}`;
-        }
-        if (input.consumePress("KeyR")) {
-            world.commandAllPets({ type: "follow", issuedAt: world.time });
-            this.lastLog = "Regroup all pets";
-        }
-        if (input.consumePress("KeyH")) {
-            world.commandPets(this.targetPetIds, { type: "hold", issuedAt: world.time });
-            this.lastLog = "Active pet: hold";
-        }
-        if (input.consumePress("KeyF")) {
-            world.commandPets(this.targetPetIds, { type: "follow", issuedAt: world.time });
-            this.lastLog = "Active pet: follow";
-        }
+        // if (input.consumePress("KeyQ")) {
+        //     this.stance = this.stance === "aggressive" ? "follow" : this.stance === "follow" ? "hold" : "aggressive";
+        //     this.lastLog = `Stance: ${this.stance}`;
+        // }
+        // if (input.consumePress("KeyR")) {
+        //     world.commandAllPets({ type: "follow", issuedAt: world.time });
+        //     this.lastLog = "Regroup all pets";
+        // }
+        // if (input.consumePress("KeyH")) {
+        //     world.commandPets(this.targetPetIds, { type: "hold", issuedAt: world.time });
+        //     this.lastLog = "Active pet: hold";
+        // }
+        // if (input.consumePress("KeyF")) {
+        //     world.commandPets(this.targetPetIds, { type: "follow", issuedAt: world.time });
+        //     this.lastLog = "Active pet: follow";
+        // }
+        // Item keys: Z/X/C on active pet; V attempts tame on selected wild target. 
+        if (input.consumePress("KeyQ")) this.cycleItem(-1);z
+        if (input.consumePress("KeyE")) this.cycleItem(1);
+        if (input.consumePress("KeyZ")) world.useSelectedItem();
 
-        // Item keys: Z/X/C on active pet; V attempts tame on selected wild target.
-        if (input.consumePress("KeyZ")) world.useItem("berry_red", "activePet");
-        if (input.consumePress("KeyX")) world.useItem("battery_seed", "activePet");
-        if (input.consumePress("KeyC")) world.useItem("lure_meat", "activePet");
-        if (input.consumePress("KeyV")) world.useItem("lure_meat", "wildTarget");
-
-        if (input.consumePress("KeyG")) world.tryInteractNearestNode();
+        if (input.consumePress("KeyF")) world.tryInteractNearestNode();
         if (input.consumePress("ArrowUp")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
         if (input.consumePress("ArrowDown")) this.selectedReserveIndex += 1;
         if (input.consumePress("KeyT")) world.swapActiveWithReserve(this.selectedReserveIndex);
@@ -895,7 +903,17 @@ class World {
         this.syncOwnedCreatureFromRuntime(pet);
         return pet;
     }
-
+    useSelectedItem(){
+        const itemKey = this.player.selectedItemKey;
+        if (!itemKey) return false;
+        const def = itemDefs[itemKey];
+        if (!def) return false;
+        if (def.type === "bait") {
+            return this.useItem(itemKey, "wildTarget")
+        }
+        return this.useItem(itemKey, "activePet")
+        console.log()
+    }
     hydratePartyRuntime() {
         this.creatures = this.creatures.filter(c => c.mode !== "pet");
         this.player.petIds = [null, null, null];
@@ -1494,6 +1512,7 @@ class World {
             if (!c) {
                 ctx.fillStyle = "#bbb";
                 ctx.fillText(`${i + 1}. (empty)`, partyX + 16, slotY + 18);
+                continue;
             }
             const isDefeated = c.lifecycle === "defeated"
             const hpRatio = c.currentHP / c.modifiedStats.maxHP;
@@ -1545,14 +1564,21 @@ class World {
             ctx.fillStyle = "#9ec7ff";
             ctx.fillText(`${owned?.compositeKey ?? "none"}`, reserveX + reserveW - 90, y);
         }
+        const selectedItemKey = this.player.selectedItemKey;
+        const selectedItemDef = itemDefs[selectedItemKey];
+        const selectedItemCount = this.player.inventory[selectedItemKey] ?? 0;
 
         const barH = 58;
         const barY = canvas.height - barH - 10;
         ctx.fillStyle = "rgba(0,0,0,0.62)";
         ctx.fillRect(10, barY, canvas.width - 20, barH);
         ctx.fillStyle = "#fff";
-        ctx.fillText(`Items: [Z] berry ${this.player.inventory.berry_red ?? 0}  [X] battery ${this.player.inventory.battery_seed ?? 0}  [C/V] lure ${this.player.inventory.lure_meat ?? 0}  [G] gather`, 18, barY + 20);
         ctx.fillText(`Controls: 1/2/3 pet  Q stance  LMB attack  RMB move  R regroup  H hold  F follow  Up/Down reserve  T swap  | ${this.player.lastLog}`, 18, barY + 40);
+        ctx.fillText(
+            `Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}   [ [ / ] cycle ] [ Z use ]`,
+            18,
+            barY + 20
+        )
     }
 }
 
