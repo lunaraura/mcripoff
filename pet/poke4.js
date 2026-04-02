@@ -753,7 +753,7 @@ class PlayerEntity {
         this.commandTargetId = null;
         this.stance = "aggressive";
 
-        this.inventory = { berry_red: 3, battery_seed: 2, lure_meat: 2 };
+        this.inventory = { berry_red: 10, battery_seed: 5, lure_meat: 5, revive_berry: 3};
         this.reserveOwnedIds = [];
         this.selectedReserveIndex = 0;
         this.ownedCreatures = [];
@@ -786,7 +786,7 @@ class PlayerEntity {
         if (input.consumePress("Digit3")) this.activePetIndex = 2;
         if (input.consumePress("Digit4")) {
             this.selectAll = !this.selectAll;
-            this.lasstLog = this.selectAll ? "All Pets Selected" : `Pet ${this.activePetIndex + 1} selected`;
+            this.lastLog = this.selectAll ? "All Pets Selected" : `Pet ${this.activePetIndex + 1} selected`;
         }
         if (input.consumePress("KeyQ")) {
             this.stance = this.stance === "aggressive" ? "follow" : this.stance === "follow" ? "hold" : "aggressive";
@@ -988,7 +988,7 @@ class World {
             
             const runtime = this.creatures.find(c =>
                 c.mode === "pet" &&
-                c.ownedID == ownedId &&
+                c.ownedId == ownedId &&
                 c.lifecycle !== "captured" &&
                 c.lifecycle !== "despawned"
             );
@@ -1168,14 +1168,17 @@ class World {
 
         if (targetMode === "activePet") {
             const pet = this.getCreatureById(this.player.activePetId);
-            if (def.type === "heal") {
+            if (def.type === "revive") {
                 if (pet.lifecycle !== "defeated") return false;
+                pet.lifecycle = "alive"
                 pet.currentHP = Math.max(1, Math.floor(pet.modifiedStats.maxHP*def.amount))
                 pet.currentEnergy = Math.max(1, Math.floor(pet.modifiedStats.energy * 0.5))
                 pet.currentStamina = Math.max(1, Math.floor(pet.modifiedStats.stamina * 0.5))
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `Revived`, "#ffe38e");
+                this.player.inventory[itemKey] -= 1;
+                return true;
             }
-            if (!pet || pet.lifecycle !== "alive"){
+            if (!pet || pet.lifecycle !== "alive") return false;
             if (def.type === "heal") {
                 pet.currentHP = Math.min(pet.modifiedStats.maxHP, pet.currentHP + def.amount);
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `+${def.amount} HP`, "#8dff9d");
@@ -1187,7 +1190,7 @@ class World {
             }
             if (def.type === "bait") {
                 this.player.lastLog = "Bait ready - use V on weakened wild";
-            }}
+            }
         }
 
         if (targetMode === "wildTarget") {
@@ -1488,33 +1491,30 @@ class World {
             ctx.strokeStyle = isActiveSlot ? "#fff799" : "rgba(255,255,255,0.16)";
             ctx.strokeRect(partyX + 8, slotY, partyW - 16, slotH - 6);
 
-            if (!c || c.lifecycle !== "alive") {
+            if (!c) {
                 ctx.fillStyle = "#bbb";
                 ctx.fillText(`${i + 1}. (empty)`, partyX + 16, slotY + 18);
-                continue;
             }
             const isDefeated = c.lifecycle === "defeated"
             const hpRatio = c.currentHP / c.modifiedStats.maxHP;
             const stamRatio = c.currentStamina / c.modifiedStats.stamina;
             const enRatio = c.currentEnergy / c.modifiedStats.energy;
-
             const slotCmd = i === this.player.activePetIndex ? (c.command?.type ?? "none") : this.player.stance;
             ctx.fillStyle = isDefeated ? "#ff9a9a" : "#fff"
-            ctx.fillText(`${i + 1}. ${species[c.speciesKey]?.name ?? c.speciesKey}  Lv${c.level}`, partyX + 16, slotY + 18);
+            ctx.fillText(`HP ${Math.round(c.currentHP)}/${Math.round(c.modifiedStats.maxHP)}`, partyX + 166, slotY + 18);
+            if (c.lifecycle == "alive"){
+                ctx.fillStyle = "#cbd8ff";
 
-            ctx.fillStyle = "#cbd8ff";
-            ctx.fillText(`Cmd/Stance: ${slotCmd}`, partyX + 16, slotY + 34);
-
-            drawGauge(ctx, partyX + 16, slotY + 42, partyW - 34, 8, hpRatio, "#62d55f");
-            drawGauge(ctx, partyX + 16, slotY + 56, partyW - 34, 8, enRatio, "#55b9ff");
-            drawGauge(ctx, partyX + 16, slotY + 70, partyW - 34, 8, stamRatio, "#ffe045");
-            ctx.fillStyle = "#ddd";
-            ctx.fillText(`HP ${Math.round(c.currentHP)}/${Math.round(c.modifiedStats.maxHP)}`, partyX + 16, slotY + 74);
-            if (isDefeated) {
+                ctx.fillText(`${i + 1}. ${species[c.speciesKey]?.name ?? c.speciesKey}  Lv${c.level}`, partyX + 16, slotY + 18);
+                ctx.fillText(`Cmd/Stance: ${slotCmd}`, partyX + 16, slotY + 34);
+            }else {
+                ctx.fillText(`${i + 1}. ${species[c.speciesKey]?.name ?? c.speciesKey}  Lv${c.level}`, partyX + 16, slotY + 18);
                 ctx.fillStyle = '#ffb3b3';
                 ctx.fillText('DEFEATED', partyX + 16, slotY + 34);
             }
-
+            drawGauge(ctx, partyX + 16, slotY + 42, partyW - 34, 8, hpRatio, "#62d55f");
+            drawGauge(ctx, partyX + 16, slotY + 56, partyW - 34, 8, enRatio, "#55b9ff");
+            drawGauge(ctx, partyX + 16, slotY + 70, partyW - 34, 8, stamRatio, "#ffe045");
         }
 
         // Right reserve panel.
@@ -1546,7 +1546,6 @@ class World {
             ctx.fillText(`${owned?.compositeKey ?? "none"}`, reserveX + reserveW - 90, y);
         }
 
-        // Bottom item/help bar.
         const barH = 58;
         const barY = canvas.height - barH - 10;
         ctx.fillStyle = "rgba(0,0,0,0.62)";
