@@ -1,3 +1,4 @@
+
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
@@ -81,17 +82,17 @@ const abilities = {
         resourceUse: { stamina: 5, energy: 0 },
         flatDmg: { p: 20, e: 0 },
         dmgScale: { p: 0.4, e: 0 },
-        range: 24,
+        range: 54,
     },
     zap: {
         name: "Zap",
         category: "hitscan",
         cooldown: 4.2,
         resourceUse: { stamina: 0, energy: 5 },
-        flatDmg: { p: 0, e: 16 },
+        flatDmg: { p: 0, e: 6 },
         dmgScale: { p: 0, e: 0.3 },
         range: 120,
-        soakAdd: { electric: 0.75 },
+        soakAdd: { electric: 0.5 },
         effectsOnHit: [{ type: "shock", chance: 0.25, duration: 1.5, magnitude: 0.2 }],
         fx: { lineColor: "#8ac7ff" },
     },
@@ -775,6 +776,8 @@ class SpawnField {
         if (currentWild >= this.maxWild) return;
 
         const player = world.player;
+        const level = world.getPlayerLevel();
+        const levelDiffMult = 1 + Math.max(0, level - 5);
         for (let i = 0; i < 14; i++) {
             const angle = Math.random() * Math.PI * 2;
             const d = this.innerNoSpawn + Math.random() * (this.radius - this.innerNoSpawn);
@@ -784,7 +787,7 @@ class SpawnField {
 
             const biome = BiomeSystem.getBiomeAt(x, z);
             const speciesKey = pickWeighted(biome.spawns);
-            const wild = world.factory.create(speciesKey, 1, x, z, { mode: "wild" });
+            const wild = world.factory.create(speciesKey, 1, x, z, { mode: "wild" , level: Math.max(0, Math.min(1, level))});
             const brain = new Brain();
             brain.attach(wild);
             world.creatures.push(wild);
@@ -962,6 +965,7 @@ class World {
         this.camera.follow(this.player);
 
         const ownedStarter = this.createOwnedCreatureRecord(starterSpeciesKey);
+        ownedStarter.level = 5;
         this.player.partyOwnedIds = [ownedStarter.ownedId, null, null];
         this.hydratePartyRuntime();
         this.spawnBiomeNodesAroundPlayer(8);
@@ -1118,7 +1122,12 @@ class World {
             pet.command = { ...command };
         }
     }
-
+    getPlayerLevel() {
+        let level = 1;
+        for (const owned of this.player.ownedCreatures) {
+            if (owned.level > level) level = owned.level;
+        }        return level;
+    }
     getCreatureById(id) {
         return this.creatures.find(c => c.id === id) ?? null;
     }
