@@ -77,19 +77,19 @@ const abilities = {
     ram: {
         name: "Ram",
         category: "melee",
-        cooldown: 1.0,
+        cooldown: 2.0,
         resourceUse: { stamina: 5, energy: 0 },
-        flatDmg: { p: 10, e: 0 },
+        flatDmg: { p: 20, e: 0 },
         dmgScale: { p: 0.4, e: 0 },
         range: 24,
     },
     zap: {
         name: "Zap",
         category: "hitscan",
-        cooldown: 1.2,
+        cooldown: 4.2,
         resourceUse: { stamina: 0, energy: 5 },
         flatDmg: { p: 0, e: 16 },
-        dmgScale: { p: 0, e: 0.7 },
+        dmgScale: { p: 0, e: 0.3 },
         range: 120,
         soakAdd: { electric: 0.75 },
         effectsOnHit: [{ type: "shock", chance: 0.25, duration: 1.5, magnitude: 0.2 }],
@@ -98,7 +98,7 @@ const abilities = {
     emberClaw: {
         name: "Ember Claw",
         category: "melee",
-        cooldown: 1.4,
+        cooldown: 2.4,
         resourceUse: { stamina: 6, energy: 2 },
         flatDmg: { p: 8, e: 5 },
         dmgScale: { p: 0.3, e: 0.35 },
@@ -109,10 +109,10 @@ const abilities = {
     pebbleShot: {
         name: "Pebble Shot",
         category: "projectile",
-        cooldown: 1.0,
+        cooldown: 6.0,
         resourceUse: { stamina: 2, energy: 2 },
-        flatDmg: { p: 6, e: 0 },
-        dmgScale: { p: 0.45, e: 0 },
+        flatDmg: { p: 4, e: 0 },
+        dmgScale: { p: 0.15, e: 0 },
         range: 150,
         projectile: { speed: 280 },
         fx: { lineColor: "#d0c9b0" },
@@ -120,7 +120,7 @@ const abilities = {
     staticBurst: {
         name: "Static Burst",
         category: "aoe",
-        cooldown: 3.2,
+        cooldown: 5.2,
         resourceUse: { stamina: 0, energy: 12 },
         flatDmg: { p: 0, e: 10 },
         dmgScale: { p: 0, e: 0.5 },
@@ -133,7 +133,7 @@ const abilities = {
     rallyHowl: {
         name: "Rally Howl",
         category: "utility",
-        cooldown: 4.2,
+        cooldown: 6.2,
         resourceUse: { stamina: 0, energy: 8 },
         flatDmg: { p: 0, e: 0 },
         dmgScale: { p: 0, e: 0 },
@@ -752,8 +752,8 @@ class PlayerEntity {
         this.activePetIndex = 0;
         this.commandTargetId = null;
         this.stance = "aggressive";
+        this.selectedItemKey = null
         this.selectedItemIndex = 0
-        this.selectedItemKey = null;
         this.itemBar =  ['berry_red', 'battery_seed', "lure_meat", "revive_berry"]
         this.inventory = { berry_red: 10, battery_seed: 5, lure_meat: 5, revive_berry: 3};
         this.reserveOwnedIds = [];
@@ -768,9 +768,6 @@ class PlayerEntity {
         return this.selectAll
             ? this.petIds.filter(Boolean)
             : [this.activePetId].filter(Boolean);
-    }
-    get selectedKeyItem(){
-        return this.itemBar[this.selectedItemIndex] ?? null;
     }
     cycleItem(dir){
         const len = this.itemBar.length;
@@ -815,7 +812,7 @@ class PlayerEntity {
         //     this.lastLog = "Active pet: follow";
         // }
         // Item keys: Z/X/C on active pet; V attempts tame on selected wild target. 
-        if (input.consumePress("KeyQ")) this.cycleItem(-1);z
+        if (input.consumePress("KeyQ")) this.cycleItem(-1);
         if (input.consumePress("KeyE")) this.cycleItem(1);
         if (input.consumePress("KeyZ")) world.useSelectedItem();
 
@@ -912,7 +909,6 @@ class World {
             return this.useItem(itemKey, "wildTarget")
         }
         return this.useItem(itemKey, "activePet")
-        console.log()
     }
     hydratePartyRuntime() {
         this.creatures = this.creatures.filter(c => c.mode !== "pet");
@@ -1183,9 +1179,9 @@ class World {
         const def = itemDefs[itemKey];
         if (!def) return false;
         if ((this.player.inventory[itemKey] ?? 0) <= 0) return false;
-
         if (targetMode === "activePet") {
             const pet = this.getCreatureById(this.player.activePetId);
+            if (!pet) return false;
             if (def.type === "revive") {
                 if (pet.lifecycle !== "defeated") return false;
                 pet.lifecycle = "alive"
@@ -1215,7 +1211,7 @@ class World {
             const t = this.getCreatureById(this.player.commandTargetId);
             if (!t || t.team !== 1 || t.lifecycle !== "alive") return false;
             const activePet = this.getCreatureById(this.player.activePetId);
-            if (!activePet || dist(activePet.pos.x, activePet.pos.z, t.pos.x, t.pos.z) > 90) return false;
+            // if (!activePet || dist(activePet.pos.x, activePet.pos.z, t.pos.x, t.pos.z) > 90) return false;
             if (!this.tryTameWild(t, def)) {
                 t.command = { type: "attack", targetId: activePet.id, issuedAt: this.time };
                 this.player.lastLog = "Capture failed! Wild enraged.";
