@@ -1168,7 +1168,14 @@ class World {
 
         if (targetMode === "activePet") {
             const pet = this.getCreatureById(this.player.activePetId);
-            if (!pet || pet.lifecycle !== "alive") return false;
+            if (def.type === "heal") {
+                if (pet.lifecycle !== "defeated") return false;
+                pet.currentHP = Math.max(1, Math.floor(pet.modifiedStats.maxHP*def.amount))
+                pet.currentEnergy = Math.max(1, Math.floor(pet.modifiedStats.energy * 0.5))
+                pet.currentStamina = Math.max(1, Math.floor(pet.modifiedStats.stamina * 0.5))
+                this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `Revived`, "#ffe38e");
+            }
+            if (!pet || pet.lifecycle !== "alive"){
             if (def.type === "heal") {
                 pet.currentHP = Math.min(pet.modifiedStats.maxHP, pet.currentHP + def.amount);
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `+${def.amount} HP`, "#8dff9d");
@@ -1180,7 +1187,7 @@ class World {
             }
             if (def.type === "bait") {
                 this.player.lastLog = "Bait ready - use V on weakened wild";
-            }
+            }}
         }
 
         if (targetMode === "wildTarget") {
