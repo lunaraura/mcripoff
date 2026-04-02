@@ -418,6 +418,8 @@ class Creature {
         this.ownedId = null;
         this.brain = null;
         this.intent = this.makeEmptyIntent();
+        this.manualCastRequest = null;
+        this.manualCastStatus = { text: "", until: 0 };
 
         // Command system payload used by brains.
         this.command = { type: "follow", issuedAt: 0, targetId: null, point: null };
@@ -536,6 +538,11 @@ class Brain {
         const followAnchor = world.getPetFollowAnchor(h.id);
         const stance = isActive ? "aggressive" : player.stance;
 
+        if (isActive && h.manualCastRequest) {
+            const handled = this.executeManualCast(world, h);
+            if (handled) return;
+        }
+
         // Explicit command priority for active pet.
         if (h.command?.type && (isActive || h.command.type === "hold" || h.command.type === "follow")) {
             const done = this.executeCommand(world, h, h.command, isActive, followAnchor);
@@ -582,6 +589,78 @@ class Brain {
             this.fightTarget(world, h, target, null);
             return false;
         }
+        return true;
+    }
+
+    executeManualCast(world, h) {
+        const req = h.manualCastRequest;
+        if (!req) return false;
+        if (req.awaitingResolution) {
+            if ((h.cooldowns[req.abilityKey] ?? 0) > 0) {
+                h.manualCastRequest = null;
+            } else if (world.time - (req.issuedAt ?? 0) > 0.25) {
+                req.awaitingResolution = false;
+                req.issuedAt = world.time;
+            }
+            return true;
+        }
+        const ability = abilities[req.abilityKey];
+        if (!ability) {
+            h.manualCastRequest = null;
+            world.setManualCastStatus(h, "Unknown ability");
+            return false;
+        }
+
+        if (ability.category === "utility") {
+            const gate = world.evaluateAbilityUse(h, req.abilityKey, h);
+            if (!gate.ok) {
+                world.setManualCastStatus(h, `Cast failed: ${gate.reason}`);
+                h.manualCastRequest = null;
+                return true;
+            }
+            h.intent.abilityKey = req.abilityKey;
+            h.intent.targetId = h.id;
+            h.intent.aimAt = { x: h.pos.x, z: h.pos.z };
+            world.setManualCastStatus(h, `${ability.name} cast`);
+            req.awaitingResolution = true;
+            return true;
+        }
+
+        const commandTarget = world.getCreatureById(world.player.commandTargetId);
+        let target = null;
+        if (commandTarget && commandTarget.lifecycle === "alive" && commandTarget.team !== h.team) {
+            target = commandTarget;
+        } else {
+            target = world.findNearestEnemyOf(h, ability.range ?? Infinity) ?? world.findNearestEnemyOf(h, Infinity);
+        }
+
+        if (!target) {
+            world.setManualCastStatus(h, "No target");
+            h.manualCastRequest = null;
+            return true;
+        }
+
+        const gate = world.evaluateAbilityUse(h, req.abilityKey, target);
+        if (!gate.ok) {
+            if (gate.reason === "out of range") {
+                const dx = target.pos.x - h.pos.x;
+                const dz = target.pos.z - h.pos.z;
+                const n = norm2D(dx, dz);
+                h.intent.move = { x: n.x, z: n.z };
+                h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
+                world.setManualCastStatus(h, `${ability.name}: moving into range`);
+                return true;
+            }
+            world.setManualCastStatus(h, `Cast failed: ${gate.reason}`);
+            h.manualCastRequest = null;
+            return true;
+        }
+
+        h.intent.abilityKey = req.abilityKey;
+        h.intent.targetId = target.id;
+        h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
+        world.setManualCastStatus(h, `${ability.name} cast`);
+        req.awaitingResolution = true;
         return true;
     }
 
@@ -760,6 +839,7 @@ class PlayerEntity {
         this.selectedReserveIndex = 0;
         this.ownedCreatures = [];
         this.lastLog = "";
+        this.autoFollowActive = true;
     }
     get activePetId() {
         return this.petIds[this.activePetIndex] ?? null;
@@ -779,9 +859,11 @@ class PlayerEntity {
         let mx = 0;
         let mz = 0;
         if (input.isDown("KeyW")) mz -= 1;
-        if (input.isDown("KeyS")) mz += 1;
-        if (input.isDown("KeyA")) mx -= 1;
         if (input.isDown("KeyD")) mx += 1;
+        if (input.isDown("ArrowLeft")) mx -= 1;
+        if (input.isDown("ArrowRight")) mx += 1;
+        if (input.isDown("ArrowUp")) mz -= 1;
+        if (input.isDown("ArrowDown")) mz += 1;
         const mv = norm2D(mx, mz);
         this.vel.x = mv.x * this.spd;
         this.vel.z = mv.z * this.spd;
@@ -815,10 +897,12 @@ class PlayerEntity {
         if (input.consumePress("KeyQ")) this.cycleItem(-1);
         if (input.consumePress("KeyE")) this.cycleItem(1);
         if (input.consumePress("KeyZ")) world.useSelectedItem();
+        if (input.consumePress("KeyA")) world.queueManualCast(0);
+        if (input.consumePress("KeyS")) world.queueManualCast(1);
 
         if (input.consumePress("KeyF")) world.tryInteractNearestNode();
-        if (input.consumePress("ArrowUp")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
-        if (input.consumePress("ArrowDown")) this.selectedReserveIndex += 1;
+        if (input.consumePress("BracketLeft")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
+        if (input.consumePress("BracketRight")) this.selectedReserveIndex += 1;
         if (input.consumePress("KeyT")) world.swapActiveWithReserve(this.selectedReserveIndex);
 
         const worldPos = world.camera.screenToWorld(input.mouse.x, input.mouse.y);
@@ -834,6 +918,20 @@ class PlayerEntity {
             world.commandPets(this.targetPetIds, { type: "move", point: worldPos, issuedAt: world.time });
             this.commandTargetId = null;
             this.lastLog = "Move command";
+        }
+
+        if (this.autoFollowActive) {
+            const activePet = world.getCreatureById(this.activePetId);
+            if (activePet && activePet.lifecycle === "alive") {
+                const dx = activePet.pos.x - this.pos.x;
+                const dz = activePet.pos.z - this.pos.z;
+                const d = Math.hypot(dx, dz);
+                if (d > 60) {
+                    const n = norm2D(dx, dz);
+                    this.pos.x = clamp(this.pos.x + n.x * this.spd * 0.8 * dt, 0, world.width);
+                    this.pos.z = clamp(this.pos.z + n.z * this.spd * 0.8 * dt, 0, world.height);
+                }
+            }
         }
     }
 }
@@ -1054,6 +1152,40 @@ class World {
         return best;
     }
 
+    evaluateAbilityUse(source, abilityKey, target) {
+        const a = abilities[abilityKey];
+        if (!a) return { ok: false, reason: "unknown ability" };
+        if (!source || source.lifecycle !== "alive") return { ok: false, reason: "source invalid" };
+        if ((source.cooldowns[abilityKey] ?? 0) > 0) return { ok: false, reason: `cooldown ${source.cooldowns[abilityKey].toFixed(1)}s` };
+        if ((a.resourceUse?.stamina ?? 0) > source.currentStamina) return { ok: false, reason: "not enough stamina" };
+        if ((a.resourceUse?.energy ?? 0) > source.currentEnergy) return { ok: false, reason: "not enough energy" };
+        if (a.category === "utility") return { ok: true, reason: "ready" };
+        if (!target || target.lifecycle !== "alive") return { ok: false, reason: "no valid target" };
+        if (source.team === target.team) return { ok: false, reason: "invalid target" };
+        const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
+        if (d > (a.range ?? Infinity)) return { ok: false, reason: "out of range" };
+        return { ok: true, reason: "ready" };
+    }
+
+    queueManualCast(slotIndex) {
+        const pet = this.getCreatureById(this.player.activePetId);
+        if (!pet || pet.lifecycle !== "alive") return false;
+        const abilityKey = pet.moveset[slotIndex];
+        if (!abilityKey) {
+            this.setManualCastStatus(pet, `No move in slot ${slotIndex + 1}`);
+            return false;
+        }
+        pet.manualCastRequest = { abilityKey, slotIndex, issuedAt: this.time };
+        this.setManualCastStatus(pet, `Queued ${abilities[abilityKey]?.name ?? abilityKey}`);
+        return true;
+    }
+
+    setManualCastStatus(creature, text, ttl = 1.2) {
+        if (!creature) return;
+        creature.manualCastStatus = { text, until: this.time + ttl };
+        this.player.lastLog = text;
+    }
+
     findNearestEnemyToPoint(x, z, maxRange = 30) {
         let best = null;
         let bestD = Infinity;
@@ -1079,14 +1211,8 @@ class World {
     tryUseAbility(source, abilityKey, targetId) {
         const a = abilities[abilityKey];
         const target = this.getCreatureById(targetId);
-        if (!a || !target || target.lifecycle !== "alive" || source.lifecycle !== "alive") return false;
-        if (source.team === target.team) return false;
-        if ((source.cooldowns[abilityKey] ?? 0) > 0) return false;
-
-        const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
-        if (d > (a.range ?? Infinity)) return false;
-        if ((a.resourceUse?.stamina ?? 0) > source.currentStamina) return false;
-        if ((a.resourceUse?.energy ?? 0) > source.currentEnergy) return false;
+        const gate = this.evaluateAbilityUse(source, abilityKey, target);
+        if (!gate.ok) return false;
 
         source.currentStamina -= a.resourceUse?.stamina ?? 0;
         source.currentEnergy -= a.resourceUse?.energy ?? 0;
@@ -1563,15 +1689,54 @@ class World {
         const selectedItemKey = this.player.selectedItemKey;
         const selectedItemDef = itemDefs[selectedItemKey];
         const selectedItemCount = this.player.inventory[selectedItemKey] ?? 0;
+        const activePet = this.getCreatureById(this.player.activePetId);
+
+        const castPanelW = 360;
+        const castPanelH = 90;
+        const castPanelX = canvas.width - castPanelW - 10;
+        const castPanelY = canvas.height - castPanelH - 78;
+        ctx.fillStyle = "rgba(0,0,0,0.62)";
+        ctx.fillRect(castPanelX, castPanelY, castPanelW, castPanelH);
+        ctx.fillStyle = "#fff";
+        ctx.fillText("Active Casts [A/S]", castPanelX + 10, castPanelY + 16);
+        if (!activePet || activePet.lifecycle !== "alive") {
+            ctx.fillStyle = "#bbb";
+            ctx.fillText("No active pet", castPanelX + 10, castPanelY + 34);
+        } else {
+            for (let i = 0; i < 2; i++) {
+                const abilityKey = activePet.moveset[i];
+                const ability = abilities[abilityKey];
+                const rowY = castPanelY + 34 + i * 24;
+                if (!abilityKey || !ability) {
+                    ctx.fillStyle = "#888";
+                    ctx.fillText(`${i === 0 ? "A" : "S"}: (empty)`, castPanelX + 10, rowY);
+                    continue;
+                }
+                const cd = activePet.cooldowns[abilityKey] ?? 0;
+                const hasStamina = (ability.resourceUse?.stamina ?? 0) <= activePet.currentStamina;
+                const hasEnergy = (ability.resourceUse?.energy ?? 0) <= activePet.currentEnergy;
+                const ready = cd <= 0 && hasStamina && hasEnergy;
+                let status = "READY";
+                if (cd > 0) status = `CD ${cd.toFixed(1)}s`;
+                else if (!hasStamina) status = "NO STAM";
+                else if (!hasEnergy) status = "NO EN";
+                ctx.fillStyle = ready ? "#8dff9d" : "#ffb3a1";
+                ctx.fillText(`${i === 0 ? "A" : "S"}: ${ability.name} - ${status}`, castPanelX + 10, rowY);
+            }
+            if ((activePet.manualCastStatus?.until ?? 0) > this.time) {
+                ctx.fillStyle = "#9ec7ff";
+                ctx.fillText(activePet.manualCastStatus.text, castPanelX + 10, castPanelY + castPanelH - 8);
+            }
+        }
 
         const barH = 58;
         const barY = canvas.height - barH - 10;
         ctx.fillStyle = "rgba(0,0,0,0.62)";
         ctx.fillRect(10, barY, canvas.width - 20, barH);
         ctx.fillStyle = "#fff";
-        ctx.fillText(`Controls: 1/2/3 pet  Q stance  LMB attack  RMB move  R regroup  H hold  F follow  Up/Down reserve  T swap  | ${this.player.lastLog}`, 18, barY + 40);
+        ctx.fillText(`Controls: 1/2/3 pet  WASD/Arrows move  LMB target  RMB move  A/S cast  [/ ] reserve  T swap  | ${this.player.lastLog}`, 18, barY + 40);
         ctx.fillText(
-            `Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}   [ [ / ] cycle ] [ Z use ]`,
+            `Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}   [ Q / E cycle ] [ Z use ]`,
             18,
             barY + 20
         )
