@@ -130,6 +130,29 @@ const abilities = {
         effectsOnHit: [{ type: "slow", duration: 1.5, magnitude: 0.35 }],
         fx: { pulseColor: "rgba(120,190,255,0.55)" },
     },
+    dashBite: {
+        name: "Dash Bite",
+        category: "dash",
+        cooldown: 4.0,
+        resourceUse: { stamina: 8, energy: 0 },
+        flatDmg: { p: 14, e: 0 },
+        dmgScale: { p: 0.45, e: 0 },
+        range: 26,
+        dash: { distance: 90, stopShort: 18 },
+        effectsOnHit: [{ type: "slow", chance: 0.35, duration: 1.1, magnitude: 0.25 }],
+        fx: { lineColor: "#ffe8a3" },
+    },
+    staticBarrier: {
+        name: "Static Barrier",
+        category: "barrier",
+        cooldown: 10.5,
+        resourceUse: { stamina: 0, energy: 14 },
+        flatDmg: { p: 0, e: 0 },
+        dmgScale: { p: 0, e: 0 },
+        range: 120,
+        barrier: { radius: 52, duration: 5.0, slow: 0.25, damageReduction: 0.22, blockMovement: true },
+        fx: { pulseColor: "rgba(120,190,255,0.20)" },
+    },
     rallyHowl: {
         name: "Rally Howl",
         category: "utility",
@@ -148,14 +171,14 @@ const species = {
         compositeKey: "animal",
         role: "fighter",
         baseStats: { pAtk: 12, eAtk: 2, range: 24, maxHP: 110, spd: 70, castSpd: 1, size: 10, stamina: 25, energy: 10, recoverStamina: 6, recoverEnergy: 3 },
-        moveset: ["ram", "rallyHowl"],
+        moveset: ["ram", "dashBite", "rallyHowl"],
     },
     sparkit: {
         name: "Sparkit",
         compositeKey: "voltage",
         role: "ranged",
         baseStats: { pAtk: 4, eAtk: 12, range: 100, maxHP: 85, spd: 65, castSpd: 1, size: 9, stamina: 16, energy: 24, recoverStamina: 4, recoverEnergy: 6 },
-        moveset: ["zap", "staticBurst"],
+        moveset: ["zap", "staticBurst", "staticBarrier"],
     },
     cinderpup: {
         name: "Cinderpup",
@@ -258,6 +281,9 @@ const EffectEngine = {
         s.heat = Math.max(0, s.heat - dt * 0.2);
 
         let slowMult = 1;
+        let speedBonus = 0;
+        let atkBonus = 0;
+        let dmgReduction = 0;
         for (let i = creature.statusEffects.length - 1; i >= 0; i--) {
             const st = creature.statusEffects[i];
             st.duration -= dt;
@@ -266,9 +292,14 @@ const EffectEngine = {
             if (st.type === "slow") slowMult *= 1 - st.magnitude;
             if (st.type === "regen") creature.currentHP = Math.min(creature.modifiedStats.maxHP, creature.currentHP + st.magnitude * dt);
             if (st.type === "boost") creature.effectState.buff.energyBonus += st.magnitude;
+            if (st.type === "atkBoost") atkBonus += st.magnitude;
+            if (st.type === "spdBoost") speedBonus += st.magnitude;
+            if (st.type === "defBoost") dmgReduction = Math.max(dmgReduction, st.magnitude);
             if (st.duration <= 0) creature.statusEffects.splice(i, 1);
         }
-        creature.runtimeSpeedMult = clamp(slowMult, 0.35, 1);
+        creature.runtimeSpeedMult = clamp(slowMult * (1 + speedBonus), 0.35, 1.9);
+        creature.runtimeAtkMult = clamp(1 + atkBonus, 0.5, 2.5);
+        creature.runtimeDmgReduction = clamp(dmgReduction, 0, 0.75);
     },
     applyAbilityEffects(source, target, abilityDef) {
         if (abilityDef.soakAdd) {
@@ -413,6 +444,8 @@ class Creature {
         this.combatContributors = new Map();
 
         this.runtimeSpeedMult = 1;
+        this.runtimeAtkMult = 1;
+        this.runtimeDmgReduction = 0;
         this.hitFlash = 0;
         this.lifecycle = "alive"; // alive | defeated | captured | despawned
         this.mode = team === 0 ? "pet" : "wild";
@@ -824,6 +857,19 @@ class InteractableNode {
     }
 }
 
+class BarrierZone {
+    constructor(x, z, team, radius, duration, opts = {}) {
+        this.pos = { x, z };
+        this.team = team;
+        this.radius = radius;
+        this.ttl = duration;
+        this.slow = opts.slow ?? 0.2;
+        this.damageReduction = opts.damageReduction ?? 0.18;
+        this.blockMovement = opts.blockMovement ?? true;
+        this.color = opts.color ?? "rgba(120,190,255,0.18)";
+    }
+}
+
 /* =========================
    player + commands/items/taming
 ========================= */
@@ -1020,6 +1066,7 @@ class World {
 
         this.nodes = [];
         this.nodeSpawnTimer = 0;
+        this.barriers = [];
 
         this.floatingTexts = [];
         this.combatFx = [];
@@ -1146,6 +1193,7 @@ class World {
         this.cleanupDefeatedCreatures();
         this.rebuildPartyPetIds();
         this.removeDeadCommandTarget();
+        this.updateBarriers(dt);
         this.updateFx(dt);
         this.camera.update(dt);
     }
@@ -1287,6 +1335,26 @@ class World {
             this.pushFloatingText(source.pos.x, source.pos.z - 10, a.name, "#88ffb5");
             return true;
         }
+        if (a.category === "barrier") {
+            const atX = target?.pos?.x ?? source.pos.x;
+            const atZ = target?.pos?.z ?? source.pos.z;
+            this.spawnBarrier(source, atX, atZ, a.barrier ?? {});
+            this.pushFloatingText(atX, atZ - 12, a.name, "#9ed8ff");
+            this.combatFx.push({ type: "pulse", x: atX, z: atZ, radius: a.barrier?.radius ?? 48, ttl: 0.22, color: a.fx?.pulseColor ?? "rgba(120,190,255,0.25)" });
+            return true;
+        }
+
+        if (a.category === "dash" || a.category === "gap_close" || a.category === "retreat") {
+            const dir = norm2D(target.pos.x - source.pos.x, target.pos.z - source.pos.z);
+            const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
+            const dashDist = a.dash?.distance ?? 70;
+            const stopShort = a.dash?.stopShort ?? 16;
+            const toward = a.category === "retreat" ? -1 : 1;
+            const step = toward > 0 ? Math.max(0, Math.min(dashDist, d - stopShort)) : dashDist;
+            source.pos.x = clamp(source.pos.x + dir.x * step * toward, 0, this.width);
+            source.pos.z = clamp(source.pos.z + dir.z * step * toward, 0, this.height);
+            this.combatFx.push({ type: "line", x1: source.pos.x - dir.x * step * toward, z1: source.pos.z - dir.z * step * toward, x2: source.pos.x, z2: source.pos.z, ttl: 0.1, color: a.fx?.lineColor ?? "#ffffff" });
+        }
 
         const dmg =
             (a.flatDmg?.p ?? 0) +
@@ -1319,7 +1387,9 @@ class World {
         const energyPart = (abilityDef.flatDmg?.e ?? 0) + (abilityDef.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
         const scaled = (physicalPart * physicalMod + energyPart * energyMod) * effBonus;
         // Keep a minimum 1 damage floor so very low scaling attacks still provide gameplay feedback.
-        const finalDmg = Math.max(1, scaled || dmg);
+        const atkScaled = (scaled || dmg) * (source.runtimeAtkMult ?? 1);
+        const reduced = atkScaled * (1 - (target.runtimeDmgReduction ?? 0));
+        const finalDmg = Math.max(1, reduced);
 
         target.currentHP = Math.max(0, target.currentHP - finalDmg);
         target.hitFlash = 1;
@@ -1394,7 +1464,12 @@ class World {
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, "+energy", "#9de7ff");
             }
             if (def.type === "buff") {
-                EffectEngine.addStatus(pet, EffectEngine.createStatus("boost", def.duration ?? 8, def.amount ?? 0.1, pet.id));
+                const amt = def.amount ?? 0.1;
+                const dur = def.duration ?? 8;
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("atkBoost", dur, amt, pet.id));
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("spdBoost", dur, amt * 0.8, pet.id));
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("defBoost", dur, amt * 0.7, pet.id));
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("boost", dur, amt * 0.5, pet.id));
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, "Boosted!", "#fff79a");
             }
             if (def.type === "bait") {
@@ -1536,6 +1611,46 @@ class World {
         this.combatFx = this.combatFx.filter(fx => fx.ttl > 0);
     }
 
+    spawnBarrier(source, x, z, barrierDef) {
+        const zone = new BarrierZone(
+            x,
+            z,
+            source.team,
+            barrierDef.radius ?? 48,
+            barrierDef.duration ?? 4.5,
+            {
+                slow: barrierDef.slow ?? 0.2,
+                damageReduction: barrierDef.damageReduction ?? 0.18,
+                blockMovement: barrierDef.blockMovement ?? true,
+                color: "rgba(120,190,255,0.20)",
+            }
+        );
+        this.barriers.push(zone);
+    }
+
+    updateBarriers(dt) {
+        for (const b of this.barriers) {
+            b.ttl -= dt;
+            for (const c of this.creatures) {
+                if (c.lifecycle !== "alive") continue;
+                const d = dist(c.pos.x, c.pos.z, b.pos.x, b.pos.z);
+                if (d > b.radius) continue;
+                if (c.team === b.team) {
+                    EffectEngine.addStatus(c, EffectEngine.createStatus("defBoost", 0.25, b.damageReduction, null));
+                } else {
+                    EffectEngine.addStatus(c, EffectEngine.createStatus("slow", 0.25, b.slow, null));
+                    if (b.blockMovement) {
+                        const n = norm2D(c.pos.x - b.pos.x, c.pos.z - b.pos.z);
+                        const edge = b.radius + 2;
+                        c.pos.x = b.pos.x + n.x * edge;
+                        c.pos.z = b.pos.z + n.z * edge;
+                    }
+                }
+            }
+        }
+        this.barriers = this.barriers.filter(b => b.ttl > 0);
+    }
+
     draw(ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1571,6 +1686,19 @@ class World {
             ctx.arc(s.sx, s.sz, 6, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalAlpha = 1;
+        }
+
+        for (const b of this.barriers) {
+            const s = this.camera.worldToScreen(b.pos.x, b.pos.z);
+            ctx.fillStyle = b.color;
+            ctx.beginPath();
+            ctx.arc(s.sx, s.sz, b.radius * this.camera.zoom, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(140,220,255,0.75)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(s.sx, s.sz, b.radius * this.camera.zoom, 0, Math.PI * 2);
+            ctx.stroke();
         }
 
         const ps = this.camera.worldToScreen(this.player.pos.x, this.player.pos.z);
@@ -1795,6 +1923,13 @@ class World {
             if ((activePet.manualCastStatus?.until ?? 0) > this.time) {
                 ctx.fillStyle = "#9ec7ff";
                 ctx.fillText(activePet.manualCastStatus.text, castPanelX + 10, castPanelY + castPanelH - 8);
+            }
+            const buffNames = activePet.statusEffects
+                .filter(st => st.type === "atkBoost" || st.type === "spdBoost" || st.type === "defBoost" || st.type === "boost")
+                .map(st => `${st.type.replace("Boost", "").toUpperCase()} ${st.duration.toFixed(1)}s`);
+            if (buffNames.length) {
+                ctx.fillStyle = "#fff79a";
+                ctx.fillText(`Buffs: ${buffNames.join(" | ")}`, castPanelX + 10, castPanelY - 8);
             }
         }
 
