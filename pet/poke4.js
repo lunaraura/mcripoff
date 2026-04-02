@@ -958,14 +958,11 @@ class World {
         this.combatFx = [];
     }
 
-    initialize() {
+    initialize(starterSpeciesKey = "dog") {
         this.camera.follow(this.player);
 
-        const p = this.player.pos;
-        const ownedA = this.createOwnedCreatureRecord("dog");
-        const ownedB = this.createOwnedCreatureRecord("sparkit");
-        const ownedC = this.createOwnedCreatureRecord("cinderpup");
-        this.player.partyOwnedIds = [ownedA.ownedId, ownedB.ownedId, ownedC.ownedId];
+        const ownedStarter = this.createOwnedCreatureRecord(starterSpeciesKey);
+        this.player.partyOwnedIds = [ownedStarter.ownedId, null, null];
         this.hydratePartyRuntime();
         this.spawnBiomeNodesAroundPlayer(8);
     }
@@ -1750,8 +1747,11 @@ class Game {
     constructor() {
         this.input = new InputManager();
         this.sceneManager = new SceneManager(
-            { mainScene: new Scene() },
-            "mainScene"
+            {
+                introScene: new IntroScene(),
+                mainScene: new MainScene(),
+            },
+            "introScene"
         );
         this.last = 0;
     }
@@ -1811,13 +1811,87 @@ class SceneManager {
     }
 }
 
-class Scene {
+class IntroScene {
+    constructor() {
+        this.starterKeys = ["dog", "sparkit", "cinderpup"];
+        this.selectedIndex = 0;
+    }
+
+    onEnter(sm) {
+        this.selectedIndex = 0;
+    }
+
+    update(sm, dt, input) {
+        if (input.consumePress("ArrowLeft") || input.consumePress("KeyA")) this.selectedIndex = (this.selectedIndex + this.starterKeys.length - 1) % this.starterKeys.length;
+        if (input.consumePress("ArrowRight") || input.consumePress("KeyD")) this.selectedIndex = (this.selectedIndex + 1) % this.starterKeys.length;
+        if (input.consumePress("ArrowUp")) this.selectedIndex = (this.selectedIndex + this.starterKeys.length - 1) % this.starterKeys.length;
+        if (input.consumePress("ArrowDown")) this.selectedIndex = (this.selectedIndex + 1) % this.starterKeys.length;
+
+        if (input.consumePress("Digit1")) this.selectedIndex = 0;
+        if (input.consumePress("Digit2")) this.selectedIndex = 1;
+        if (input.consumePress("Digit3")) this.selectedIndex = 2;
+
+        if (input.consumePress("Enter") || input.consumePress("Space")) {
+            sm.set("mainScene", { starterKey: this.starterKeys[this.selectedIndex] });
+        }
+    }
+
+    draw(sm, ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "24px monospace";
+        ctx.fillText("Choose Your Starter", 40, 54);
+        ctx.font = "14px monospace";
+        ctx.fillText("Arrow keys / A-D to move, Enter or Space to confirm", 40, 82);
+
+        const cardW = 250;
+        const cardH = 210;
+        const gap = 20;
+        const totalW = cardW * this.starterKeys.length + gap * (this.starterKeys.length - 1);
+        const startX = Math.floor((canvas.width - totalW) / 2);
+        const y = 130;
+
+        for (let i = 0; i < this.starterKeys.length; i++) {
+            const key = this.starterKeys[i];
+            const def = species[key];
+            const s = def?.baseStats ?? {};
+            const x = startX + i * (cardW + gap);
+            const selected = i === this.selectedIndex;
+
+            ctx.fillStyle = selected ? "rgba(255,247,153,0.18)" : "rgba(255,255,255,0.06)";
+            ctx.fillRect(x, y, cardW, cardH);
+            ctx.strokeStyle = selected ? "#fff799" : "rgba(255,255,255,0.26)";
+            ctx.lineWidth = selected ? 2 : 1;
+            ctx.strokeRect(x, y, cardW, cardH);
+
+            ctx.fillStyle = "#fff";
+            ctx.font = "18px monospace";
+            ctx.fillText(`${i + 1}. ${def?.name ?? key}`, x + 14, y + 28);
+            ctx.font = "13px monospace";
+            ctx.fillStyle = "#9ec7ff";
+            ctx.fillText(`Role: ${def?.role ?? "unknown"}`, x + 14, y + 50);
+            ctx.fillStyle = "#ddd";
+            ctx.fillText(`HP ${Math.round(s.maxHP ?? 0)}  SPD ${Math.round(s.spd ?? 0)}`, x + 14, y + 78);
+            ctx.fillText(`PAtk ${Math.round(s.pAtk ?? 0)}  EAtk ${Math.round(s.eAtk ?? 0)}`, x + 14, y + 98);
+            ctx.fillText(`Sta ${Math.round(s.stamina ?? 0)}  Eng ${Math.round(s.energy ?? 0)}`, x + 14, y + 118);
+            ctx.fillText(`Range ${Math.round(s.range ?? 0)}  Cast ${Math.round(s.castSpd ?? 0)}`, x + 14, y + 138);
+            ctx.fillStyle = "#cfcfcf";
+            ctx.fillText(`Moves: ${(def?.moveset ?? []).map(k => abilities[k]?.name ?? k).join(", ")}`, x + 14, y + 164);
+        }
+    }
+}
+
+class MainScene {
     constructor() {
         this.world = new World();
     }
 
     onEnter(sm, payload) {
-        this.world.initialize();
+        this.world = new World();
+        this.world.initialize(payload?.starterKey ?? "dog");
     }
 
     update(sm, dt, input) {
