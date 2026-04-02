@@ -1527,23 +1527,84 @@ class World {
 class Game {
     constructor() {
         this.input = new InputManager();
-        this.world = new World();
+        this.sceneManager = new SceneManager(
+            { mainScene: new Scene() },
+            "mainScene"
+        );
         this.last = 0;
     }
+
     start() {
         this.input.bind(canvas);
-        this.world.initialize();
         requestAnimationFrame((ts) => this.loop(ts));
     }
+
     loop(ts) {
         const dt = this.last ? Math.min((ts - this.last) / 1000, 0.05) : 0.016;
         this.last = ts;
-        this.world.update(dt, this.input);
-        this.world.draw(ctx);
+
+        this.sceneManager.update(dt, this.input);
+        this.sceneManager.draw(ctx);
         this.input.endFrame();
+
         requestAnimationFrame((next) => this.loop(next));
     }
 }
 
+class SceneManager {
+    constructor(defs, startId) {
+        this.defs = defs;
+        this.id = null;
+        this.scene = null;
+        this.t = 0;
+        this.state = {};
+        this._events = [];
+        this.set(startId);
+    }
+
+    set(id, payload = {}) {
+        if (this.scene?.onExit) this.scene.onExit(this, payload);
+        this.id = id;
+        this.scene = this.defs[id];
+        this.t = 0;
+        this.state = {};
+        this._events = [];
+        if (!this.scene) throw new Error(`Unknown scene: ${id}`);
+        if (this.scene.onEnter) this.scene.onEnter(this, payload);
+    }
+
+    update(dt, input) {
+        this.t += dt;
+        for (const ev of this._events) {
+            if (!ev.fired && this.t >= ev.t) {
+                ev.fired = true;
+                ev.fn(this);
+            }
+        }
+        if (this.scene?.update) this.scene.update(this, dt, input);
+    }
+
+    draw(ctx) {
+        if (this.scene?.draw) this.scene.draw(this, ctx);
+    }
+}
+
+class Scene {
+    constructor() {
+        this.world = new World();
+    }
+
+    onEnter(sm, payload) {
+        this.world.initialize();
+    }
+
+    update(sm, dt, input) {
+        this.world.update(dt, input);
+    }
+
+    draw(sm, ctx) {
+        this.world.draw(ctx);
+    }
+}
 const game = new Game();
 game.start();
