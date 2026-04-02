@@ -73,15 +73,6 @@ const compositeEffects = {
     },
 };
 
-const typeChart = {
-    normal: { immune: ["ghost"], weak: ["rock", "steel"], strong: [] },
-    fire: { immune: [], weak: ["fire", "water", "rock", "dragon"], strong: ["grass", "ice", "bug", "steel"] },
-    water: { immune: [], weak: ["water", "grass", "dragon"], strong: ["fire", "ground", "rock"] },
-    electric: { immune: ["ground"], weak: ["electric", "grass", "dragon"], strong: ["water", "flying"] },
-    grass: { immune: [], weak: ["fire", "grass", "poison", "flying", "bug", "dragon", "steel"], strong: ["water", "ground", "rock"] },
-    none: { immune: [], weak: [], strong: [] },
-};
-
 const abilities = {
     ram: {
         name: "Ram",
@@ -186,38 +177,46 @@ const biomeDefs = {
     plains: {
         color: "#89a87c",
         spawns: [{ key: "dog", weight: 5 }, { key: "pebblit", weight: 2 }],
-        nodes: [{ key: "berry_bush", weight: 6 }, { key: "energy_crystal", weight: 2 }],
+        nodes: [{ key: "berry_bush", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
     },
     forest: {
         color: "#6e9a5f",
         spawns: [{ key: "dog", weight: 3 }, { key: "cinderpup", weight: 2 }],
-        nodes: [{ key: "berry_bush", weight: 7 }, { key: "bait_shrub", weight: 3 }],
+        nodes: [{ key: "berry_bush", weight: 22 }, { key: "bait_shrub", weight: 3 }, {key: "revive_berry_bush", weight: 1}],
     },
     desert: {
         color: "#b8a56c",
         spawns: [{ key: "pebblit", weight: 5 }, { key: "cinderpup", weight: 3 }],
-        nodes: [{ key: "energy_crystal", weight: 5 }, { key: "bait_shrub", weight: 2 }],
+        nodes: [{ key: "energy_crystal", weight: 5 }, { key: "bait_shrub", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
     },
     stormfield: {
         color: "#74879b",
         spawns: [{ key: "sparkit", weight: 6 }, { key: "dog", weight: 2 }],
-        nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush", weight: 2 }],
+        nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
     },
     volcanic: {
         color: "#8b5c4f",
         spawns: [{ key: "cinderpup", weight: 6 }, { key: "pebblit", weight: 2 }],
-        nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }],
+        nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
     },
 };
 
 const itemDefs = {
     berry_red: { name: "Red Berry", type: "heal", amount: 40 },
+    berry_blue: { name: "Blue Berry", type: "heal", amount: 25 },
+    berry_yellow: { name: "Yellow Berry", type: "heal", amount: 30 },
+    revive_berry: { name: "Revive Berry", type: "revive", amount: 50 },
+    boost_berry: { name: "Boost Berry", type: "buff", amount: 0.15, duration: 20 },
     battery_seed: { name: "Battery Seed", type: "energy", amount: 16, stamina: 10 },
     lure_meat: { name: "Lure Meat", type: "bait", tameBonus: 0.25, requiredHPRatio: 0.45 },
 };
 
 const nodeDefs = {
     berry_bush: { color: "#bb2f58", reward: { key: "berry_red", amount: 2 }, cooldown: 12 },
+    berry_bush_blue: { color: "#4a90e2", reward: { key: "berry_blue", amount: 2 }, cooldown: 12 },
+    berry_bush_yellow: { color: "#f4c24a", reward: { key: "berry_yellow", amount: 2 }, cooldown: 12 },
+    revive_berry_bush: { color: "#7b3e1d", reward: { key: "revive_berry", amount: 1 }, cooldown: 18 },
+    boost_berry_bush: { color: "#ffcc00", reward: { key: "boost_berry", amount: 1 }, cooldown: 20 },
     energy_crystal: { color: "#5fc7ff", reward: { key: "battery_seed", amount: 1 }, cooldown: 14 },
     bait_shrub: { color: "#a6a052", reward: { key: "lure_meat", amount: 1 }, cooldown: 16 },
 };
@@ -749,6 +748,7 @@ class PlayerEntity {
 
         this.petIds = [null, null, null];
         this.partyOwnedIds = [null, null, null];
+        this.selectAll = false;
         this.activePetIndex = 0;
         this.commandTargetId = null;
         this.stance = "aggressive";
@@ -763,7 +763,11 @@ class PlayerEntity {
     get activePetId() {
         return this.petIds[this.activePetIndex] ?? null;
     }
-
+    get targetPetIds(){
+        return this.selectAll
+            ? this.petIds.filter(Boolean)
+            : [this.activePetId].filter(Boolean);
+    }
     update(dt, input, world) {
         let mx = 0;
         let mz = 0;
@@ -780,7 +784,10 @@ class PlayerEntity {
         if (input.consumePress("Digit1")) this.activePetIndex = 0;
         if (input.consumePress("Digit2")) this.activePetIndex = 1;
         if (input.consumePress("Digit3")) this.activePetIndex = 2;
-
+        if (input.consumePress("Digit4")) {
+            this.selectAll = !this.selectAll;
+            this.lasstLog = this.selectAll ? "All Pets Selected" : `Pet ${this.activePetIndex + 1} selected`;
+        }
         if (input.consumePress("KeyQ")) {
             this.stance = this.stance === "aggressive" ? "follow" : this.stance === "follow" ? "hold" : "aggressive";
             this.lastLog = `Stance: ${this.stance}`;
@@ -790,11 +797,11 @@ class PlayerEntity {
             this.lastLog = "Regroup all pets";
         }
         if (input.consumePress("KeyH")) {
-            world.commandActivePet({ type: "hold", issuedAt: world.time });
+            world.commandPets(this.targetPetIds, { type: "hold", issuedAt: world.time });
             this.lastLog = "Active pet: hold";
         }
         if (input.consumePress("KeyF")) {
-            world.commandActivePet({ type: "follow", issuedAt: world.time });
+            world.commandPets(this.targetPetIds, { type: "follow", issuedAt: world.time });
             this.lastLog = "Active pet: follow";
         }
 
@@ -814,12 +821,12 @@ class PlayerEntity {
             const target = world.findNearestEnemyToPoint(worldPos.x, worldPos.z, 32);
             if (target) {
                 this.commandTargetId = target.id;
-                world.commandActivePet({ type: "attack", targetId: target.id, issuedAt: world.time });
+                world.commandPets(this.targetPetIds, { type: "attack", targetId: target.id, issuedAt: world.time });
                 this.lastLog = `Attack ${target.speciesKey}`;
             }
         }
         if (input.consumeMouseRightPress()) {
-            world.commandActivePet({ type: "move", point: worldPos, issuedAt: world.time });
+            world.commandPets(this.targetPetIds, { type: "move", point: worldPos, issuedAt: world.time });
             this.commandTargetId = null;
             this.lastLog = "Move command";
         }
@@ -859,7 +866,13 @@ class World {
         this.hydratePartyRuntime();
         this.spawnBiomeNodesAroundPlayer(8);
     }
-
+    commandPets(petIds, command){
+        for (const id of petIds){
+            const pet = this.getCreatureById(id);
+            if (!pet || pet.lifecycle !== "alive") continue;
+            pet.command = {... command};
+        }
+    }
     spawnPetFromOwned(ownedId, x, z) {
         const owned = this.getOwnedCreatureById(ownedId);
         if (!owned) return null;
@@ -972,8 +985,14 @@ class World {
     rebuildPartyPetIds() {
         this.player.petIds = this.player.partyOwnedIds.map((ownedId) => {
             if (ownedId == null) return null;
-            const runtime = this.creatures.find(c => c.mode === "pet" && c.ownedId === ownedId && c.lifecycle === "alive");
-            return runtime?.id ?? null;
+            
+            const runtime = this.creatures.find(c =>
+                c.mode === "pet" &&
+                c.ownedID == ownedId &&
+                c.lifecycle !== "captured" &&
+                c.lifecycle !== "despawned"
+            );
+            return runtime?.id ?? null
         });
     }
 
@@ -1467,18 +1486,28 @@ class World {
                 ctx.fillText(`${i + 1}. (empty)`, partyX + 16, slotY + 18);
                 continue;
             }
-
+            const isDefeated = c.lifecycle === "defeated"
             const hpRatio = c.currentHP / c.modifiedStats.maxHP;
+            const stamRatio = c.currentStamina / c.modifiedStats.stamina;
             const enRatio = c.currentEnergy / c.modifiedStats.energy;
+
             const slotCmd = i === this.player.activePetIndex ? (c.command?.type ?? "none") : this.player.stance;
-            ctx.fillStyle = "#fff";
+            ctx.fillStyle = isDefeated ? "#ff9a9a" : "#fff"
             ctx.fillText(`${i + 1}. ${species[c.speciesKey]?.name ?? c.speciesKey}  Lv${c.level}`, partyX + 16, slotY + 18);
+
             ctx.fillStyle = "#cbd8ff";
             ctx.fillText(`Cmd/Stance: ${slotCmd}`, partyX + 16, slotY + 34);
+
             drawGauge(ctx, partyX + 16, slotY + 42, partyW - 34, 8, hpRatio, "#62d55f");
             drawGauge(ctx, partyX + 16, slotY + 56, partyW - 34, 8, enRatio, "#55b9ff");
+            drawGauge(ctx, partyX + 16, slotY + 70, partyW - 34, 8, stamRatio, "#ffe045");
             ctx.fillStyle = "#ddd";
             ctx.fillText(`HP ${Math.round(c.currentHP)}/${Math.round(c.modifiedStats.maxHP)}`, partyX + 16, slotY + 74);
+            if (isDefeated) {
+                ctx.fillStyle = '#ffb3b3';
+                ctx.fillText('DEFEATED', partyX + 16, slotY + 34);
+            }
+
         }
 
         // Right reserve panel.
