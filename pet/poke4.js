@@ -79,8 +79,8 @@ const abilities = {
         category: "melee",
         cooldown: 2.0,
         resourceUse: { stamina: 5, energy: 0 },
-        flatDmg: { p: 20, e: 0 },
-        dmgScale: { p: 0.4, e: 0 },
+        flatDmg: { p: 5, e: 0 },
+        dmgScale: { p: 0.5, e: 0 },
         range: 24,
     },
     zap: {
@@ -88,8 +88,8 @@ const abilities = {
         category: "hitscan",
         cooldown: 4.2,
         resourceUse: { stamina: 0, energy: 10 },
-        flatDmg: { p: 0, e: 5 },
-        dmgScale: { p: 0, e: 0.3 },
+        flatDmg: { p: 0, e: 2 },
+        dmgScale: { p: 0, e: 0.2 },
         range: 80,
         soakAdd: { electric: 0.75 },
         effectsOnHit: [{ type: "shock", chance: 0.25, duration: 1.5, magnitude: 0.2 }],
@@ -100,8 +100,8 @@ const abilities = {
         category: "melee",
         cooldown: 1.4,
         resourceUse: { stamina: 6, energy: 2 },
-        flatDmg: { p: 8, e: 5 },
-        dmgScale: { p: 0.3, e: 0.35 },
+        flatDmg: { p: 5, e: 3 },
+        dmgScale: { p: 0.3, e: 0.2 },
         range: 26,
         soakAdd: { heat: 1.0 },
         effectsOnHit: [{ type: "burn", chance: 0.5, duration: 3.2, magnitude: 3.5 }],
@@ -110,9 +110,9 @@ const abilities = {
         name: "Pebble Shot",
         category: "projectile",
         cooldown: 6.0,
-        resourceUse: { stamina: 2, energy: 2 },
-        flatDmg: { p: 4, e: 0 },
-        dmgScale: { p: 0.15, e: 0 },
+        resourceUse: { stamina: 5, energy: 0 },
+        flatDmg: { p: 10, e: 0 },
+        dmgScale: { p: 0.1, e: 0 },
         range: 150,
         projectile: { speed: 280 },
         fx: { lineColor: "#d0c9b0" },
@@ -121,7 +121,7 @@ const abilities = {
         name: "Static Burst",
         category: "aoe",
         cooldown: 5.2,
-        resourceUse: { stamina: 0, energy: 12 },
+        resourceUse: { stamina: 0, energy: 15 },
         flatDmg: { p: 0, e: 10 },
         dmgScale: { p: 0, e: 0.3 },
         range: 90,
@@ -136,7 +136,7 @@ const abilities = {
         cooldown: 3.0,
         resourceUse: { stamina: 10, energy: 0 },
         flatDmg: { p: 15, e: 0 },
-        dmgScale: { p: 0.35, e: 0 },
+        dmgScale: { p: 0.65, e: 0 },
         range: 26,
         dash: { distance: 90, stopShort: 18 },
         effectsOnHit: [{ type: "slow", chance: 0.35, duration: 1.1, magnitude: 0.25 }],
@@ -146,7 +146,7 @@ const abilities = {
         name: "Static Barrier",
         category: "barrier",
         cooldown: 10.5,
-        resourceUse: { stamina: 0, energy: 15 },
+        resourceUse: { stamina: 0, energy: 20 },
         flatDmg: { p: 0, e: 0 },
         dmgScale: { p: 0, e: 0 },
         range: 120,
@@ -157,7 +157,7 @@ const abilities = {
         name: "Rally Howl",
         category: "utility",
         cooldown: 6.2,
-        resourceUse: { stamina: 0, energy: 8 },
+        resourceUse: { stamina: 0, energy: 10 },
         flatDmg: { p: 0, e: 0 },
         dmgScale: { p: 0, e: 0 },
         range: 0,
@@ -477,14 +477,15 @@ class Creature {
     addXP(amount) {
         const events = [];
         this.xp += amount;
+        
         while (this.xp >= this.nextXP) {
             this.xp -= this.nextXP;
             this.level += 1;
             this.nextXP = xpNeededForLevel(this.level);
-            this.growthStats.maxHP += 8;
-            this.growthStats.pAtk += 1.5;
-            this.growthStats.eAtk += 1.5;
-            this.growthStats.spd += 1.2;
+            this.growthStats.maxHP += 40;
+            this.growthStats.pAtk += 5.5;
+            this.growthStats.eAtk += 5.5;
+            this.growthStats.spd += 1.0;
             this.rebuildStats();
             this.currentHP = Math.min(this.currentHP + 14, this.modifiedStats.maxHP);
             events.push({ type: "leveledUp", newLevel: this.level });
