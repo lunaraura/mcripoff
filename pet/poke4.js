@@ -727,6 +727,7 @@ class Brain {
         const dz = target.pos.z - h.pos.z;
         const d = Math.hypot(dx, dz);
         const n = norm2D(dx, dz);
+        const ctx = this.getLocalCombatContext(world, h, target);
 
         const preferredRange = this.role === "ranged" ? 95 : 18;
         const leash = this.role === "ranged" ? 20 : 8;
@@ -739,11 +740,13 @@ class Brain {
             }
         }
 
-        if (d > preferredRange + leash) h.intent.move = { x: n.x, z: n.z };
+        if (this.role === "ranged" && (ctx.outnumbered || ctx.hpRatio < 0.45) && d < preferredRange + 10) {
+            h.intent.move = { x: -n.x, z: -n.z };
+        } else if (d > preferredRange + leash) h.intent.move = { x: n.x, z: n.z };
         else if (d < preferredRange - leash) h.intent.move = { x: -n.x, z: -n.z };
         else h.intent.move = { x: 0, z: 0 };
 
-        const bestAbility = this.pickAbility(h, d);
+        const bestAbility = this.pickAbility(world, h, target, d, ctx);
         if (bestAbility) {
             h.intent.abilityKey = bestAbility;
             h.intent.targetId = target.id;
@@ -751,7 +754,84 @@ class Brain {
         }
     }
 
-    pickAbility(creature, distToTarget) {
+    getLocalCombatContext(world, creature, target) {
+        let nearbyAllies = 0;
+        let nearbyEnemies = 0;
+        let lowHpAllies = 0;
+        for (const other of world.creatures) {
+            if (other.lifecycle !== "alive" || other.id === creature.id) continue;
+            if (dist(creature.pos.x, creature.pos.z, other.pos.x, other.pos.z) > 150) continue;
+            if (other.team === creature.team) {
+                nearbyAllies++;
+                if (other.currentHP / Math.max(1, other.modifiedStats.maxHP) < 0.45) lowHpAllies++;
+            } else nearbyEnemies++;
+        }
+        const hpRatio = creature.currentHP / Math.max(1, creature.modifiedStats.maxHP);
+        const staminaRatio = creature.currentStamina / Math.max(1, creature.modifiedStats.stamina);
+        const energyRatio = creature.currentEnergy / Math.max(1, creature.modifiedStats.energy);
+        const targetRatio = target ? (target.currentHP / Math.max(1, target.modifiedStats.maxHP)) : 1;
+        return {
+            hpRatio,
+            staminaRatio,
+            energyRatio,
+            targetRatio,
+            nearbyAllies,
+            lowHpAllies,
+            nearbyEnemies,
+            outnumbered: nearbyEnemies > nearbyAllies + 1,
+        };
+    }
+
+    shouldDashEngage(creature, target, ability, distToTarget, ctx) {
+        if (!ability?.dash) return false;
+        const dashReach = (ability.dash.distance ?? 70) + (ability.range ?? 20);
+        const preferredRange = this.role === "ranged" ? 95 : 18;
+        if (distToTarget <= preferredRange + 6) return false;
+        if (distToTarget > dashReach) return false;
+        if (ctx.hpRatio < 0.35 && ctx.outnumbered) return false;
+        return ctx.targetRatio < 0.65 || this.role !== "ranged";
+    }
+
+    shouldDashEscape(creature, target, ability, distToTarget, ctx) {
+        if (ability.category !== "retreat" && ability.category !== "dash") return false;
+        const lowResources = ctx.staminaRatio < 0.3 && ctx.energyRatio < 0.3;
+        const tooCloseForRanged = this.role === "ranged" && distToTarget < 50;
+        return ctx.hpRatio < 0.38 || lowResources || ctx.outnumbered || tooCloseForRanged;
+    }
+
+    shouldUseBarrier(creature, ctx) {
+        if (ctx.hpRatio < 0.45) return true;
+        if (ctx.outnumbered) return true;
+        if (ctx.lowHpAllies > 0) return true;
+        if (this.role === "ranged" && ctx.nearbyEnemies > 0 && ctx.energyRatio > 0.4) return true;
+        return false;
+    }
+
+    scoreAbilityUse(creature, target, ability, distToTarget, ctx) {
+        let score =
+            (ability.flatDmg?.p ?? 0) +
+            (ability.flatDmg?.e ?? 0) +
+            (ability.dmgScale?.p ?? 0) * creature.modifiedStats.pAtk +
+            (ability.dmgScale?.e ?? 0) * creature.modifiedStats.eAtk +
+            (ability.effectsOnHit ? 2 : 0);
+
+        if (ability.category === "barrier") {
+            return this.shouldUseBarrier(creature, ctx) ? 35 : -10;
+        }
+
+        if (ability.category === "dash" || ability.category === "gap_close") {
+            if (this.shouldDashEscape(creature, target, ability, distToTarget, ctx) && this.role === "ranged") score += 10;
+            if (this.shouldDashEngage(creature, target, ability, distToTarget, ctx)) score += 16;
+            else score -= 12;
+        }
+        if (ability.category === "retreat") {
+            score += this.shouldDashEscape(creature, target, ability, distToTarget, ctx) ? 20 : -8;
+        }
+        if (ctx.targetRatio < 0.3) score += 5;
+        return score;
+    }
+
+    pickAbility(world, creature, target, distToTarget, ctx) {
         let best = null;
         let bestScore = -Infinity;
         for (const key of creature.moveset) {
@@ -760,14 +840,14 @@ class Brain {
             if ((creature.cooldowns[key] ?? 0) > 0) continue;
             if ((a.resourceUse?.stamina ?? 0) > creature.currentStamina) continue;
             if ((a.resourceUse?.energy ?? 0) > creature.currentEnergy) continue;
-            if (distToTarget > (a.range ?? 999)) continue;
 
-            const score =
-                (a.flatDmg?.p ?? 0) +
-                (a.flatDmg?.e ?? 0) +
-                (a.dmgScale?.p ?? 0) * creature.modifiedStats.pAtk +
-                (a.dmgScale?.e ?? 0) * creature.modifiedStats.eAtk +
-                (a.effectsOnHit ? 2 : 0);
+            const isDash = a.category === "dash" || a.category === "gap_close" || a.category === "retreat";
+            const inNormalRange = distToTarget <= (a.range ?? 999);
+            const inDashReach = isDash && distToTarget <= ((a.dash?.distance ?? 70) + (a.range ?? 20));
+            const isBarrier = a.category === "barrier";
+            if (!isBarrier && !inNormalRange && !inDashReach) continue;
+
+            const score = this.scoreAbilityUse(creature, target, a, distToTarget, ctx);
             if (score > bestScore) {
                 bestScore = score;
                 best = key;
@@ -1336,8 +1416,8 @@ class World {
             return true;
         }
         if (a.category === "barrier") {
-            const atX = target?.pos?.x ?? source.pos.x;
-            const atZ = target?.pos?.z ?? source.pos.z;
+            const atX = source.pos.x;
+            const atZ = source.pos.z;
             this.spawnBarrier(source, atX, atZ, a.barrier ?? {});
             this.pushFloatingText(atX, atZ - 12, a.name, "#9ed8ff");
             this.combatFx.push({ type: "pulse", x: atX, z: atZ, radius: a.barrier?.radius ?? 48, ttl: 0.22, color: a.fx?.pulseColor ?? "rgba(120,190,255,0.25)" });
