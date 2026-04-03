@@ -76,7 +76,7 @@ const abilities = {
         cooldown: 2.0,
         resourceUse: { stamina: 5, energy: 0 },
         flatDmg: { p: 5, e: 0 },
-        dmgScale: { p: 0.5, e: 0 },
+        dmgScale: { p: 0.7, e: 0 },
         range: 24,
     },
     zap: {
@@ -87,7 +87,7 @@ const abilities = {
         flatDmg: { p: 0, e: 2 },
         dmgScale: { p: 0, e: 0.2 },
         range: 80,
-        soakAdd: { electric: 0.75 },
+        soakAdd: { electric: 0.5 },
         effectsOnHit: [{ type: "shock", chance: 0.25, duration: 1.5, magnitude: 0.2 }],
         fx: { lineColor: "#8ac7ff" },
     },
@@ -122,7 +122,7 @@ const abilities = {
         dmgScale: { p: 0, e: 0.3 },
         range: 90,
         area: { radius: 40 },
-        soakAdd: { electric: 0.4 },
+        soakAdd: { electric: 0.2 },
         effectsOnHit: [{ type: "slow", duration: 1.5, magnitude: 0.35 }],
         fx: { pulseColor: "rgba(120,190,255,0.55)" },
     },
@@ -132,11 +132,11 @@ const abilities = {
         cooldown: 5.2,
         resourceUse: { stamina: 15, energy: 0 },
         flatDmg: { p: 10, e: 0 },
-        dmgScale: { p: 0.6, e: 0 },
+        dmgScale: { p: 0.9, e: 0 },
         range: 90,
-        area: { radius: 30 },
+        area: { radius: 60 },
         effectsOnHit: [{ type: "slow", duration: 1.5, magnitude: 0.35 }],
-        fx: { pulseColor: "rgba(120,190,255,0.55)" },
+        fx: { pulseColor: "rgba(255, 226, 80, 0.55)" },
     },
     dashBite: {
         name: "Dash Bite",
@@ -171,13 +171,23 @@ const abilities = {
         range: 0,
         selfStatus: [{ type: "regen", duration: 4.0, magnitude: 4.0 }],
     },
+    disengage: {
+        name: "Disengage",
+        category: "retreat",
+        cooldown: 3.0,
+        resourceUse: { stamina: 10, energy: 0 },
+        flatDmg: { p: 10, e: 0 },
+        dmgScale: { p: 0, e: 0 },
+        dash: { distance: 80, stopShort: 10 },
+        range: 0,
+    },
 };
 const species = {
     dog: {
         name: "Dog",
         compositeKey: "animal",
         role: "fighter",
-        baseStats: { pAtk: 12, eAtk: 2, range: 24, maxHP: 110, spd: 70, castSpd: 1, size: 10, stamina: 25, energy: 10, recoverStamina: 6, recoverEnergy: 3 },
+        baseStats: { pAtk: 12, eAtk: 2, range: 24, maxHP: 110, spd: 70, castSpd: 1, size: 10, stamina: 25, energy: 10, recoverStamina: 2, recoverEnergy: 1 },
         moveset: ["ram", "dashBite", "rallyHowl", "stomp"], learnset: [], //later, add at what level it learns what
         morphOptions: [] //{option: speciesKey, pointsNeeded: value}
 
@@ -186,21 +196,21 @@ const species = {
         name: "Sparkit",
         compositeKey: "voltage",
         role: "ranged",
-        baseStats: { pAtk: 4, eAtk: 12, range: 100, maxHP: 85, spd: 65, castSpd: 1, size: 9, stamina: 16, energy: 24, recoverStamina: 4, recoverEnergy: 6 },
+        baseStats: { pAtk: 4, eAtk: 12, range: 100, maxHP: 85, spd: 65, castSpd: 1, size: 9, stamina: 16, energy: 24, recoverStamina: 1, recoverEnergy: 2 },
         moveset: ["zap", "staticBurst", "staticBarrier"],
     },
     cinderpup: {
         name: "Cinderpup",
         compositeKey: "fire",
         role: "fighter",
-        baseStats: { pAtk: 10, eAtk: 8, range: 30, maxHP: 95, spd: 74, castSpd: 1, size: 9, stamina: 24, energy: 18, recoverStamina: 6, recoverEnergy: 5 },
+        baseStats: { pAtk: 10, eAtk: 8, range: 30, maxHP: 95, spd: 74, castSpd: 1, size: 9, stamina: 24, energy: 18, recoverStamina: 2, recoverEnergy: 2 },
         moveset: ["emberClaw", "ram"],
     },
     pebblit: {
         name: "Pebblit",
         compositeKey: "rock",
         role: "ranged",
-        baseStats: { pAtk: 9, eAtk: 3, range: 120, maxHP: 120, spd: 58, castSpd: 1, size: 11, stamina: 22, energy: 12, recoverStamina: 5, recoverEnergy: 3 },
+        baseStats: { pAtk: 9, eAtk: 3, range: 120, maxHP: 120, spd: 58, castSpd: 1, size: 11, stamina: 22, energy: 12, recoverStamina: 1, recoverEnergy: 1 },
         moveset: ["pebbleShot", "ram"],
     },
 };
@@ -208,27 +218,27 @@ const biomeDefs = {
     plains: {
         color: "#89a87c",
         spawns: [{ key: "dog", weight: 5 }, { key: "pebblit", weight: 2 }],
-        nodes: [{ key: "berry_bush", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
+        nodes: [{ key: "berry_bush", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     forest: {
         color: "#6e9a5f",
         spawns: [{ key: "dog", weight: 3 }, { key: "cinderpup", weight: 2 }],
-        nodes: [{ key: "berry_bush", weight: 22 }, { key: "bait_shrub", weight: 3 }, {key: "revive_berry_bush", weight: 1}],
+        nodes: [{ key: "berry_bush", weight: 22 }, { key: "bait_shrub", weight: 3 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     desert: {
         color: "#b8a56c",
         spawns: [{ key: "pebblit", weight: 5 }, { key: "cinderpup", weight: 3 }],
-        nodes: [{ key: "energy_crystal", weight: 5 }, { key: "bait_shrub", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
+        nodes: [{ key: "energy_crystal", weight: 5 }, { key: "bait_shrub", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     stormfield: {
         color: "#74879b",
         spawns: [{ key: "sparkit", weight: 6 }, { key: "dog", weight: 2 }],
-        nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
+        nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     volcanic: {
         color: "#8b5c4f",
         spawns: [{ key: "cinderpup", weight: 6 }, { key: "pebblit", weight: 2 }],
-        nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
+        nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
 };
 const itemDefs = {
@@ -238,6 +248,7 @@ const itemDefs = {
     revive_berry: { name: "Revive Berry", type: "revive", amount: 0.5 },
     boost_berry: { name: "Boost Berry", type: "buff", amount: 0.15, duration: 20 },
     battery_seed: { name: "Battery Seed", type: "energy", amount: 16, stamina: 10 },
+    replenish_berry: { name: "Replenish Berry", type: "energy", amount: 0, stamina: 20 },
     lure_meat: { name: "Lure Meat", type: "bait", tameBonus: 0.25, requiredHPRatio: 0.45 },
 };
 const nodeDefs = {
@@ -247,6 +258,7 @@ const nodeDefs = {
     revive_berry_bush: { color: "#7b3e1d", reward: { key: "revive_berry", amount: 1 }, cooldown: 18 },
     boost_berry_bush: { color: "#ffcc00", reward: { key: "boost_berry", amount: 1 }, cooldown: 20 },
     energy_crystal: { color: "#5fc7ff", reward: { key: "battery_seed", amount: 1 }, cooldown: 14 },
+    replenish_berry_bush: { color: "#e1f2d8", reward: { key: "replenish_berry", amount: 1 }, cooldown: 20 },
     bait_shrub: { color: "#a6a052", reward: { key: "lure_meat", amount: 1 }, cooldown: 16 },
 };
 /* =========================
@@ -947,8 +959,6 @@ class PlayerEntity {
     updateAutoMovement(input, dt, world) {
         let mx = 0;
         let mz = 0;
-        if (input.isDown("KeyW")) mz -= 1;
-        if (input.isDown("KeyD")) mx += 1;
         if (input.isDown("ArrowLeft")) mx -= 1;
         if (input.isDown("ArrowRight")) mx += 1;
         if (input.isDown("ArrowUp")) mz -= 1;
@@ -1046,7 +1056,9 @@ class PlayerEntity {
         if (input.consumePress("KeyZ")) world.useSelectedItem();
         if (input.consumePress("KeyA")) world.queueManualCast(0);
         if (input.consumePress("KeyS")) world.queueManualCast(1);
-        if (input.consumePress("KeyF")) world.tryInteractNearestNode();
+        if (input.consumePress("KeyD")) world.queueManualCast(2);
+        if (input.consumePress("KeyF")) world.queueManualCast(2);
+        if (input.consumePress("KeyG")) world.tryInteractNearestNode();
         if (input.consumePress("BracketLeft")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
         if (input.consumePress("BracketRight")) this.selectedReserveIndex += 1;
         if (input.consumePress("KeyT")) world.swapActiveWithReserve(this.selectedReserveIndex);
@@ -1497,15 +1509,19 @@ class World {
             const c = this.getCreatureById(id);
             if (c && c.lifecycle === "alive" && c.team === 0) contributors.push(c);
         }
+        let averageLevel = 0
         // XP loop: nearby allies get a small share.
         for (const pid of this.player.petIds) {
             const pet = this.getCreatureById(pid);
+            if (pet) averageLevel += pet.level;
             if (!pet || pet.lifecycle !== "alive") continue;
             if (!contributors.includes(pet) && dist(pet.pos.x, pet.pos.z, dead.pos.x, dead.pos.z) < 140) contributors.push(pet);
         }
-        const baseXP = 75;
-        const deadLevel = dead.level;
-        const adjustedXP = Math.floor(baseXP * (1 + deadLevel * 0.12));
+        if (contributors.length > 0) {
+            averageLevel /= contributors.length;
+        }
+        const scale = clamp(1 + (averageLevel - dead.level) * 0.12, 0.75, 1.25);
+        const adjustedXP = Math.round((dead.level * 12 + 50) * scale);
         for (const pet of contributors) {
             const events = pet.addXP(adjustedXP);
             this.syncOwnedCreatureFromRuntime(pet);
@@ -1528,7 +1544,7 @@ class World {
                 pet.currentHP = Math.max(1, Math.floor(pet.modifiedStats.maxHP*def.amount))
                 pet.currentEnergy = Math.max(1, Math.floor(pet.modifiedStats.energy * 0.5))
                 pet.currentStamina = Math.max(1, Math.floor(pet.modifiedStats.stamina * 0.5))
-                EffectEngine.addStatus(pet, EffectEngine.createStatus("defBoost", 4.0, 50, pet.id));
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("defBoost", 4.0, 0.75, pet.id));
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `Revived`, "#ffe38e");
                 this.player.inventory[itemKey] -= 1;
                 return true;
@@ -1538,6 +1554,7 @@ class World {
                 pet.currentHP = Math.min(pet.modifiedStats.maxHP, pet.currentHP + def.amount);
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `+${def.amount} HP`, "#8dff9d");
             }
+            
             if (def.type === "energy") {
                 pet.currentEnergy = Math.min(pet.modifiedStats.energy, pet.currentEnergy + def.amount);
                 pet.currentStamina = Math.min(pet.modifiedStats.stamina, pet.currentStamina + (def.stamina ?? 0));
@@ -1631,6 +1648,10 @@ class World {
             return false;
         }
         const def = nodeDefs[best.type];
+        if (!this.player.inventory[def.reward.key]) {
+            this.player.itemBar.push(def.reward.key);
+            this.player.inventory[def.reward.key] = 0;
+        }
         this.player.inventory[def.reward.key] = (this.player.inventory[def.reward.key] ?? 0) + def.reward.amount;
         best.cooldown = def.cooldown;
         this.player.lastLog = `Gathered ${def.reward.key} x${def.reward.amount}`;
@@ -1958,7 +1979,7 @@ class World {
             ctx.fillStyle = "#bbb";
             ctx.fillText("No active pet", castPanelX + 10, castPanelY + 34);
         } else {
-            for (let i = 0; i < 2; i++) {
+            for (let i = 0; i < 4; i++) {
                 const abilityKey = activePet.moveset[i];
                 const ability = abilities[abilityKey];
                 const rowY = castPanelY + 34 + i * 24;
@@ -2156,19 +2177,28 @@ class MainScene {
 }
 const game = new Game();
 game.start();
-// Notes2: Later in const species definition, re-add 
-// learnset: [{move: movekey, level: at what level it can learn it}].
-// Also add morphOptions that has the key to what it can morph into and how many morphpoints
-// are needed for it. Changes: scaled defeated creatures level into addXP arguments.
-// Added skeleton for BuildingManager: may be hosted inside World or ChunkManager or
-// whichever hosts BiomeManager (chunkmanager doesn't actually exist in this iteration but does in the roblox version.
-// Maybe biomesystem is an overlay to chunkManager or they mix in together.
-// roblox version isn't voxel based, but js game prototype can be, maybe should be.).
-// Added Tree as interactable node. Right now it can be "picked" by player with nothing
-// special. Later, may want to use creature ability to "damage" the tree. In this case, 
-// interactable node and creature have to be selected by player maybe, so maybe have a
-//  super class that they extend from or something. Added Chunk system as an object. 
-//  It is technically tp down for now so there isn't a need for height maps, digging, etc.
-//  World class is cluttered with things that you could put in a manager.
-//   Probably refactor with world.combat.methods(args) that are already there, 
-//   use world.playerInteraction.methods and other stuff.
+// Notes2: Later in const species definition, re-add learnset: [{move: 
+// movekey, level: at what level it can learn it}]. Also add morphOptions that
+//  has the key to what it can morph into and how many morphpoints are needed
+//  for it. Changes: scaled defeated creatures level into addXP arguments.
+//  Added skeleton for BuildingManager: may be hosted inside World or 
+// ChunkManager or whichever hosts BiomeManager (chunkmanager doesn't
+//  actually exist in this iteration but does in the roblox version. Maybe 
+// biomesystem is an overlay to chunkManager or they mix in together. roblox
+//  version isn't voxel based, but js game prototype can be, maybe should 
+// be.). Added Tree as interactable node. Right now it can be "picked" by 
+// player with nothing special. Later, may want to use creature ability to 
+// "damage" the tree. In this case, interactable node and creature have to be
+//  selected by player maybe, so maybe have a super class that they extend 
+// from or something. Added Chunk system as an object. It is technically tp 
+// down for now so there isn't a need for height maps, digging, etc.. World
+//  class is cluttered with things that you could put in a manager. Probably
+//  refactor with world.combat.methods(args) that are already there, use 
+// world.playerInteraction.methods and other stuff. The pet creatures also 
+// wander off too far away from the camera center. Might want to give pets 
+// an explicit leash to the player even in combat. Also added "disengage". 
+// Should work like quinn E: target an enemy, gap close and damage, and then
+//  jump back a larger distance. Added replenish berry that replenishes 
+// stamina more, adjusted stamina and energy recovery rates so that it 
+// matters more, and fixed up itemBar and inventory to automatically add
+//  items not already there so you can select them in inventory
