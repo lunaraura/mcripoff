@@ -835,14 +835,79 @@ const BiomeSystem = {
         if (n < 1.15) return "stormfield";
         return "volcanic";
     },
+    getBiomeMix(x,z){
+        return {
+        plains: 0.55,
+        forest: 0.30,
+        stormfield: 0.15
+        }
+    },
     getBiomeAt(x, z) {
         const key = this.getBiomeKeyAt(x, z);
         return { key, ...biomeDefs[key] };
     },
 };
 const ChunkSystem = {
+  CHUNK_SIZE: 256,
+  CELL_SIZE: 16,
+  LOAD_RADIUS: 2,
 
-}
+  key(cx, cz) {
+    return `${cx}|${cz}`;
+  },
+
+  worldToChunk(x, z) {
+    return {
+      cx: Math.floor(x / this.CHUNK_SIZE),
+      cz: Math.floor(z / this.CHUNK_SIZE),
+    };
+  },
+
+  ensureChunk(world, cx, cz) {
+    const key = this.key(cx, cz);
+    if (world.chunks.has(key)) return world.chunks.get(key);
+
+    const chunk = this.generateChunk(world, cx, cz);
+    world.chunks.set(key, chunk);
+    return chunk;
+  },
+
+  generateChunk(world, cx, cz) {
+    const chunk = {
+      cx, cz,
+      cells: [],
+      nodes: [],
+      obstacles: [],
+      spawnPoints: [],
+      dominantBiome: "plains",
+      biomeMix: null,
+    };
+
+    // fill this next
+    return chunk;
+  },
+    sampleHeight(x, z) {
+    const n1 = Math.sin(x * 0.003) * 40;
+    const n2 = Math.cos(z * 0.004) * 20;
+    const n3 = Math.sin((x + z) * 0.006) * 10;
+    return n1 + n2 + n3;
+  },
+  updateLoadedChunks(world) {
+    const { cx, cz } = this.worldToChunk(world.player.pos.x, world.player.pos.z);
+
+    for (let dz = -this.LOAD_RADIUS; dz <= this.LOAD_RADIUS; dz++) {
+      for (let dx = -this.LOAD_RADIUS; dx <= this.LOAD_RADIUS; dx++) {
+        this.ensureChunk(world, cx + dx, cz + dz);
+      }
+    }
+
+    for (const [key, chunk] of world.chunks) {
+      if (Math.abs(chunk.cx - cx) > this.LOAD_RADIUS + 1 || Math.abs(chunk.cz - cz) > this.LOAD_RADIUS + 1) {
+        world.chunks.delete(key);
+      }
+    }
+  }
+};
 class SpawnField {
     constructor(radius = 260, innerNoSpawn = 90, maxWild = 8, interval = 1.6) {
         this.radius = radius;
@@ -1095,6 +1160,7 @@ class World {
         this.height = 1100;
         this.time = 0;
         this.camera = new Camera();
+        this.chunks = new Map();
         this.player = new PlayerEntity(this.width / 2, this.height / 2);
         this.creatures = [];
         this.factory = new CreatureFactory();
@@ -1204,6 +1270,7 @@ class World {
         this.time += dt;
         this.player.update(dt, input, this);
         this.normalizeReserveSelection();
+        ChunkSystem.updateLoadedChunks(this);
         this.spawnField.update(dt, this);
         this.nodeSpawnTimer += dt;
         if (this.nodeSpawnTimer > 7.5 && this.nodes.length < 20) {
