@@ -87,10 +87,10 @@ const abilities = {
         name: "Zap",
         category: "hitscan",
         cooldown: 4.2,
-        resourceUse: { stamina: 0, energy: 5 },
-        flatDmg: { p: 0, e: 16 },
+        resourceUse: { stamina: 0, energy: 10 },
+        flatDmg: { p: 0, e: 5 },
         dmgScale: { p: 0, e: 0.3 },
-        range: 120,
+        range: 80,
         soakAdd: { electric: 0.75 },
         effectsOnHit: [{ type: "shock", chance: 0.25, duration: 1.5, magnitude: 0.2 }],
         fx: { lineColor: "#8ac7ff" },
@@ -98,7 +98,7 @@ const abilities = {
     emberClaw: {
         name: "Ember Claw",
         category: "melee",
-        cooldown: 2.4,
+        cooldown: 1.4,
         resourceUse: { stamina: 6, energy: 2 },
         flatDmg: { p: 8, e: 5 },
         dmgScale: { p: 0.3, e: 0.35 },
@@ -123,7 +123,7 @@ const abilities = {
         cooldown: 5.2,
         resourceUse: { stamina: 0, energy: 12 },
         flatDmg: { p: 0, e: 10 },
-        dmgScale: { p: 0, e: 0.5 },
+        dmgScale: { p: 0, e: 0.3 },
         range: 90,
         area: { radius: 40 },
         soakAdd: { electric: 0.4 },
@@ -133,10 +133,10 @@ const abilities = {
     dashBite: {
         name: "Dash Bite",
         category: "dash",
-        cooldown: 4.0,
-        resourceUse: { stamina: 8, energy: 0 },
-        flatDmg: { p: 14, e: 0 },
-        dmgScale: { p: 0.45, e: 0 },
+        cooldown: 3.0,
+        resourceUse: { stamina: 10, energy: 0 },
+        flatDmg: { p: 15, e: 0 },
+        dmgScale: { p: 0.35, e: 0 },
         range: 26,
         dash: { distance: 90, stopShort: 18 },
         effectsOnHit: [{ type: "slow", chance: 0.35, duration: 1.1, magnitude: 0.25 }],
@@ -146,7 +146,7 @@ const abilities = {
         name: "Static Barrier",
         category: "barrier",
         cooldown: 10.5,
-        resourceUse: { stamina: 0, energy: 14 },
+        resourceUse: { stamina: 0, energy: 15 },
         flatDmg: { p: 0, e: 0 },
         dmgScale: { p: 0, e: 0 },
         range: 120,
@@ -652,7 +652,7 @@ class Brain {
             return false;
         }
 
-        if (ability.category === "utility") {
+        if (ability.category === "utility" || ability.category === "barrier") {
             const gate = world.evaluateAbilityUse(h, req.abilityKey, h);
             if (!gate.ok) {
                 world.setManualCastStatus(h, `Cast failed: ${gate.reason}`);
@@ -748,8 +748,10 @@ class Brain {
 
         const bestAbility = this.pickAbility(world, h, target, d, ctx);
         if (bestAbility) {
+            const ability = abilities[bestAbility]
             h.intent.abilityKey = bestAbility;
-            h.intent.targetId = target.id;
+            h.intent.targetId = (ability.category === " barrier" || ability.category === "utility")
+                ? h.id : target.id;
             h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
         }
     }
@@ -1355,6 +1357,11 @@ class World {
         if (!target || target.lifecycle !== "alive") return { ok: false, reason: "no valid target" };
         if (source.team === target.team) return { ok: false, reason: "invalid target" };
         const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
+        if (a.category === "dash" || a.category === "gap_close" || a.category === "retreat"){
+            const dashReach = (a.dash?.distance ?? 70) + (a.range ?? 20);
+            if (d > dashReach) return { ok: false, reason: "out of dash range" };
+            return { ok: true, reason: "ready" };
+        }
         if (d > (a.range ?? Infinity)) return { ok: false, reason: "out of range" };
         return { ok: true, reason: "ready" };
     }
@@ -1505,7 +1512,7 @@ class World {
             if (!contributors.includes(pet) && dist(pet.pos.x, pet.pos.z, dead.pos.x, dead.pos.z) < 140) contributors.push(pet);
         }
 
-        const baseXP = 24;
+        const baseXP = 100;
         for (const pet of contributors) {
             const events = pet.addXP(baseXP);
             this.syncOwnedCreatureFromRuntime(pet);
@@ -1529,6 +1536,7 @@ class World {
                 pet.currentHP = Math.max(1, Math.floor(pet.modifiedStats.maxHP*def.amount))
                 pet.currentEnergy = Math.max(1, Math.floor(pet.modifiedStats.energy * 0.5))
                 pet.currentStamina = Math.max(1, Math.floor(pet.modifiedStats.stamina * 0.5))
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("defBoost", 4.0, 50, pet.id));
                 this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `Revived`, "#ffe38e");
                 this.player.inventory[itemKey] -= 1;
                 return true;
