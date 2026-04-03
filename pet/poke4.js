@@ -871,7 +871,12 @@ class SpawnField {
             if (x < 0 || x > world.width || z < 0 || z > world.height) continue;
             const biome = BiomeSystem.getBiomeAt(x, z);
             const speciesKey = pickWeighted(biome.spawns);
-            const wild = world.factory.create(speciesKey, 1, x, z, { mode: "wild" });
+            const avgPartyLevel = world.player.petIds
+                .map(id => world.getCreatureById(id))
+                .filter(c => c && c.lifecycle === "alive")
+                .reduce((sum, c) => sum + c.level, 0) / Math.max(1, world.player.petIds.length);
+            const wildLevel = Math.max(1, Math.round(avgPartyLevel + (Math.random() * 4 - 2)));
+            const wild = world.factory.create(speciesKey, 1, x, z, { mode: "wild", level: wildLevel });
             const brain = new Brain();
             brain.attach(wild);
             world.creatures.push(wild);
@@ -1974,7 +1979,7 @@ class World {
         ctx.fillStyle = "rgba(0,0,0,0.62)";
         ctx.fillRect(castPanelX, castPanelY, castPanelW, castPanelH);
         ctx.fillStyle = "#fff";
-        ctx.fillText("Active Casts [A/S]", castPanelX + 10, castPanelY + 16);
+        // ctx.fillText("Active Casts [A/S]", castPanelX + 10, castPanelY + 16);
         if (!activePet || activePet.lifecycle !== "alive") {
             ctx.fillStyle = "#bbb";
             ctx.fillText("No active pet", castPanelX + 10, castPanelY + 34);
