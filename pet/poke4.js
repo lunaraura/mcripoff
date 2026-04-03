@@ -29,6 +29,7 @@ function drawGauge(ctx, x, y, w, h, ratio, fill, back = "#222") {
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w * clamp(ratio, 0, 1), h);
 }
+const seed = 1337
 /* =========================
    runtime registries (no legacy conceptBank paths)
 ========================= */
@@ -75,8 +76,8 @@ const abilities = {
         category: "melee",
         cooldown: 2.0,
         resourceUse: { stamina: 5, energy: 0 },
-        flatDmg: { p: 5, e: 0 },
-        dmgScale: { p: 0.7, e: 0 },
+        flatDmg: { p: 3, e: 0 },
+        dmgScale: { p: 0.8, e: 0 },
         range: 24,
     },
     zap: {
@@ -85,7 +86,7 @@ const abilities = {
         cooldown: 4.2,
         resourceUse: { stamina: 0, energy: 10 },
         flatDmg: { p: 0, e: 2 },
-        dmgScale: { p: 0, e: 0.2 },
+        dmgScale: { p: 0, e: 0.3 },
         range: 80,
         soakAdd: { electric: 0.5 },
         effectsOnHit: [{ type: "shock", chance: 0.25, duration: 1.5, magnitude: 0.2 }],
@@ -97,7 +98,7 @@ const abilities = {
         cooldown: 1.4,
         resourceUse: { stamina: 6, energy: 2 },
         flatDmg: { p: 5, e: 3 },
-        dmgScale: { p: 0.3, e: 0.2 },
+        dmgScale: { p: 0.4, e: 0.2 },
         range: 26,
         soakAdd: { heat: 1.0 },
         effectsOnHit: [{ type: "burn", chance: 0.5, duration: 3.2, magnitude: 3.5 }],
@@ -107,10 +108,10 @@ const abilities = {
         category: "projectile",
         cooldown: 6.0,
         resourceUse: { stamina: 5, energy: 0 },
-        flatDmg: { p: 10, e: 0 },
-        dmgScale: { p: 0.1, e: 0 },
+        flatDmg: { p: 4, e: 0 },
+        dmgScale: { p: 0.2, e: 0 },
         range: 150,
-        projectile: { speed: 280 },
+        projectile: { speed: 10 },
         fx: { lineColor: "#d0c9b0" },
     },
     staticBurst: {
@@ -218,12 +219,12 @@ const biomeDefs = {
     plains: {
         color: "#89a87c",
         spawns: [{ key: "dog", weight: 5 }, { key: "pebblit", weight: 2 }],
-        nodes: [{ key: "berry_bush", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
+        nodes: [{ key: "berry_bush_red", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     forest: {
         color: "#6e9a5f",
         spawns: [{ key: "dog", weight: 3 }, { key: "cinderpup", weight: 2 }],
-        nodes: [{ key: "berry_bush", weight: 22 }, { key: "bait_shrub", weight: 3 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
+        nodes: [{ key: "berry_bush_red", weight: 22 }, { key: "bait_shrub", weight: 3 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     desert: {
         color: "#b8a56c",
@@ -233,12 +234,54 @@ const biomeDefs = {
     stormfield: {
         color: "#74879b",
         spawns: [{ key: "sparkit", weight: 6 }, { key: "dog", weight: 2 }],
-        nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
+        nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush_red", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     volcanic: {
         color: "#8b5c4f",
         spawns: [{ key: "cinderpup", weight: 6 }, { key: "pebblit", weight: 2 }],
         nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
+    },
+};
+const biomeRules = {
+    plains: {
+        temperature: 0.55,
+        rainfall: 0.45,
+        lithosphere: 0.45,
+        barrenness: 0.35,
+        softness: 0.28,
+        bias: 1.0,
+    },
+    forest: {
+        temperature: 0.50,
+        rainfall: 0.75,
+        lithosphere: 0.42,
+        barrenness: 0.15,
+        softness: 0.26,
+        bias: 1.05,
+    },
+    desert: {
+        temperature: 0.82,
+        rainfall: 0.12,
+        lithosphere: 0.40,
+        barrenness: 0.90,
+        softness: 0.22,
+        bias: 0.95,
+    },
+    stormfield: {
+        temperature: 0.45,
+        rainfall: 0.65,
+        lithosphere: 0.55,
+        barrenness: 0.55,
+        softness: 0.24,
+        bias: 0.85,
+    },
+    volcanic: {
+        temperature: 0.88,
+        rainfall: 0.18,
+        lithosphere: 0.82,
+        barrenness: 0.78,
+        softness: 0.20,
+        bias: 0.70,
     },
 };
 const itemDefs = {
@@ -252,7 +295,7 @@ const itemDefs = {
     lure_meat: { name: "Lure Meat", type: "bait", tameBonus: 0.25, requiredHPRatio: 0.45 },
 };
 const nodeDefs = {
-    berry_bush: { color: "#bb2f58", reward: { key: "berry_red", amount: 2 }, cooldown: 12 },
+    berry_bush_red: { color: "#bb2f58", reward: { key: "berry_red", amount: 2 }, cooldown: 12 },
     berry_bush_blue: { color: "#4a90e2", reward: { key: "berry_blue", amount: 2 }, cooldown: 12 },
     berry_bush_yellow: { color: "#f4c24a", reward: { key: "berry_yellow", amount: 2 }, cooldown: 12 },
     revive_berry_bush: { color: "#7b3e1d", reward: { key: "revive_berry", amount: 1 }, cooldown: 18 },
@@ -260,6 +303,68 @@ const nodeDefs = {
     energy_crystal: { color: "#5fc7ff", reward: { key: "battery_seed", amount: 1 }, cooldown: 14 },
     replenish_berry_bush: { color: "#e1f2d8", reward: { key: "replenish_berry", amount: 1 }, cooldown: 20 },
     bait_shrub: { color: "#a6a052", reward: { key: "lure_meat", amount: 1 }, cooldown: 16 },
+};
+const placeableDefs = {
+  berry_bush_red: {
+    kind: "farm",
+    name: "Berry Bush",
+    color: "#bb2f58",
+    maxHP: 60,
+    radius: 10,
+    buildTime: 3.0,
+    destroyTime: 2.0,
+    harvestTime: 2.0,
+    buildCost: [{ key: "berry_red", amount: 1 }],
+    growTime: 12,
+    rewards: [{ key: "berry_red", amount: 1 }],
+  },
+  berry_bush_blue: {
+    kind: "farm",
+    name: "Blue Berry Bush",
+    color: "#4a90e2",
+    maxHP: 60,
+    radius: 10,
+    buildTime: 3.0,
+    destroyTime: 2.0,
+    harvestTime: 2.0,
+    buildCost: [{ key: "berry_blue", amount: 1 }],
+    growTime: 12,
+    rewards: [{ key: "berry_blue", amount: 1 }],
+  },
+  berry_bush_yellow: {
+    kind: "farm",
+    name: "Yellow Berry Bush",
+    color: "#f4c24a",
+    maxHP: 60,
+    radius: 10,
+    buildTime: 3.0,
+    destroyTime: 2.0,
+    harvestTime: 2.0,
+    buildCost: [{ key: "berry_yellow", amount: 1 }],
+    growTime: 12,
+    rewards: [{ key: "berry_yellow", amount: 1 }],
+  },
+  shelter: {
+    kind: "structure",
+    name: "Shelter",
+    color: "#8b5c4f",
+    maxHP: 300,
+    radius: 16,
+    buildTime: 6.0,
+    destroyTime: 4.0,
+    buildCost: [{ key: "wood_plank", amount: 3 }],
+    provides: { restHeal: 0.02 },
+  },
+
+};
+const toolDefs = {
+  hammer: {
+    name: "Hammer",
+    modes: ["build", "destroy"],
+    buildTypes: ["shelter", "berry_bush_red"],
+    canDestroy: true,
+    range: 40,
+  },
 };
 /* =========================
    systems: effects/status/progression
@@ -517,11 +622,11 @@ class Creature {
         const mv = norm2D(this.intent.move.x, this.intent.move.z);
         this.vel.x = mv.x * this.modifiedStats.spd * this.runtimeSpeedMult;
         this.vel.z = mv.z * this.modifiedStats.spd * this.runtimeSpeedMult;
-        this.pos.x = clamp(this.pos.x + this.vel.x * dt, 0, world.width);
-        this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
+        this.pos.x += this.vel.x* dt
+        this.pos.z += this.vel.z* dt
         if (mv.x !== 0 || mv.z !== 0) this.angle = Math.atan2(mv.z, mv.x);
-        world.tickAbilityCast(this, dt);
-        if (this.intent.abilityKey && this.intent.targetId) world.tryUseAbility(this, this.intent.abilityKey, this.intent.targetId, this.intent.aimAt);
+        world.CM.tickAbilityCast(this, dt);
+        if (this.intent.abilityKey && this.intent.targetId) world.CM.tryUseAbility(this, this.intent.abilityKey, this.intent.targetId, this.intent.aimAt);
         this.hitFlash = Math.max(0, this.hitFlash - dt * 5);
     }
 }
@@ -634,20 +739,20 @@ class Brain {
         const ability = abilities[req.abilityKey];
         if (!ability) {
             h.manualCastRequest = null;
-            world.setManualCastStatus(h, "Unknown ability");
+            world.CM.setManualCastStatus(h, "Unknown ability");
             return false;
         }
         if (ability.category === "utility" || ability.category === "barrier") {
-            const gate = world.evaluateAbilityUse(h, req.abilityKey, h);
+            const gate = world.CM.evaluateAbilityUse(h, req.abilityKey, h);
             if (!gate.ok) {
-                world.setManualCastStatus(h, `Cast failed: ${gate.reason}`);
+                world.CM.setManualCastStatus(h, `Cast failed: ${gate.reason}`);
                 h.manualCastRequest = null;
                 return true;
             }
             h.intent.abilityKey = req.abilityKey;
             h.intent.targetId = h.id;
             h.intent.aimAt = { x: h.pos.x, z: h.pos.z };
-            world.setManualCastStatus(h, `Casting ${ability.name}`);
+            world.CM.setManualCastStatus(h, `Casting ${ability.name}`);
             h.manualCastRequest = null;
             return true;
         }
@@ -659,11 +764,11 @@ class Brain {
             target = world.findNearestEnemyOf(h, ability.range ?? Infinity) ?? world.findNearestEnemyOf(h, Infinity);
         }
         if (!target) {
-            world.setManualCastStatus(h, "No target");
+            world.CM.setManualCastStatus(h, "No target");
             h.manualCastRequest = null;
             return true;
         }
-        const gate = world.evaluateAbilityUse(h, req.abilityKey, target);
+        const gate = world.CM.evaluateAbilityUse(h, req.abilityKey, target);
         if (!gate.ok) {
             if (gate.reason === "out of range") {
                 const dx = target.pos.x - h.pos.x;
@@ -671,17 +776,17 @@ class Brain {
                 const n = norm2D(dx, dz);
                 h.intent.move = { x: n.x, z: n.z };
                 h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
-                world.setManualCastStatus(h, `${ability.name}: moving into range`);
+                world.CM.setManualCastStatus(h, `${ability.name}: moving into range`);
                 return true;
             }
-            world.setManualCastStatus(h, `Cast failed: ${gate.reason}`);
+            world.CM.setManualCastStatus(h, `Cast failed: ${gate.reason}`);
             h.manualCastRequest = null;
             return true;
         }
         h.intent.abilityKey = req.abilityKey;
         h.intent.targetId = target.id;
         h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
-        world.setManualCastStatus(h, `Casting ${ability.name}`);
+        world.CM.setManualCastStatus(h, `Casting ${ability.name}`);
         h.manualCastRequest = null;
         return true;
     }
@@ -827,28 +932,76 @@ class Brain {
    world helpers: biome, spawn, interactables
 ========================= */
 const BiomeSystem = {
-    getBiomeKeyAt(x, z) {
-        const mix = this.getBiomeMix(x, z);
-        return this.getDominantBiomeKey(mix);
+    sampleWorldFields(x, z) {
+        const temperature =
+            0.5 +
+            Math.sin(x * 0.00045) * 0.28 +
+            Math.cos(z * 0.00023) * 0.22 +
+            Math.sin((x + z) * 0.00011) * 0.12;
+
+        const rainfall =
+            0.5 +
+            Math.cos(x * 0.00031) * 0.25 +
+            Math.sin(z * 0.00041) * 0.27 +
+            Math.cos((x - z) * 0.00013) * 0.10;
+
+        const lithosphere =
+            0.5 +
+            Math.sin(x * 0.00018) * 0.35 +
+            Math.cos(z * 0.00016) * 0.25 +
+            Math.sin((x + z) * 0.00006) * 0.20;
+
+        const barrenness =
+            0.5 +
+            Math.cos(x * 0.00052) * 0.22 +
+            Math.sin(z * 0.00037) * 0.18 +
+            Math.cos((x + z) * 0.00019) * 0.14;
+
+        return {
+            temperature: clamp(temperature, 0, 1),
+            rainfall: clamp(rainfall, 0, 1),
+            lithosphere: clamp(lithosphere, 0, 1),
+            barrenness: clamp(barrenness, 0, 1),
+        };
     },
+
+    scoreField(value, target, softness) {
+        const d = Math.abs(value - target) / Math.max(0.001, softness);
+        return Math.exp(-(d * d));
+    },
+
     getBiomeMix(x, z) {
-        const keys = Object.keys(biomeDefs);
+        const f = this.sampleWorldFields(x, z);
         const weights = {};
         let total = 0;
-        for (let i = 0; i < keys.length; i++) {
-            const key = keys[i];
-            const phase = (i + 1) * 1.618;
-            const n1 = Math.sin((x * 0.0017) + phase) * 0.55;
-            const n2 = Math.cos((z * 0.0013) - phase * 0.5) * 0.45;
-            const n3 = Math.sin(((x + z) * 0.0009) + phase * 1.3) * 0.35;
-            const base = 1 + n1 + n2 + n3;
-            const value = Math.max(0.001, base);
-            weights[key] = value;
-            total += value;
+
+        for (const key of Object.keys(biomeDefs)) {
+            const rule = biomeRules[key];
+            if (!rule) continue;
+
+            let score = 1;
+            score *= this.scoreField(f.temperature, rule.temperature, rule.softness);
+            score *= this.scoreField(f.rainfall, rule.rainfall, rule.softness);
+            score *= this.scoreField(f.lithosphere, rule.lithosphere, rule.softness);
+            score *= this.scoreField(f.barrenness, rule.barrenness, rule.softness);
+            score *= rule.bias ?? 1;
+
+            score = Math.max(0.0001, score);
+            weights[key] = score;
+            total += score;
         }
-        for (const key of keys) weights[key] /= total;
+
+        if (total <= 0) {
+            const fallback = Object.keys(biomeDefs)[0];
+            return { [fallback]: 1 };
+        }
+
+        for (const key of Object.keys(weights)) {
+            weights[key] /= total;
+        }
         return weights;
     },
+
     getDominantBiomeKey(mix) {
         let best = "plains";
         let bestWeight = -Infinity;
@@ -860,13 +1013,18 @@ const BiomeSystem = {
         }
         return best;
     },
+
+    getBiomeKeyAt(x, z) {
+        return this.getDominantBiomeKey(this.getBiomeMix(x, z));
+    },
+
     getBiomeAt(x, z) {
         const key = this.getBiomeKeyAt(x, z);
         return { key, ...biomeDefs[key] };
     },
 };
 const ChunkSystem = {
-  CHUNK_SIZE: 256,
+  CHUNK_SIZE: 128,
   CELL_SIZE: 16,
   LOAD_RADIUS: 2,
   WATER_LEVEL: -24,
@@ -1111,14 +1269,65 @@ const ChunkSystem = {
       generated: true,
     };
   },
-
   sampleHeight(x, z) {
-    const n1 = Math.sin(x * 0.003) * 40;
-    const n2 = Math.cos(z * 0.004) * 20;
-    const n3 = Math.sin((x + z) * 0.006) * 10;
-    return n1 + n2 + n3;
-  },
+    const f = BiomeSystem.sampleWorldFields(x, z);
+    const mix = BiomeSystem.getBiomeMix(x, z);
 
+    const broad =
+        Math.sin(x * 0.00018) * 36 +
+        Math.cos(z * 0.00016) * 28 +
+        Math.sin((x + z) * 0.00006) * 18;
+
+    const medium =
+        Math.sin(x * 0.0018) * 8 +
+        Math.cos(z * 0.0015) * 7 +
+        Math.sin((x - z) * 0.0012) * 5;
+
+    const fine =
+        Math.sin(x * 0.006) * 2.5 +
+        Math.cos(z * 0.005) * 2 +
+        Math.sin((x + z) * 0.004) * 1.5;
+
+    const lithoBase = (f.lithosphere - 0.5) * 110;
+    const moistureFlatten = (f.rainfall - 0.5) * -12;
+    const barrenHarshness = (f.barrenness - 0.5) * 8;
+
+    // Biome-specific terrain shaping.
+    const plainsBias   = (mix.plains ?? 0) * -10;
+    const forestBias   = (mix.forest ?? 0) * 4;
+    const desertBias   = (mix.desert ?? 0) * -6;
+    const stormBias    = (mix.stormfield ?? 0) * 10;
+    const volcanicBias = (mix.volcanic ?? 0) * 24;
+
+    const volcanicRough =
+        (mix.volcanic ?? 0) *
+        (Math.sin(x * 0.0035) * 10 + Math.cos(z * 0.0032) * 8);
+
+    const stormRough =
+        (mix.stormfield ?? 0) *
+        (Math.sin((x + z) * 0.0024) * 6 + Math.cos((x - z) * 0.0021) * 5);
+
+    const plainFlatten =
+        (mix.plains ?? 0) *
+        (Math.sin(x * 0.0012) * -4 + Math.cos(z * 0.0011) * -3);
+
+    return (
+        broad +
+        medium +
+        fine +
+        lithoBase +
+        moistureFlatten +
+        barrenHarshness +
+        plainsBias +
+        forestBias +
+        desertBias +
+        stormBias +
+        volcanicBias +
+        volcanicRough +
+        stormRough +
+        plainFlatten
+    );
+  },
   updateLoadedChunks(world) {
     const { cx, cz } = this.worldToChunk(world.player.pos.x, world.player.pos.z);
 
@@ -1159,7 +1368,7 @@ class SpawnField {
         const player = world.player;
         const candidates = ChunkSystem.collectLoadedSpawnPoints(world)
             .filter((sp) => !sp.blocked)
-            .filter((sp) => sp.x >= 0 && sp.x <= world.width && sp.z >= 0 && sp.z <= world.height)
+            .filter((sp) => true)
             .filter((sp) => {
                 const d = dist(player.pos.x, player.pos.z, sp.x, sp.z);
                 return d >= this.innerNoSpawn && d <= this.radius;
@@ -1191,7 +1400,7 @@ class SpawnField {
         world.creatures = world.creatures.filter(c => {
             if (c.mode !== "wild") return true;
             if (c.lifecycle !== "alive") return false;
-            if (world.isCreatureEngaged(c)) return true;
+            if (world.CM.isCreatureEngaged(c)) return true;
             return dist(c.pos.x, c.pos.z, p.x, p.z) < this.radius * 1.75;
         });
     }
@@ -1241,9 +1450,14 @@ class PlayerEntity {
         this.commandTargetId = null;
         this.stance = "aggressive";
         this.selectedItemIndex = 0
+        this.inventory = { berry_red: 10, battery_seed: 5, lure_meat: 5, revive_berry: 3 };
         this.itemBar =  ['berry_red', 'battery_seed', "lure_meat", "revive_berry"]
         this.selectedItemKey = this.itemBar[this.selectedItemIndex] ?? null;
-        this.inventory = { berry_red: 10, battery_seed: 5, lure_meat: 5, revive_berry: 3};
+        this.toolbelt = ["hammer"];
+        this.selectedToolIndex = 0;
+        this.selectedToolKey = "hammer";
+        this.toolMode = "build";
+        this.selectedBuildKey = "shelter";
         this.reserveOwnedIds = [];
         this.selectedReserveIndex = 0;
         this.ownedCreatures = [];
@@ -1274,8 +1488,8 @@ class PlayerEntity {
         const mv = norm2D(mx, mz);
         this.vel.x = mv.x * this.spd;
         this.vel.z = mv.z * this.spd;
-        this.pos.x = clamp(this.pos.x + this.vel.x * dt, 0, world.width);
-        this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
+        this.pos.x += this.vel.x * dt
+        this.pos.z += this.vel.z * dt
     }
     updateManualFollow(world, dt) {
         const activePet = world.getCreatureById(this.activePetId);
@@ -1305,8 +1519,9 @@ class PlayerEntity {
             this.vel.x *= 0.8;
             this.vel.z *= 0.8;
         }
-        this.pos.x = clamp(this.pos.x + this.vel.x * dt, 0, world.width);
-        this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
+
+        this.pos.x += this.vel.x* dt
+        this.pos.z += this.vel.z* dt
         this.enforceActivePetLeash(world, dt);
     }
     enforceActivePetLeash(world, dt) {
@@ -1342,52 +1557,32 @@ class PlayerEntity {
             this.activeControlMode = this.activeControlMode === "AUTO" ? "MANUAL" : "AUTO";
             this.lastLog = `Control: ${this.activeControlMode}`;
         }
-        // if (input.consumePress("KeyQ")) {
-        //     this.stance = this.stance === "aggressive" ? "follow" : this.stance === "follow" ? "hold" : "aggressive";
-        //     this.lastLog = `Stance: ${this.stance}`;
-        // }
-        // if (input.consumePress("KeyR")) {
-        //     world.commandAllPets({ type: "follow", issuedAt: world.time });
-        //     this.lastLog = "Regroup all pets";
-        // }
-        // if (input.consumePress("KeyH")) {
-        //     world.commandPets(this.targetPetIds, { type: "hold", issuedAt: world.time });
-        //     this.lastLog = "Active pet: hold";
-        // }
-        // if (input.consumePress("KeyF")) {
-        //     world.commandPets(this.targetPetIds, { type: "follow", issuedAt: world.time });
-        //     this.lastLog = "Active pet: follow";
-        // }
-        // Item keys: Z/X/C on active pet; V attempts tame on selected wild target. 
         if (input.consumePress("KeyQ")) this.cycleItem(-1);
         if (input.consumePress("KeyE")) this.cycleItem(1);
-        if (input.consumePress("KeyZ")) world.useSelectedItem();
-        if (input.consumePress("KeyA")) world.queueManualCast(0);
-        if (input.consumePress("KeyS")) world.queueManualCast(1);
-        if (input.consumePress("KeyD")) world.queueManualCast(2);
-        if (input.consumePress("KeyF")) world.queueManualCast(2);
-        if (input.consumePress("KeyG")) world.tryInteractNearestNode();
+        if (input.consumePress("KeyZ")) world.PIS.useSelectedItem();
+        if (input.consumePress("KeyA")) world.CM.queueManualCast(0);
+        if (input.consumePress("KeyS")) world.CM.queueManualCast(1);
+        if (input.consumePress("KeyD")) world.CM.queueManualCast(2);
+        if (input.consumePress("KeyF")) world.CM.queueManualCast(3);
+        if (input.consumePress("KeyG")) world.PIS.tryInteractNearestNode();
         if (input.consumePress("BracketLeft")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
         if (input.consumePress("BracketRight")) this.selectedReserveIndex += 1;
-        if (input.consumePress("KeyT")) world.swapActiveWithReserve(this.selectedReserveIndex);
+        if (input.consumePress("KeyT")) world.PIS.swapActiveWithReserve(this.selectedReserveIndex);
         const worldPos = world.camera.screenToWorld(input.mouse.x, input.mouse.y);
         if (input.consumeMouseLeftPress()) {
             const target = world.findNearestEnemyToPoint(worldPos.x, worldPos.z, 32);
             if (target) {
                 this.commandTargetId = target.id;
-                world.commandPets(this.targetPetIds, { type: "attack", targetId: target.id, issuedAt: world.time });
+                world.PIS.commandPets(this.targetPetIds, { type: "attack", targetId: target.id, issuedAt: world.time });
                 this.lastLog = `Attack ${target.speciesKey}`;
             }
         }
         if (input.consumeMouseRightPress()) {
-            world.commandPets(this.targetPetIds, { type: "move", point: worldPos, issuedAt: world.time });
+            world.PIS.commandPets(this.targetPetIds, { type: "move", point: worldPos, issuedAt: world.time });
             this.commandTargetId = null;
             this.lastLog = "Move command";
         }
     }
-}
-class BuildingManager {
-
 }
 /* =========================
    world
@@ -1400,12 +1595,13 @@ class World {
         this.camera = new Camera();
         this.chunks = new Map();
         this.player = new PlayerEntity(this.width / 2, this.height / 2);
+        this.PIS = new PlayerInteractionSystem(this)
+        this.CM = new CombatManager(this)
         this.creatures = [];
         this.factory = new CreatureFactory();
         this.spawnField = new SpawnField();
         this.nodes = [];
         this.nodeSpawnTimer = 0;
-        this.barriers = [];
         this.floatingTexts = [];
         this.combatFx = [];
     }
@@ -1414,13 +1610,6 @@ class World {
         const ownedStarter = this.createOwnedCreatureRecord(starterSpeciesKey);
         this.player.partyOwnedIds = [ownedStarter.ownedId, null, null];
         this.hydratePartyRuntime();
-    }
-    commandPets(petIds, command){
-        for (const id of petIds){
-            const pet = this.getCreatureById(id);
-            if (!pet || pet.lifecycle !== "alive") continue;
-            pet.command = {... command};
-        }
     }
     spawnPetFromOwned(ownedId, x, z) {
         const owned = this.getOwnedCreatureById(ownedId);
@@ -1443,16 +1632,6 @@ class World {
         this.creatures.push(pet);
         this.syncOwnedCreatureFromRuntime(pet);
         return pet;
-    }
-    useSelectedItem(){
-        const itemKey = this.player.selectedItemKey;
-        if (!itemKey) return false;
-        const def = itemDefs[itemKey];
-        if (!def) return false;
-        if (def.type === "bait") {
-            return this.useItem(itemKey, "wildTarget")
-        }
-        return this.useItem(itemKey, "activePet")
     }
     hydratePartyRuntime() {
         this.creatures = this.creatures.filter(c => c.mode !== "pet");
@@ -1513,10 +1692,10 @@ class World {
         for (const c of this.creatures) if (c.brain) c.brain.think(this);
         for (const c of this.creatures) c.tick(dt, this);
         this.resolveSimpleSeparation();
-        this.cleanupDefeatedCreatures();
+        this.CM.cleanupDefeatedCreatures();
         this.rebuildPartyPetIds();
         this.removeDeadCommandTarget();
-        this.updateBarriers(dt);
+        this.CM.updateBarriers(dt);
         this.updateFx(dt);
         this.camera.update(dt);
     }
@@ -1539,18 +1718,6 @@ class World {
             );
             return runtime?.id ?? null
         });
-    }
-    commandActivePet(command) {
-        const pet = this.getCreatureById(this.player.activePetId);
-        if (!pet || pet.lifecycle !== "alive") return;
-        pet.command = { ...command };
-    }
-    commandAllPets(command) {
-        for (const id of this.player.petIds) {
-            const pet = this.getCreatureById(id);
-            if (!pet || pet.lifecycle !== "alive") continue;
-            pet.command = { ...command };
-        }
     }
     getCreatureById(id) {
         return this.creatures.find(c => c.id === id) ?? null;
@@ -1579,74 +1746,6 @@ class World {
         }
         return best;
     }
-    evaluateAbilityUse(source, abilityKey, target) {
-        const a = abilities[abilityKey];
-        if (!a) return { ok: false, reason: "unknown ability" };
-        if (!source || source.lifecycle !== "alive") return { ok: false, reason: "source invalid" };
-        if (source.isCasting()) return { ok: false, reason: "already casting" };
-        if (source.isRecovering()) return { ok: false, reason: "recovering" };
-        if (source.globalCooldown > 0) return { ok: false, reason: `global cooldown ${source.globalCooldown.toFixed(1)}s` };
-        if ((source.cooldowns[abilityKey] ?? 0) > 0) return { ok: false, reason: `cooldown ${source.cooldowns[abilityKey].toFixed(1)}s` };
-        if ((a.resourceUse?.stamina ?? 0) > source.currentStamina) return { ok: false, reason: "not enough stamina" };
-        if ((a.resourceUse?.energy ?? 0) > source.currentEnergy) return { ok: false, reason: "not enough energy" };
-        if (a.category === "utility" || a.category === "barrier") return { ok: true, reason: "ready" };
-        if (!target || target.lifecycle !== "alive") return { ok: false, reason: "no valid target" };
-        if (source.team === target.team) return { ok: false, reason: "invalid target" };
-        const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
-        if (a.category === "dash" || a.category === "gap_close" || a.category === "retreat"){
-            const dashReach = (a.dash?.distance ?? 70) + (a.range ?? 20);
-            if (d > dashReach) return { ok: false, reason: "out of dash range" };
-            return { ok: true, reason: "ready" };
-        }
-        if (d > (a.range ?? Infinity)) return { ok: false, reason: "out of range" };
-        return { ok: true, reason: "ready" };
-    }
-    getAbilityTiming(abilityDef, source = null) {
-        const defaultsByCategory = {
-            melee: { castTime: 0.3, recovery: 0.2, gcd: 0.7 },
-            hitscan: { castTime: 0.45, recovery: 0.25, gcd: 0.8 },
-            projectile: { castTime: 0.5, recovery: 0.25, gcd: 0.85 },
-            aoe: { castTime: 0.6, recovery: 0.35, gcd: 0.95 },
-            barrier: { castTime: 0.65, recovery: 0.4, gcd: 1.0 },
-            utility: { castTime: 0.5, recovery: 0.35, gcd: 0.9 },
-            dash: { castTime: 0.25, recovery: 0.35, gcd: 0.8 },
-            gap_close: { castTime: 0.25, recovery: 0.35, gcd: 0.8 },
-            retreat: { castTime: 0.25, recovery: 0.4, gcd: 0.8 },
-        };
-        const category = abilityDef?.category ?? "melee";
-        const defaults = defaultsByCategory[category] ?? defaultsByCategory.melee;
-        const castSpd = Math.max(0.25, source?.modifiedStats?.castSpd ?? 1);
-        return {
-            castTime: (abilityDef?.castTime ?? defaults.castTime) / castSpd,
-            recovery: (abilityDef?.recovery ?? defaults.recovery) / castSpd,
-            gcd: (abilityDef?.gcd ?? defaults.gcd) / castSpd,
-        };
-    }
-    queueManualCast(slotIndex) {
-        const pet = this.getCreatureById(this.player.activePetId);
-        if (!pet || pet.lifecycle !== "alive") return false;
-        if (pet.isCasting()) {
-            this.setManualCastStatus(pet, "Already casting");
-            return false;
-        }
-        if (pet.isRecovering() || pet.globalCooldown > 0) {
-            this.setManualCastStatus(pet, "Still recovering");
-            return false;
-        }
-        const abilityKey = pet.moveset[slotIndex];
-        if (!abilityKey) {
-            this.setManualCastStatus(pet, `No move in slot ${slotIndex + 1}`);
-            return false;
-        }
-        pet.manualCastRequest = { abilityKey, slotIndex, issuedAt: this.time };
-        this.setManualCastStatus(pet, `Queued ${abilities[abilityKey]?.name ?? abilityKey}`);
-        return true;
-    }
-    setManualCastStatus(creature, text, ttl = 1.2) {
-        if (!creature) return;
-        creature.manualCastStatus = { text, until: this.time + ttl };
-        if (creature.team === 0 && creature.id === this.player.activePetId) this.player.lastLog = text;
-    }
     findNearestEnemyToPoint(x, z, maxRange = 30) {
         let best = null;
         let bestD = Infinity;
@@ -1660,301 +1759,10 @@ class World {
         }
         return best;
     }
-    isCreatureEngaged(creature) {
-        for (const other of this.creatures) {
-            if (other.id === creature.id || other.lifecycle !== "alive" || other.team === creature.team) continue;
-            if (dist(creature.pos.x, creature.pos.z, other.pos.x, other.pos.z) < 160) return true;
-        }
-        return false;
-    }
-    beginAbilityCast(source, abilityKey, targetId, aimAt = null) {
-        const a = abilities[abilityKey];
-        const target = this.getCreatureById(targetId);
-        const gate = this.evaluateAbilityUse(source, abilityKey, target);
-        if (!gate.ok) return false;
-        source.currentStamina -= a.resourceUse?.stamina ?? 0;
-        source.currentEnergy -= a.resourceUse?.energy ?? 0;
-        source.cooldowns[abilityKey] = a.cooldown;
-        const timing = this.getAbilityTiming(a, source);
-        source.globalCooldown = Math.max(source.globalCooldown, timing.gcd);
-        source.castState = {
-            abilityKey,
-            targetId,
-            windupRemaining: timing.castTime,
-            recoveryRemaining: timing.recovery,
-            executed: false,
-            aimAt: aimAt ? { x: aimAt.x, z: aimAt.z } : null,
-        };
-        return true;
-    }
-    cancelAbilityCast(source, reason = "cancelled") {
-        if (!source?.castState) return;
-        source.castState = null;
-        this.setManualCastStatus(source, reason, 0.7);
-    }
-    executeAbilityCast(source) {
-        const cast = source.castState;
-        if (!cast || cast.executed || source.lifecycle !== "alive") return false;
-        const a = abilities[cast.abilityKey];
-        if (!a) {
-            this.cancelAbilityCast(source, "Cast failed: unknown");
-            return false;
-        }
-        cast.executed = true;
-        if (a.category === "utility") {
-            EffectEngine.applyAbilityEffects(source, source, a);
-            this.pushFloatingText(source.pos.x, source.pos.z - 10, a.name, "#88ffb5");
-            return true;
-        }
-        if (a.category === "barrier") {
-            const atX = source.pos.x;
-            const atZ = source.pos.z;
-            this.spawnBarrier(source, atX, atZ, a.barrier ?? {});
-            this.pushFloatingText(atX, atZ - 12, a.name, "#9ed8ff");
-            this.combatFx.push({ type: "pulse", x: atX, z: atZ, radius: a.barrier?.radius ?? 48, ttl: 0.22, color: a.fx?.pulseColor ?? "rgba(120,190,255,0.25)" });
-            return true;
-        }
-        const target = this.getCreatureById(cast.targetId);
-        if (!target || target.lifecycle !== "alive" || target.team === source.team) {
-            this.setManualCastStatus(source, `${a.name} fizzled`, 0.9);
-            return false;
-        }
-        const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
-        if (a.category === "dash" || a.category === "gap_close" || a.category === "retreat") {
-            const dashReach = (a.dash?.distance ?? 70) + (a.range ?? 20);
-            if (d > dashReach) {
-                this.setManualCastStatus(source, `${a.name} out of dash range`, 0.9);
-                return false;
-            }
-            const dir = norm2D(target.pos.x - source.pos.x, target.pos.z - source.pos.z);
-            const dashDist = a.dash?.distance ?? 70;
-            const stopShort = a.dash?.stopShort ?? 16;
-            const toward = a.category === "retreat" ? -1 : 1;
-            const step = toward > 0 ? Math.max(0, Math.min(dashDist, d - stopShort)) : dashDist;
-            source.pos.x = clamp(source.pos.x + dir.x * step * toward, 0, this.width);
-            source.pos.z = clamp(source.pos.z + dir.z * step * toward, 0, this.height);
-            this.combatFx.push({ type: "line", x1: source.pos.x - dir.x * step * toward, z1: source.pos.z - dir.z * step * toward, x2: source.pos.x, z2: source.pos.z, ttl: 0.1, color: a.fx?.lineColor ?? "#ffffff" });
-        } else if (d > (a.range ?? Infinity)) {
-            this.setManualCastStatus(source, `${a.name} out of range`, 0.9);
-            return false;
-        }
-        const dmg =
-            (a.flatDmg?.p ?? 0) +
-            (a.flatDmg?.e ?? 0) +
-            (a.dmgScale?.p ?? 0) * source.modifiedStats.pAtk +
-            (a.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
-        if (a.category === "aoe") {
-            const radius = a.area?.radius ?? 30;
-            for (const other of this.creatures) {
-                if (other.team === source.team || other.lifecycle !== "alive") continue;
-                if (dist(target.pos.x, target.pos.z, other.pos.x, other.pos.z) > radius) continue;
-                this.applyDamagePacket(source, other, dmg * 0.9, a);
-            }
-            this.combatFx.push({ type: "pulse", x: target.pos.x, z: target.pos.z, radius, ttl: 0.2, color: a.fx?.pulseColor ?? "rgba(255,255,255,0.4)" });
-            return true;
-        }
-        this.applyDamagePacket(source, target, dmg, a);
-        if (a.fx?.lineColor) this.combatFx.push({ type: "line", x1: source.pos.x, z1: source.pos.z, x2: target.pos.x, z2: target.pos.z, ttl: 0.12, color: a.fx.lineColor });
-        return true;
-    }
-    tickAbilityCast(source, dt) {
-        if (!source?.castState) return;
-        if (source.lifecycle !== "alive") {
-            this.cancelAbilityCast(source, "Cast interrupted");
-            return;
-        }
-        const cast = source.castState;
-        cast.windupRemaining = Math.max(0, cast.windupRemaining - dt);
-        if (!cast.executed && cast.windupRemaining <= 0) {
-            this.executeAbilityCast(source);
-        }
-        if (cast.executed) {
-            cast.recoveryRemaining = Math.max(0, cast.recoveryRemaining - dt);
-            source.recoveryRemaining = Math.max(source.recoveryRemaining, cast.recoveryRemaining);
-            if (cast.recoveryRemaining <= 0) source.castState = null;
-        }
-    }
-    tryUseAbility(source, abilityKey, targetId, aimAt = null) {
-        return this.beginAbilityCast(source, abilityKey, targetId, aimAt);
-    }
-    applyDamagePacket(source, target, dmg, abilityDef) {
-        const effBonus = EffectEngine.applyAbilityEffects(source, target, abilityDef);
-        const composite = composites[target.compositeKey] ?? composites.animal;
-        const physicalMod = composite.effectiveness.physical ?? 1;
-        const energyMod = composite.effectiveness.energy ?? 1;
-        const physicalPart = (abilityDef.flatDmg?.p ?? 0) + (abilityDef.dmgScale?.p ?? 0) * source.modifiedStats.pAtk;
-        const energyPart = (abilityDef.flatDmg?.e ?? 0) + (abilityDef.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
-        const scaled = (physicalPart * physicalMod + energyPart * energyMod) * effBonus;
-        // Keep a minimum 1 damage floor so very low scaling attacks still provide gameplay feedback.
-        const atkScaled = (scaled || dmg) * (source.runtimeAtkMult ?? 1);
-        const reduced = atkScaled * (1 - (target.runtimeDmgReduction ?? 0));
-        const finalDmg = Math.max(1, reduced);
-        target.currentHP = Math.max(0, target.currentHP - finalDmg);
-        target.hitFlash = 1;
-        target.combatContributors.set(source.id, this.time);
-        this.pushFloatingText(target.pos.x, target.pos.z - 12, `${Math.round(finalDmg)}`, "#ffd7d7");
-        if (target.currentHP <= 0) {
-            target.lifecycle = "defeated";
-        }
-    }
-    cleanupDefeatedCreatures() {
-        for (const c of this.creatures) {
-            if (c.lifecycle !== "defeated" || c._deathHandled) continue;
-            c._deathHandled = true;
-            this.pushFloatingText(c.pos.x, c.pos.z, "KO", "#ff8a8a");
-            this.handleCreatureDefeat(c);
-        }
-    }
-    handleCreatureDefeat(dead) {
-        if (dead.team === 0) return;
-        const contributors = [];
-        for (const [id, t] of dead.combatContributors.entries()) {
-            if (this.time - t > 14) continue;
-            const c = this.getCreatureById(id);
-            if (c && c.lifecycle === "alive" && c.team === 0) contributors.push(c);
-        }
-        let averageLevel = 0
-        // XP loop: nearby allies get a small share.
-        for (const pid of this.player.petIds) {
-            const pet = this.getCreatureById(pid);
-            if (pet) averageLevel += pet.level;
-            if (!pet || pet.lifecycle !== "alive") continue;
-            if (!contributors.includes(pet) && dist(pet.pos.x, pet.pos.z, dead.pos.x, dead.pos.z) < 140) contributors.push(pet);
-        }
-        if (contributors.length > 0) {
-            averageLevel /= contributors.length;
-        }
-        const scale = clamp(1 + (averageLevel - dead.level) * 0.12, 0.75, 1.25);
-        const adjustedXP = Math.round((dead.level * 12 + 50) * scale);
-        for (const pet of contributors) {
-            const events = pet.addXP(adjustedXP);
-            this.syncOwnedCreatureFromRuntime(pet);
-            for (const ev of events) {
-                if (ev.type === "leveledUp") this.pushFloatingText(pet.pos.x, pet.pos.z - 14, `Lv Up! ${ev.newLevel}`, "#fff799");
-            }
-        }
-    }
-    useItem(itemKey, targetMode) {
-        const def = itemDefs[itemKey];
-        if (!def) return false;
-        if ((this.player.inventory[itemKey] ?? 0) <= 0) return false;
-        if (targetMode === "activePet") {
-            const pet = this.getCreatureById(this.player.activePetId);
-            if (!pet) return false;
-            if (def.type === "revive") {
-                if (pet.lifecycle !== "defeated") return false;
-                pet.lifecycle = "alive"
-                // Revive berries intentionally restore by ratio (50% from amount: 0.5).
-                pet.currentHP = Math.max(1, Math.floor(pet.modifiedStats.maxHP*def.amount))
-                pet.currentEnergy = Math.max(1, Math.floor(pet.modifiedStats.energy * 0.5))
-                pet.currentStamina = Math.max(1, Math.floor(pet.modifiedStats.stamina * 0.5))
-                EffectEngine.addStatus(pet, EffectEngine.createStatus("defBoost", 4.0, 0.75, pet.id));
-                this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `Revived`, "#ffe38e");
-                this.player.inventory[itemKey] -= 1;
-                return true;
-            }
-            if (pet.lifecycle !== "alive") return false;
-            if (def.type === "heal") {
-                pet.currentHP = Math.min(pet.modifiedStats.maxHP, pet.currentHP + def.amount);
-                this.pushFloatingText(pet.pos.x, pet.pos.z - 16, `+${def.amount} HP`, "#8dff9d");
-            }
-            
-            if (def.type === "energy") {
-                pet.currentEnergy = Math.min(pet.modifiedStats.energy, pet.currentEnergy + def.amount);
-                pet.currentStamina = Math.min(pet.modifiedStats.stamina, pet.currentStamina + (def.stamina ?? 0));
-                this.pushFloatingText(pet.pos.x, pet.pos.z - 16, "+energy", "#9de7ff");
-            }
-            if (def.type === "buff") {
-                const amt = def.amount ?? 0.1;
-                const dur = def.duration ?? 8;
-                EffectEngine.addStatus(pet, EffectEngine.createStatus("atkBoost", dur, amt, pet.id));
-                EffectEngine.addStatus(pet, EffectEngine.createStatus("spdBoost", dur, amt * 0.8, pet.id));
-                EffectEngine.addStatus(pet, EffectEngine.createStatus("defBoost", dur, amt * 0.7, pet.id));
-                EffectEngine.addStatus(pet, EffectEngine.createStatus("boost", dur, amt * 0.5, pet.id));
-                this.pushFloatingText(pet.pos.x, pet.pos.z - 16, "Boosted!", "#fff79a");
-            }
-            if (def.type === "bait") {
-                this.player.lastLog = "Bait ready - use V on weakened wild";
-            }
-        }
-        if (targetMode === "wildTarget") {
-            const t = this.getCreatureById(this.player.commandTargetId);
-            if (!t || t.team !== 1 || t.lifecycle !== "alive") return false;
-            const activePet = this.getCreatureById(this.player.activePetId);
-            // if (!activePet || dist(activePet.pos.x, activePet.pos.z, t.pos.x, t.pos.z) > 90) return false;
-            if (!this.tryTameWild(t, def)) {
-                t.command = { type: "attack", targetId: activePet.id, issuedAt: this.time };
-                this.player.lastLog = "Capture failed! Wild enraged.";
-            }
-        }
-        this.player.inventory[itemKey] -= 1;
-        return true;
-    }
-    tryTameWild(wild, itemDef) {
-        if (itemDef.type !== "bait") return false;
-        const hpRatio = wild.currentHP / wild.modifiedStats.maxHP;
-        if (hpRatio > (itemDef.requiredHPRatio ?? 0.5)) {
-            this.player.lastLog = "Wild too healthy to tame";
-            return false;
-        }
-        const chance = clamp((1 - hpRatio) * 0.45 + (itemDef.tameBonus ?? 0), 0.1, 0.85);
-        if (Math.random() > chance) return false;
-        wild.lifecycle = "captured";
-        const owned = this.createOwnedCreatureRecord(wild.speciesKey, wild);
-        const openSlot = this.getFirstOpenPartySlot();
-        if (openSlot >= 0) {
-            this.player.partyOwnedIds[openSlot] = owned.ownedId;
-            this.hydratePartyRuntime();
-            this.player.lastLog = `Tamed ${wild.speciesKey} into party`;
-        } else {
-            this.player.reserveOwnedIds.push(owned.ownedId);
-            this.player.lastLog = `Tamed ${wild.speciesKey} -> reserve`;
-        }
-        this.pushFloatingText(wild.pos.x, wild.pos.z - 18, "Captured!", "#ffe38e");
-        return true;
-    }
-    swapActiveWithReserve(reserveIndex) {
-        const reserveOwnedId = this.player.reserveOwnedIds[reserveIndex];
-        if (reserveOwnedId == null) return false;
-        const slotIndex = this.player.activePetIndex;
-        const activeOwnedId = this.player.partyOwnedIds[slotIndex];
-        if (activeOwnedId == null) return false;
-        this.player.reserveOwnedIds[reserveIndex] = activeOwnedId;
-        this.player.partyOwnedIds[slotIndex] = reserveOwnedId;
-        this.hydratePartyRuntime();
-        const reserveData = this.getOwnedCreatureById(reserveOwnedId);
-        this.player.lastLog = `Swapped in ${reserveData?.speciesKey ?? "pet"}`;
-        return true;
-    }
+
     spawnBiomeNodesAroundPlayer(count) {
         // Legacy path intentionally disabled; chunk generation now owns node placement.
         return count;
-    }
-    tryInteractNearestNode() {
-        let best = null;
-        let bestD = Infinity;
-        for (const n of this.nodes) {
-            if (!n.active) continue;
-            const d = dist(this.player.pos.x, this.player.pos.z, n.pos.x, n.pos.z);
-            if (d < bestD && d <= 34) {
-                bestD = d;
-                best = n;
-            }
-        }
-        if (!best) {
-            this.player.lastLog = "No node nearby";
-            return false;
-        }
-        const def = nodeDefs[best.type];
-        if (!this.player.inventory[def.reward.key]) {
-            this.player.itemBar.push(def.reward.key);
-            this.player.inventory[def.reward.key] = 0;
-        }
-        this.player.inventory[def.reward.key] = (this.player.inventory[def.reward.key] ?? 0) + def.reward.amount;
-        best.cooldown = def.cooldown;
-        this.player.lastLog = `Gathered ${def.reward.key} x${def.reward.amount}`;
-        this.pushFloatingText(best.pos.x, best.pos.z - 10, `+${def.reward.key}`, "#ffffff");
-        return true;
     }
     removeDeadCommandTarget() {
         const id = this.player.commandTargetId;
@@ -1989,16 +1797,14 @@ class World {
         }
     }
     applyChunkCollisionToEntity(entity, radius = 8) {
-        entity.pos.x = clamp(entity.pos.x, 0, this.width);
-        entity.pos.z = clamp(entity.pos.z, 0, this.height);
         const cell = ChunkSystem.getCellAtWorld(this, entity.pos.x, entity.pos.z);
         if (cell?.blocked) {
             const dx = entity.pos.x - cell.x;
             const dz = entity.pos.z - cell.z;
             const n = norm2D(dx, dz);
             const pushDist = ChunkSystem.CELL_SIZE * 0.55 + radius;
-            entity.pos.x = clamp(cell.x + n.x * pushDist, 0, this.width);
-            entity.pos.z = clamp(cell.z + n.z * pushDist, 0, this.height);
+            entity.pos.x =cell.x + n.x * pushDist;
+            entity.pos.z =cell.z + n.z * pushDist;
         }
         const chunk = ChunkSystem.getChunkAtWorld(this, entity.pos.x, entity.pos.z);
         if (!chunk) return;
@@ -2010,8 +1816,8 @@ class World {
             const minD = radius + obstacle.radius;
             if (d >= minD) continue;
             const n = { x: dx / d, z: dz / d };
-            entity.pos.x = clamp(obstacle.x + n.x * minD, 0, this.width);
-            entity.pos.z = clamp(obstacle.z + n.z * minD, 0, this.height);
+            entity.pos.x = obstacle.x + n.x * minD;
+            entity.pos.z = obstacle.z + n.z * minD;
         }
     }
     pushFloatingText(x, z, text, color = "#fff") {
@@ -2026,44 +1832,7 @@ class World {
         for (const fx of this.combatFx) fx.ttl -= dt;
         this.combatFx = this.combatFx.filter(fx => fx.ttl > 0);
     }
-    spawnBarrier(source, x, z, barrierDef) {
-        const zone = new BarrierZone(
-            x,
-            z,
-            source.team,
-            barrierDef.radius ?? 48,
-            barrierDef.duration ?? 4.5,
-            {
-                slow: barrierDef.slow ?? 0.2,
-                damageReduction: barrierDef.damageReduction ?? 0.18,
-                blockMovement: barrierDef.blockMovement ?? true,
-                color: "rgba(120,190,255,0.20)",
-            }
-        );
-        this.barriers.push(zone);
-    }
-    updateBarriers(dt) {
-        for (const b of this.barriers) {
-            b.ttl -= dt;
-            for (const c of this.creatures) {
-                if (c.lifecycle !== "alive") continue;
-                const d = dist(c.pos.x, c.pos.z, b.pos.x, b.pos.z);
-                if (d > b.radius) continue;
-                if (c.team === b.team) {
-                    EffectEngine.addStatus(c, EffectEngine.createStatus("defBoost", 0.25, b.damageReduction, null));
-                } else {
-                    EffectEngine.addStatus(c, EffectEngine.createStatus("slow", 0.25, b.slow, null));
-                    if (b.blockMovement) {
-                        const n = norm2D(c.pos.x - b.pos.x, c.pos.z - b.pos.z);
-                        const edge = b.radius + 2;
-                        c.pos.x = b.pos.x + n.x * edge;
-                        c.pos.z = b.pos.z + n.z * edge;
-                    }
-                }
-            }
-        }
-        this.barriers = this.barriers.filter(b => b.ttl > 0);
-    }
+
     draw(ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         // Chunk surface cells are the source of truth for terrain rendering.
@@ -2115,7 +1884,7 @@ class World {
             ctx.fill();
             ctx.globalAlpha = 1;
         }
-        for (const b of this.barriers) {
+        for (const b of this.CM.barriers) {
             const s = this.camera.worldToScreen(b.pos.x, b.pos.z);
             ctx.fillStyle = b.color;
             ctx.beginPath();
@@ -2205,7 +1974,7 @@ class World {
             if (c.isCasting()) {
                 const cast = c.castState;
                 const ability = abilities[cast.abilityKey];
-                const total = Math.max(0.01, this.getAbilityTiming(ability, c).castTime);
+                const total = Math.max(0.01, this.CM.getAbilityTiming(ability, c).castTime);
                 const progress = 1 - clamp((cast.windupRemaining ?? 0) / total, 0, 1);
                 ctx.fillStyle = "rgba(20,20,20,0.7)";
                 ctx.fillRect(s.sx - 16, s.sz - 32, 32, 4);
@@ -2322,7 +2091,7 @@ class World {
         ctx.fillStyle = "rgba(0,0,0,0.62)";
         ctx.fillRect(castPanelX, castPanelY, castPanelW, castPanelH);
         ctx.fillStyle = "#fff";
-        // ctx.fillText("Active Casts [A/S]", castPanelX + 10, castPanelY + 16);
+        const castKeys = ["A", "S", "D", "F"];
         if (!activePet || activePet.lifecycle !== "alive") {
             ctx.fillStyle = "#bbb";
             ctx.fillText("No active pet", castPanelX + 10, castPanelY + 34);
@@ -2333,7 +2102,7 @@ class World {
                 const rowY = castPanelY + 34 + i * 24;
                 if (!abilityKey || !ability) {
                     ctx.fillStyle = "#888";
-                    ctx.fillText(`${i === 0 ? "A" : "S"}: (empty)`, castPanelX + 10, rowY);
+                    ctx.fillText(`${castKeys[i]}: (empty)`, castPanelX + 10, rowY);
                     continue;
                 }
                 const cd = activePet.cooldowns[abilityKey] ?? 0;
@@ -2348,8 +2117,7 @@ class World {
                 else if (!hasStamina) status = "NO STAM";
                 else if (!hasEnergy) status = "NO EN";
                 ctx.fillStyle = ready ? "#8dff9d" : "#ffb3a1";
-                ctx.fillText(`${i === 0 ? "A" : "S"}: ${ability.name} - ${status}`, castPanelX + 10, rowY);
-            }
+                ctx.fillText(`${castKeys[i]}: ${ability.name} - ${status}`, castPanelX + 10, rowY);            }
             if (activePet.isCasting()) {
                 const cast = activePet.castState;
                 const a = abilities[cast?.abilityKey];
@@ -2382,6 +2150,490 @@ class World {
             18,
             barY + 20
         )
+    }
+}
+class PlayerInteractionSystem {
+    constructor(world) {
+        this.world = world;
+        this.player = world.player
+    }
+    useSelectedItem(){
+        const itemKey = this.player.selectedItemKey;
+        if (!itemKey) return false;
+        const def = itemDefs[itemKey];
+        if (!def) return false;
+        if (def.type === "bait") {
+            return this.useItem(itemKey, "wildTarget")
+        }
+        return this.useItem(itemKey, "activePet")
+    }
+    useItem(itemKey, targetMode) {
+        const def = itemDefs[itemKey];
+        if (!def) return false;
+        if ((this.player.inventory[itemKey] ?? 0) <= 0) return false;
+        if (targetMode === "activePet") {
+            const pet = this.world.getCreatureById(this.player.activePetId);
+            if (!pet) return false;
+            if (def.type === "revive") {
+                if (pet.lifecycle !== "defeated") return false;
+                pet.lifecycle = "alive"
+                // Revive berries intentionally restore by ratio (50% from amount: 0.5).
+                pet.currentHP = Math.max(1, Math.floor(pet.modifiedStats.maxHP*def.amount))
+                pet.currentEnergy = Math.max(1, Math.floor(pet.modifiedStats.energy * 0.5))
+                pet.currentStamina = Math.max(1, Math.floor(pet.modifiedStats.stamina * 0.5))
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("defBoost", 4.0, 0.75, pet.id));
+                this.world.pushFloatingText(pet.pos.x, pet.pos.z - 16, `Revived`, "#ffe38e");
+                this.player.inventory[itemKey] -= 1;
+                return true;
+            }
+            if (pet.lifecycle !== "alive") return false;
+            if (def.type === "heal") {
+                pet.currentHP = Math.min(pet.modifiedStats.maxHP, pet.currentHP + def.amount);
+                this.world.pushFloatingText(pet.pos.x, pet.pos.z - 16, `+${def.amount} HP`, "#8dff9d");
+            }
+            
+            if (def.type === "energy") {
+                pet.currentEnergy = Math.min(pet.modifiedStats.energy, pet.currentEnergy + def.amount);
+                pet.currentStamina = Math.min(pet.modifiedStats.stamina, pet.currentStamina + (def.stamina ?? 0));
+                this.world.pushFloatingText(pet.pos.x, pet.pos.z - 16, "+energy", "#9de7ff");
+            }
+            if (def.type === "buff") {
+                const amt = def.amount ?? 0.1;
+                const dur = def.duration ?? 8;
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("atkBoost", dur, amt, pet.id));
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("spdBoost", dur, amt * 0.8, pet.id));
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("defBoost", dur, amt * 0.7, pet.id));
+                EffectEngine.addStatus(pet, EffectEngine.createStatus("boost", dur, amt * 0.5, pet.id));
+                this.world.pushFloatingText(pet.pos.x, pet.pos.z - 16, "Boosted!", "#fff79a");
+            }
+            if (def.type === "bait") {
+                this.player.lastLog = "Bait ready - use V on weakened wild";
+            }
+        }
+        if (targetMode === "wildTarget") {
+            const t = this.world.getCreatureById(this.player.commandTargetId);
+            if (!t || t.team !== 1 || t.lifecycle !== "alive") return false;
+            const activePet = this.world.getCreatureById(this.player.activePetId);
+            // if (!activePet || dist(activePet.pos.x, activePet.pos.z, t.pos.x, t.pos.z) > 90) return false;
+            if (!this.tryTameWild(t, def)) {
+                t.command = { type: "attack", targetId: activePet.id, issuedAt: this.time };
+                this.player.lastLog = "Capture failed! Wild enraged.";
+            }
+        }
+        this.player.inventory[itemKey] -= 1;
+        return true;
+    }
+    tryTameWild(wild, itemDef) {
+        if (itemDef.type !== "bait") return false;
+        const hpRatio = wild.currentHP / wild.modifiedStats.maxHP;
+        if (hpRatio > (itemDef.requiredHPRatio ?? 0.5)) {
+            this.player.lastLog = "Wild too healthy to tame";
+            return false;
+        }
+        const chance = clamp((1 - hpRatio) * 0.45 + (itemDef.tameBonus ?? 0), 0.1, 0.85);
+        if (Math.random() > chance) return false;
+        wild.lifecycle = "captured";
+        const owned = this.world.createOwnedCreatureRecord(wild.speciesKey, wild);
+        const openSlot = this.world.getFirstOpenPartySlot();
+        if (openSlot >= 0) {
+            this.player.partyOwnedIds[openSlot] = owned.ownedId;
+            this.world.hydratePartyRuntime();
+            this.player.lastLog = `Tamed ${wild.speciesKey} into party`;
+        } else {
+            this.player.reserveOwnedIds.push(owned.ownedId);
+            this.player.lastLog = `Tamed ${wild.speciesKey} -> reserve`;
+        }
+        this.world.pushFloatingText(wild.pos.x, wild.pos.z - 18, "Captured!", "#ffe38e");
+        return true;
+    }
+    swapActiveWithReserve(reserveIndex) {
+        const reserveOwnedId = this.player.reserveOwnedIds[reserveIndex];
+        if (reserveOwnedId == null) return false;
+        const slotIndex = this.player.activePetIndex;
+        const activeOwnedId = this.player.partyOwnedIds[slotIndex];
+        if (activeOwnedId == null) return false;
+        this.player.reserveOwnedIds[reserveIndex] = activeOwnedId;
+        this.player.partyOwnedIds[slotIndex] = reserveOwnedId;
+        this.world.hydratePartyRuntime();
+        const reserveData = this.world.getOwnedCreatureById(reserveOwnedId);
+        this.player.lastLog = `Swapped in ${reserveData?.speciesKey ?? "pet"}`;
+        return true;
+    }
+    tryInteractNearestNode() {
+        let best = null;
+        let bestD = Infinity;
+        for (const n of this.world.nodes) {
+            if (!n.active) continue;
+            const d = dist(this.player.pos.x, this.player.pos.z, n.pos.x, n.pos.z);
+            if (d < bestD && d <= 34) {
+                bestD = d;
+                best = n;
+            }
+        }
+        if (!best) {
+            this.player.lastLog = "No node nearby";
+            return false;
+        }
+        const def = nodeDefs[best.type];
+        if (!this.player.inventory[def.reward.key]) {
+            this.player.itemBar.push(def.reward.key);
+            this.player.inventory[def.reward.key] = 0;
+        }
+        this.player.inventory[def.reward.key] = (this.player.inventory[def.reward.key] ?? 0) + def.reward.amount;
+        best.cooldown = def.cooldown;
+        this.player.lastLog = `Gathered ${def.reward.key} x${def.reward.amount}`;
+        this.world.pushFloatingText(best.pos.x, best.pos.z - 10, `+${def.reward.key}`, "#ffffff");
+        return true;
+    }
+    commandPets(petIds, command){
+        for (const id of petIds){
+            const pet = this.world.getCreatureById(id);
+            if (!pet || pet.lifecycle !== "alive") continue;
+            pet.command = {... command};
+        }
+    }
+    commandActivePet(command) {
+        const pet = this.world.getCreatureById(this.player.activePetId);
+        if (!pet || pet.lifecycle !== "alive") return;
+        pet.command = { ...command };
+    }
+    commandAllPets(command) {
+        for (const id of this.player.petIds) {
+            const pet = this.world.getCreatureById(id);
+            if (!pet || pet.lifecycle !== "alive") continue;
+            pet.command = { ...command };
+        }
+    }
+}
+class CombatManager {
+    constructor(world) {
+        this.world = world;
+        this.player = world.player;
+        this.barriers = []
+    }
+    isCreatureEngaged(creature) {
+        for (const other of this.world.creatures) {
+            if (other.id === creature.id || other.lifecycle !== "alive" || other.team === creature.team) continue;
+            if (dist(creature.pos.x, creature.pos.z, other.pos.x, other.pos.z) < 160) return true;
+        }
+        return false;
+    }
+    evaluateAbilityUse(source, abilityKey, target) {
+        const a = abilities[abilityKey];
+        if (!a) return { ok: false, reason: "unknown ability" };
+        if (!source || source.lifecycle !== "alive") return { ok: false, reason: "source invalid" };
+        if (source.isCasting()) return { ok: false, reason: "already casting" };
+        if (source.isRecovering()) return { ok: false, reason: "recovering" };
+        if (source.globalCooldown > 0) return { ok: false, reason: `global cooldown ${source.globalCooldown.toFixed(1)}s` };
+        if ((source.cooldowns[abilityKey] ?? 0) > 0) return { ok: false, reason: `cooldown ${source.cooldowns[abilityKey].toFixed(1)}s` };
+        if ((a.resourceUse?.stamina ?? 0) > source.currentStamina) return { ok: false, reason: "not enough stamina" };
+        if ((a.resourceUse?.energy ?? 0) > source.currentEnergy) return { ok: false, reason: "not enough energy" };
+        if (a.category === "utility" || a.category === "barrier") return { ok: true, reason: "ready" };
+        if (!target || target.lifecycle !== "alive") return { ok: false, reason: "no valid target" };
+        if (source.team === target.team) return { ok: false, reason: "invalid target" };
+        const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
+        if (a.category === "dash" || a.category === "gap_close" || a.category === "retreat"){
+            const dashReach = (a.dash?.distance ?? 70) + (a.range ?? 20);
+            if (d > dashReach) return { ok: false, reason: "out of dash range" };
+            return { ok: true, reason: "ready" };
+        }
+        if (d > (a.range ?? Infinity)) return { ok: false, reason: "out of range" };
+        return { ok: true, reason: "ready" };
+    }
+    getAbilityTiming(abilityDef, source = null) {
+        const defaultsByCategory = {
+            melee: { castTime: 0.3, recovery: 0.2, gcd: 0.7 },
+            hitscan: { castTime: 0.45, recovery: 0.25, gcd: 0.8 },
+            projectile: { castTime: 0.5, recovery: 0.25, gcd: 0.85 },
+            aoe: { castTime: 0.6, recovery: 0.35, gcd: 0.95 },
+            barrier: { castTime: 0.65, recovery: 0.4, gcd: 1.0 },
+            utility: { castTime: 0.5, recovery: 0.35, gcd: 0.9 },
+            dash: { castTime: 0.25, recovery: 0.35, gcd: 0.8 },
+            gap_close: { castTime: 0.25, recovery: 0.35, gcd: 0.8 },
+            retreat: { castTime: 0.25, recovery: 0.4, gcd: 0.8 },
+        };
+        const category = abilityDef?.category ?? "melee";
+        const defaults = defaultsByCategory[category] ?? defaultsByCategory.melee;
+        const castSpd = Math.max(0.25, source?.modifiedStats?.castSpd ?? 1);
+        return {
+            castTime: (abilityDef?.castTime ?? defaults.castTime) / castSpd,
+            recovery: (abilityDef?.recovery ?? defaults.recovery) / castSpd,
+            gcd: (abilityDef?.gcd ?? defaults.gcd) / castSpd,
+        };
+    }
+    queueManualCast(slotIndex) {
+        const pet = this.world.getCreatureById(this.player.activePetId);
+        if (!pet || pet.lifecycle !== "alive") return false;
+        if (pet.isCasting()) {
+            this.setManualCastStatus(pet, "Already casting");
+            return false;
+        }
+        if (pet.isRecovering() || pet.globalCooldown > 0) {
+            this.setManualCastStatus(pet, "Still recovering");
+            return false;
+        }
+        const abilityKey = pet.moveset[slotIndex];
+        if (!abilityKey) {
+            this.setManualCastStatus(pet, `No move in slot ${slotIndex + 1}`);
+            return false;
+        }
+        pet.manualCastRequest = { abilityKey, slotIndex, issuedAt: this.world.time };
+        this.setManualCastStatus(pet, `Queued ${abilities[abilityKey]?.name ?? abilityKey}`);
+        return true;
+    }
+    setManualCastStatus(creature, text, ttl = 1.2) {
+        if (!creature) return;
+        creature.manualCastStatus = { text, until: this.world.time + ttl };
+        if (creature.team === 0 && creature.id === this.player.activePetId) this.player.lastLog = text;
+    }
+    beginAbilityCast(source, abilityKey, targetId, aimAt = null) {
+        const a = abilities[abilityKey];
+        const target = this.world.getCreatureById(targetId);
+        const gate = this.evaluateAbilityUse(source, abilityKey, target);
+        if (!gate.ok) return false;
+        source.currentStamina -= a.resourceUse?.stamina ?? 0;
+        source.currentEnergy -= a.resourceUse?.energy ?? 0;
+        source.cooldowns[abilityKey] = a.cooldown;
+        const timing = this.getAbilityTiming(a, source);
+        source.globalCooldown = Math.max(source.globalCooldown, timing.gcd);
+        source.castState = {
+            abilityKey,
+            targetId,
+            windupRemaining: timing.castTime,
+            recoveryRemaining: timing.recovery,
+            executed: false,
+            aimAt: aimAt ? { x: aimAt.x, z: aimAt.z } : null,
+        };
+        return true;
+    }
+    cancelAbilityCast(source, reason = "cancelled") {
+        if (!source?.castState) return;
+        source.castState = null;
+        this.setManualCastStatus(source, reason, 0.7);
+    }
+    executeAbilityCast(source) {
+        const cast = source.castState;
+        if (!cast || cast.executed || source.lifecycle !== "alive") return false;
+        const a = abilities[cast.abilityKey];
+        if (!a) {
+            this.cancelAbilityCast(source, "Cast failed: unknown");
+            return false;
+        }
+        cast.executed = true;
+        if (a.category === "utility") {
+            EffectEngine.applyAbilityEffects(source, source, a);
+            this.world.pushFloatingText(source.pos.x, source.pos.z - 10, a.name, "#88ffb5");
+            return true;
+        }
+        if (a.category === "barrier") {
+            const atX = source.pos.x;
+            const atZ = source.pos.z;
+            this.spawnBarrier(source, atX, atZ, a.barrier ?? {});
+            this.world.pushFloatingText(atX, atZ - 12, a.name, "#9ed8ff");
+            this.world.combatFx.push({ type: "pulse", x: atX, z: atZ, radius: a.barrier?.radius ?? 48, ttl: 0.22, color: a.fx?.pulseColor ?? "rgba(120,190,255,0.25)" });
+            return true;
+        }
+        const target = this.world.getCreatureById(cast.targetId);
+        if (!target || target.lifecycle !== "alive" || target.team === source.team) {
+            this.setManualCastStatus(source, `${a.name} fizzled`, 0.9);
+            return false;
+        }
+        const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
+        if (a.category === "dash" || a.category === "gap_close" || a.category === "retreat") {
+            const dashReach = (a.dash?.distance ?? 70) + (a.range ?? 20);
+            if (d > dashReach) {
+                this.setManualCastStatus(source, `${a.name} out of dash range`, 0.9);
+                return false;
+            }
+            const dir = norm2D(target.pos.x - source.pos.x, target.pos.z - source.pos.z);
+            const dashDist = a.dash?.distance ?? 70;
+            const stopShort = a.dash?.stopShort ?? 16;
+            const toward = a.category === "retreat" ? -1 : 1;
+            const step = toward > 0 ? Math.max(0, Math.min(dashDist, d - stopShort)) : dashDist;
+            source.pos.x = source.pos.x + dir.x * step * toward
+            source.pos.z = source.pos.z + dir.z * step * toward
+            this.world.combatFx.push({ type: "line", x1: source.pos.x - dir.x * step * toward, z1: source.pos.z - dir.z * step * toward, x2: source.pos.x, z2: source.pos.z, ttl: 0.1, color: a.fx?.lineColor ?? "#ffffff" });
+        } else if (d > (a.range ?? Infinity)) {
+            this.setManualCastStatus(source, `${a.name} out of range`, 0.9);
+            return false;
+        }
+        const dmg =
+            (a.flatDmg?.p ?? 0) +
+            (a.flatDmg?.e ?? 0) +
+            (a.dmgScale?.p ?? 0) * source.modifiedStats.pAtk +
+            (a.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
+        if (a.category === "aoe") {
+            const radius = a.area?.radius ?? 30;
+            for (const other of this.world.creatures) {
+                if (other.team === source.team || other.lifecycle !== "alive") continue;
+                if (dist(target.pos.x, target.pos.z, other.pos.x, other.pos.z) > radius) continue;
+                this.applyDamagePacket(source, other, dmg * 0.9, a);
+            }
+            this.world.combatFx.push({ type: "pulse", x: target.pos.x, z: target.pos.z, radius, ttl: 0.2, color: a.fx?.pulseColor ?? "rgba(255,255,255,0.4)" });
+            return true;
+        }
+        this.applyDamagePacket(source, target, dmg, a);
+        if (a.fx?.lineColor) this.world.combatFx.push({ type: "line", x1: source.pos.x, z1: source.pos.z, x2: target.pos.x, z2: target.pos.z, ttl: 0.12, color: a.fx.lineColor });
+        return true;
+    }
+    tickAbilityCast(source, dt) {
+        if (!source?.castState) return;
+        if (source.lifecycle !== "alive") {
+            this.cancelAbilityCast(source, "Cast interrupted");
+            return;
+        }
+        const cast = source.castState;
+        cast.windupRemaining = Math.max(0, cast.windupRemaining - dt);
+        if (!cast.executed && cast.windupRemaining <= 0) {
+            this.executeAbilityCast(source);
+        }
+        if (cast.executed) {
+            cast.recoveryRemaining = Math.max(0, cast.recoveryRemaining - dt);
+            source.recoveryRemaining = Math.max(source.recoveryRemaining, cast.recoveryRemaining);
+            if (cast.recoveryRemaining <= 0) source.castState = null;
+        }
+    }
+    tryUseAbility(source, abilityKey, targetId, aimAt = null) {
+        return this.beginAbilityCast(source, abilityKey, targetId, aimAt);
+    }
+    applyDamagePacket(source, target, dmg, abilityDef) {
+        const effBonus = EffectEngine.applyAbilityEffects(source, target, abilityDef);
+        const composite = composites[target.compositeKey] ?? composites.animal;
+        const physicalMod = composite.effectiveness.physical ?? 1;
+        const energyMod = composite.effectiveness.energy ?? 1;
+        const physicalPart = (abilityDef.flatDmg?.p ?? 0) + (abilityDef.dmgScale?.p ?? 0) * source.modifiedStats.pAtk;
+        const energyPart = (abilityDef.flatDmg?.e ?? 0) + (abilityDef.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
+        const scaled = (physicalPart * physicalMod + energyPart * energyMod) * effBonus;
+        // Keep a minimum 1 damage floor so very low scaling attacks still provide gameplay feedback.
+        const atkScaled = (scaled || dmg) * (source.runtimeAtkMult ?? 1);
+        const reduced = atkScaled * (1 - (target.runtimeDmgReduction ?? 0));
+        const finalDmg = Math.max(1, reduced);
+        target.currentHP = Math.max(0, target.currentHP - finalDmg);
+        target.hitFlash = 1;
+        target.combatContributors.set(source.id, this.world.time);
+        this.world.pushFloatingText(target.pos.x, target.pos.z - 12, `${Math.round(finalDmg)}`, "#ffd7d7");
+        if (target.currentHP <= 0) {
+            target.lifecycle = "defeated";
+        }
+    }
+    cleanupDefeatedCreatures() {
+        for (const c of this.world.creatures) {
+            if (c.lifecycle !== "defeated" || c._deathHandled) continue;
+            c._deathHandled = true;
+            this.world.pushFloatingText(c.pos.x, c.pos.z, "KO", "#ff8a8a");
+            this.handleCreatureDefeat(c);
+        }
+    }
+    handleCreatureDefeat(dead) {
+        if (dead.team === 0) return;
+        const contributors = [];
+        for (const [id, t] of dead.combatContributors.entries()) {
+            if (this.world.time - t > 14) continue;
+            const c = this.world.getCreatureById(id);
+            if (c && c.lifecycle === "alive" && c.team === 0) contributors.push(c);
+        }
+        let averageLevel = 0
+        // XP loop: nearby allies get a small share.
+        for (const pid of this.player.petIds) {
+            const pet = this.world.getCreatureById(pid);
+            if (pet) averageLevel += pet.level;
+            if (!pet || pet.lifecycle !== "alive") continue;
+            if (!contributors.includes(pet) && dist(pet.pos.x, pet.pos.z, dead.pos.x, dead.pos.z) < 140) contributors.push(pet);
+        }
+        if (contributors.length > 0) {
+            averageLevel /= contributors.length;
+        }
+        const scale = clamp(1 + (dead.level - averageLevel) * 0.12, 0.75, 1.25);
+        const adjustedXP = Math.round((dead.level * 12 + 50) * scale);
+        for (const pet of contributors) {
+            const events = pet.addXP(adjustedXP);
+            this.world.syncOwnedCreatureFromRuntime(pet);
+            for (const ev of events) {
+                if (ev.type === "leveledUp") this.world.pushFloatingText(pet.pos.x, pet.pos.z - 14, `Lv Up! ${ev.newLevel}`, "#fff799");
+            }
+        }
+    }
+    spawnBarrier(source, x, z, barrierDef) {
+        const zone = new BarrierZone(
+            x,
+            z,
+            source.team,
+            barrierDef.radius ?? 48,
+            barrierDef.duration ?? 4.5,
+            {
+                slow: barrierDef.slow ?? 0.2,
+                damageReduction: barrierDef.damageReduction ?? 0.18,
+                blockMovement: barrierDef.blockMovement ?? true,
+                color: "rgba(120,190,255,0.20)",
+            }
+        );
+        this.barriers.push(zone);
+    }
+    updateBarriers(dt) {
+        for (const b of this.barriers) {
+            b.ttl -= dt;
+            for (const c of this.world.creatures) {
+                if (c.lifecycle !== "alive") continue;
+                const d = dist(c.pos.x, c.pos.z, b.pos.x, b.pos.z);
+                if (d > b.radius) continue;
+                if (c.team === b.team) {
+                    EffectEngine.addStatus(c, EffectEngine.createStatus("defBoost", 0.25, b.damageReduction, null));
+                } else {
+                    EffectEngine.addStatus(c, EffectEngine.createStatus("slow", 0.25, b.slow, null));
+                    if (b.blockMovement) {
+                        const n = norm2D(c.pos.x - b.pos.x, c.pos.z - b.pos.z);
+                        const edge = b.radius + 2;
+                        c.pos.x = b.pos.x + n.x * edge;
+                        c.pos.z = b.pos.z + n.z * edge;
+                    }
+                }
+            }
+        }
+        this.barriers = this.barriers.filter(b => b.ttl > 0);
+    }
+}
+class BuildSystem {
+    constructor(world) {
+        this.world = world;
+    }
+
+    getChunkRecordMap(chunkKey) {
+        if (!this.world.playerBuildsByChunk.has(chunkKey)) {
+            this.world.playerBuildsByChunk.set(chunkKey, []);
+        }
+        return this.world.playerBuildsByChunk.get(chunkKey);
+    }
+
+    placeStructure(type, x, z) {
+        const check = this.canPlaceAt(type, x, z);
+        if (!check.ok) return false;
+
+        const cell = ChunkSystem.getCellAtWorld(this.world, x, z);
+        const { cx, cz } = ChunkSystem.worldToChunk(x, z);
+        const chunkKey = ChunkSystem.key(cx, cz);
+
+        const record = {
+            id: this.world.nextBuildId++,
+            type,
+            x, z,
+            y: cell?.y ?? 0,
+            radius: type === "shelter" ? 14 : 10,
+            hp: 100,
+            placedAt: this.world.time,
+        };
+
+        this.getChunkRecordMap(chunkKey).push(record);
+        return record;
+    }
+
+    removeStructure(buildId) {
+        for (const [chunkKey, list] of this.world.playerBuildsByChunk) {
+            const idx = list.findIndex(b => b.id === buildId);
+            if (idx >= 0) {
+                return list.splice(idx, 1)[0];
+            }
+        }
+        return null;
     }
 }
 /* =========================
