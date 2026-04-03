@@ -454,6 +454,9 @@ class Creature {
         this.intent = this.makeEmptyIntent();
         this.manualCastRequest = null;
         this.manualCastStatus = { text: "", until: 0 };
+        this.castState = null;
+        this.recoveryRemaining = 0;
+        this.globalCooldown = 0;
 
         // Command system payload used by brains.
         this.command = { type: "follow", issuedAt: 0, targetId: null, point: null };
@@ -461,6 +464,14 @@ class Creature {
 
     makeEmptyIntent() {
         return { move: { x: 0, z: 0 }, abilityKey: null, targetId: null, aimAt: null };
+    }
+
+    isCasting() {
+        return !!this.castState;
+    }
+
+    isRecovering() {
+        return this.recoveryRemaining > 0;
     }
 
     addXP(amount) {
@@ -501,6 +512,8 @@ class Creature {
     tick(dt, world) {
         if (this.lifecycle !== "alive") return;
         for (const key of Object.keys(this.cooldowns)) this.cooldowns[key] = Math.max(0, this.cooldowns[key] - dt);
+        this.globalCooldown = Math.max(0, this.globalCooldown - dt);
+        this.recoveryRemaining = Math.max(0, this.recoveryRemaining - dt);
 
         this.currentStamina = Math.min(this.modifiedStats.stamina, this.currentStamina + this.modifiedStats.recoverStamina * dt);
         this.currentEnergy = Math.min(this.modifiedStats.energy, this.currentEnergy + this.modifiedStats.recoverEnergy * dt);
@@ -514,7 +527,8 @@ class Creature {
         this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
 
         if (mv.x !== 0 || mv.z !== 0) this.angle = Math.atan2(mv.z, mv.x);
-        if (this.intent.abilityKey && this.intent.targetId) world.tryUseAbility(this, this.intent.abilityKey, this.intent.targetId);
+        world.tickAbilityCast(this, dt);
+        if (this.intent.abilityKey && this.intent.targetId) world.tryUseAbility(this, this.intent.abilityKey, this.intent.targetId, this.intent.aimAt);
 
         this.hitFlash = Math.max(0, this.hitFlash - dt * 5);
     }
@@ -636,15 +650,6 @@ class Brain {
     executeManualCast(world, h) {
         const req = h.manualCastRequest;
         if (!req) return false;
-        if (req.awaitingResolution) {
-            if ((h.cooldowns[req.abilityKey] ?? 0) > 0) {
-                h.manualCastRequest = null;
-            } else if (world.time - (req.issuedAt ?? 0) > 0.25) {
-                req.awaitingResolution = false;
-                req.issuedAt = world.time;
-            }
-            return true;
-        }
         const ability = abilities[req.abilityKey];
         if (!ability) {
             h.manualCastRequest = null;
@@ -662,8 +667,8 @@ class Brain {
             h.intent.abilityKey = req.abilityKey;
             h.intent.targetId = h.id;
             h.intent.aimAt = { x: h.pos.x, z: h.pos.z };
-            world.setManualCastStatus(h, `${ability.name} cast`);
-            req.awaitingResolution = true;
+            world.setManualCastStatus(h, `Casting ${ability.name}`);
+            h.manualCastRequest = null;
             return true;
         }
 
@@ -700,8 +705,8 @@ class Brain {
         h.intent.abilityKey = req.abilityKey;
         h.intent.targetId = target.id;
         h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
-        world.setManualCastStatus(h, `${ability.name} cast`);
-        req.awaitingResolution = true;
+        world.setManualCastStatus(h, `Casting ${ability.name}`);
+        h.manualCastRequest = null;
         return true;
     }
 
@@ -746,11 +751,13 @@ class Brain {
         else if (d < preferredRange - leash) h.intent.move = { x: -n.x, z: -n.z };
         else h.intent.move = { x: 0, z: 0 };
 
+        if (h.isCasting() || h.isRecovering() || h.globalCooldown > 0) return;
+
         const bestAbility = this.pickAbility(world, h, target, d, ctx);
         if (bestAbility) {
             const ability = abilities[bestAbility]
             h.intent.abilityKey = bestAbility;
-            h.intent.targetId = (ability.category === " barrier" || ability.category === "utility")
+            h.intent.targetId = (ability.category === "barrier" || ability.category === "utility")
                 ? h.id : target.id;
             h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
         }
@@ -1350,10 +1357,13 @@ class World {
         const a = abilities[abilityKey];
         if (!a) return { ok: false, reason: "unknown ability" };
         if (!source || source.lifecycle !== "alive") return { ok: false, reason: "source invalid" };
+        if (source.isCasting()) return { ok: false, reason: "already casting" };
+        if (source.isRecovering()) return { ok: false, reason: "recovering" };
+        if (source.globalCooldown > 0) return { ok: false, reason: `global cooldown ${source.globalCooldown.toFixed(1)}s` };
         if ((source.cooldowns[abilityKey] ?? 0) > 0) return { ok: false, reason: `cooldown ${source.cooldowns[abilityKey].toFixed(1)}s` };
         if ((a.resourceUse?.stamina ?? 0) > source.currentStamina) return { ok: false, reason: "not enough stamina" };
         if ((a.resourceUse?.energy ?? 0) > source.currentEnergy) return { ok: false, reason: "not enough energy" };
-        if (a.category === "utility") return { ok: true, reason: "ready" };
+        if (a.category === "utility" || a.category === "barrier") return { ok: true, reason: "ready" };
         if (!target || target.lifecycle !== "alive") return { ok: false, reason: "no valid target" };
         if (source.team === target.team) return { ok: false, reason: "invalid target" };
         const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
@@ -1366,9 +1376,39 @@ class World {
         return { ok: true, reason: "ready" };
     }
 
+    getAbilityTiming(abilityDef, source = null) {
+        const defaultsByCategory = {
+            melee: { castTime: 0.3, recovery: 0.2, gcd: 0.7 },
+            hitscan: { castTime: 0.45, recovery: 0.25, gcd: 0.8 },
+            projectile: { castTime: 0.5, recovery: 0.25, gcd: 0.85 },
+            aoe: { castTime: 0.6, recovery: 0.35, gcd: 0.95 },
+            barrier: { castTime: 0.65, recovery: 0.4, gcd: 1.0 },
+            utility: { castTime: 0.5, recovery: 0.35, gcd: 0.9 },
+            dash: { castTime: 0.25, recovery: 0.35, gcd: 0.8 },
+            gap_close: { castTime: 0.25, recovery: 0.35, gcd: 0.8 },
+            retreat: { castTime: 0.25, recovery: 0.4, gcd: 0.8 },
+        };
+        const category = abilityDef?.category ?? "melee";
+        const defaults = defaultsByCategory[category] ?? defaultsByCategory.melee;
+        const castSpd = Math.max(0.25, source?.modifiedStats?.castSpd ?? 1);
+        return {
+            castTime: (abilityDef?.castTime ?? defaults.castTime) / castSpd,
+            recovery: (abilityDef?.recovery ?? defaults.recovery) / castSpd,
+            gcd: (abilityDef?.gcd ?? defaults.gcd) / castSpd,
+        };
+    }
+
     queueManualCast(slotIndex) {
         const pet = this.getCreatureById(this.player.activePetId);
         if (!pet || pet.lifecycle !== "alive") return false;
+        if (pet.isCasting()) {
+            this.setManualCastStatus(pet, "Already casting");
+            return false;
+        }
+        if (pet.isRecovering() || pet.globalCooldown > 0) {
+            this.setManualCastStatus(pet, "Still recovering");
+            return false;
+        }
         const abilityKey = pet.moveset[slotIndex];
         if (!abilityKey) {
             this.setManualCastStatus(pet, `No move in slot ${slotIndex + 1}`);
@@ -1382,7 +1422,7 @@ class World {
     setManualCastStatus(creature, text, ttl = 1.2) {
         if (!creature) return;
         creature.manualCastStatus = { text, until: this.time + ttl };
-        this.player.lastLog = text;
+        if (creature.team === 0 && creature.id === this.player.activePetId) this.player.lastLog = text;
     }
 
     findNearestEnemyToPoint(x, z, maxRange = 30) {
@@ -1407,7 +1447,7 @@ class World {
         return false;
     }
 
-    tryUseAbility(source, abilityKey, targetId) {
+    beginAbilityCast(source, abilityKey, targetId, aimAt = null) {
         const a = abilities[abilityKey];
         const target = this.getCreatureById(targetId);
         const gate = this.evaluateAbilityUse(source, abilityKey, target);
@@ -1416,6 +1456,34 @@ class World {
         source.currentStamina -= a.resourceUse?.stamina ?? 0;
         source.currentEnergy -= a.resourceUse?.energy ?? 0;
         source.cooldowns[abilityKey] = a.cooldown;
+        const timing = this.getAbilityTiming(a, source);
+        source.globalCooldown = Math.max(source.globalCooldown, timing.gcd);
+        source.castState = {
+            abilityKey,
+            targetId,
+            windupRemaining: timing.castTime,
+            recoveryRemaining: timing.recovery,
+            executed: false,
+            aimAt: aimAt ? { x: aimAt.x, z: aimAt.z } : null,
+        };
+        return true;
+    }
+
+    cancelAbilityCast(source, reason = "cancelled") {
+        if (!source?.castState) return;
+        source.castState = null;
+        this.setManualCastStatus(source, reason, 0.7);
+    }
+
+    executeAbilityCast(source) {
+        const cast = source.castState;
+        if (!cast || cast.executed || source.lifecycle !== "alive") return false;
+        const a = abilities[cast.abilityKey];
+        if (!a) {
+            this.cancelAbilityCast(source, "Cast failed: unknown");
+            return false;
+        }
+        cast.executed = true;
 
         if (a.category === "utility") {
             EffectEngine.applyAbilityEffects(source, source, a);
@@ -1431,9 +1499,20 @@ class World {
             return true;
         }
 
+        const target = this.getCreatureById(cast.targetId);
+        if (!target || target.lifecycle !== "alive" || target.team === source.team) {
+            this.setManualCastStatus(source, `${a.name} fizzled`, 0.9);
+            return false;
+        }
+
+        const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
         if (a.category === "dash" || a.category === "gap_close" || a.category === "retreat") {
+            const dashReach = (a.dash?.distance ?? 70) + (a.range ?? 20);
+            if (d > dashReach) {
+                this.setManualCastStatus(source, `${a.name} out of dash range`, 0.9);
+                return false;
+            }
             const dir = norm2D(target.pos.x - source.pos.x, target.pos.z - source.pos.z);
-            const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
             const dashDist = a.dash?.distance ?? 70;
             const stopShort = a.dash?.stopShort ?? 16;
             const toward = a.category === "retreat" ? -1 : 1;
@@ -1441,6 +1520,9 @@ class World {
             source.pos.x = clamp(source.pos.x + dir.x * step * toward, 0, this.width);
             source.pos.z = clamp(source.pos.z + dir.z * step * toward, 0, this.height);
             this.combatFx.push({ type: "line", x1: source.pos.x - dir.x * step * toward, z1: source.pos.z - dir.z * step * toward, x2: source.pos.x, z2: source.pos.z, ttl: 0.1, color: a.fx?.lineColor ?? "#ffffff" });
+        } else if (d > (a.range ?? Infinity)) {
+            this.setManualCastStatus(source, `${a.name} out of range`, 0.9);
+            return false;
         }
 
         const dmg =
@@ -1463,6 +1545,28 @@ class World {
         this.applyDamagePacket(source, target, dmg, a);
         if (a.fx?.lineColor) this.combatFx.push({ type: "line", x1: source.pos.x, z1: source.pos.z, x2: target.pos.x, z2: target.pos.z, ttl: 0.12, color: a.fx.lineColor });
         return true;
+    }
+
+    tickAbilityCast(source, dt) {
+        if (!source?.castState) return;
+        if (source.lifecycle !== "alive") {
+            this.cancelAbilityCast(source, "Cast interrupted");
+            return;
+        }
+        const cast = source.castState;
+        cast.windupRemaining = Math.max(0, cast.windupRemaining - dt);
+        if (!cast.executed && cast.windupRemaining <= 0) {
+            this.executeAbilityCast(source);
+        }
+        if (cast.executed) {
+            cast.recoveryRemaining = Math.max(0, cast.recoveryRemaining - dt);
+            source.recoveryRemaining = Math.max(source.recoveryRemaining, cast.recoveryRemaining);
+            if (cast.recoveryRemaining <= 0) source.castState = null;
+        }
+    }
+
+    tryUseAbility(source, abilityKey, targetId, aimAt = null) {
+        return this.beginAbilityCast(source, abilityKey, targetId, aimAt);
     }
 
     applyDamagePacket(source, target, dmg, abilityDef) {
@@ -1873,6 +1977,26 @@ class World {
                 }
             }
 
+            if (c.isCasting()) {
+                const cast = c.castState;
+                const ability = abilities[cast.abilityKey];
+                const total = Math.max(0.01, this.getAbilityTiming(ability, c).castTime);
+                const progress = 1 - clamp((cast.windupRemaining ?? 0) / total, 0, 1);
+                ctx.fillStyle = "rgba(20,20,20,0.7)";
+                ctx.fillRect(s.sx - 16, s.sz - 32, 32, 4);
+                ctx.fillStyle = "#76d7ff";
+                ctx.fillRect(s.sx - 16, s.sz - 32, 32 * progress, 4);
+                ctx.fillStyle = "#c7ecff";
+                ctx.font = "10px monospace";
+                ctx.fillText(`CAST ${ability?.name ?? cast.abilityKey}`, s.sx - 24, s.sz - 36);
+            } else if (c.isRecovering()) {
+                const ratio = clamp(c.recoveryRemaining / 0.5, 0, 1);
+                ctx.fillStyle = `rgba(255,180,110,${0.25 + ratio * 0.5})`;
+                ctx.beginPath();
+                ctx.arc(s.sx, s.sz, 14, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
             const hpRatio = c.currentHP / c.modifiedStats.maxHP;
             ctx.fillStyle = "#222";
             ctx.fillRect(s.sx - 16, s.sz - 20, 32, 4);
@@ -2000,13 +2124,25 @@ class World {
                 const cd = activePet.cooldowns[abilityKey] ?? 0;
                 const hasStamina = (ability.resourceUse?.stamina ?? 0) <= activePet.currentStamina;
                 const hasEnergy = (ability.resourceUse?.energy ?? 0) <= activePet.currentEnergy;
-                const ready = cd <= 0 && hasStamina && hasEnergy;
+                const ready = cd <= 0 && hasStamina && hasEnergy && !activePet.isCasting() && !activePet.isRecovering() && activePet.globalCooldown <= 0;
                 let status = "READY";
                 if (cd > 0) status = `CD ${cd.toFixed(1)}s`;
+                else if (activePet.isCasting()) status = "CASTING";
+                else if (activePet.isRecovering()) status = `REC ${activePet.recoveryRemaining.toFixed(1)}s`;
+                else if (activePet.globalCooldown > 0) status = `GCD ${activePet.globalCooldown.toFixed(1)}s`;
                 else if (!hasStamina) status = "NO STAM";
                 else if (!hasEnergy) status = "NO EN";
                 ctx.fillStyle = ready ? "#8dff9d" : "#ffb3a1";
                 ctx.fillText(`${i === 0 ? "A" : "S"}: ${ability.name} - ${status}`, castPanelX + 10, rowY);
+            }
+            if (activePet.isCasting()) {
+                const cast = activePet.castState;
+                const a = abilities[cast?.abilityKey];
+                ctx.fillStyle = "#8fd5ff";
+                ctx.fillText(`Now casting: ${a?.name ?? cast?.abilityKey} (${Math.max(0, cast?.windupRemaining ?? 0).toFixed(2)}s)`, castPanelX + 10, castPanelY + castPanelH - 24);
+            } else if (activePet.isRecovering()) {
+                ctx.fillStyle = "#ffd89d";
+                ctx.fillText(`Recovering: ${activePet.recoveryRemaining.toFixed(2)}s  GCD: ${activePet.globalCooldown.toFixed(2)}s`, castPanelX + 10, castPanelY + castPanelH - 24);
             }
             if ((activePet.manualCastStatus?.until ?? 0) > this.time) {
                 ctx.fillStyle = "#9ec7ff";
