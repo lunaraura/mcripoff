@@ -1,6 +1,5 @@
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-
 /* =========================
    helpers
 ========================= */
@@ -30,7 +29,6 @@ function drawGauge(ctx, x, y, w, h, ratio, fill, back = "#222") {
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w * clamp(ratio, 0, 1), h);
 }
-
 /* =========================
    runtime registries (no legacy conceptBank paths)
 ========================= */
@@ -41,7 +39,6 @@ const composites = {
     fire: { effectiveness: { physical: 0.5, energy: 1.75 }, specialEffects: ["fireUp", "burnoff"] },
     rock: { effectiveness: { physical: 1, energy: 0.5 }, specialEffects: ["hardSurface"] },
 };
-
 const compositeEffects = {
     waterVolt(ctx) {
         if ((ctx.targetState.soak.water ?? 0) <= 0) return;
@@ -72,7 +69,6 @@ const compositeEffects = {
         ctx.targetState.soak.electric = 0;
     },
 };
-
 const abilities = {
     ram: {
         name: "Ram",
@@ -130,6 +126,18 @@ const abilities = {
         effectsOnHit: [{ type: "slow", duration: 1.5, magnitude: 0.35 }],
         fx: { pulseColor: "rgba(120,190,255,0.55)" },
     },
+    stomp: {
+        name: "Stomp",
+        category: "aoe",
+        cooldown: 5.2,
+        resourceUse: { stamina: 15, energy: 0 },
+        flatDmg: { p: 10, e: 0 },
+        dmgScale: { p: 0.6, e: 0 },
+        range: 90,
+        area: { radius: 30 },
+        effectsOnHit: [{ type: "slow", duration: 1.5, magnitude: 0.35 }],
+        fx: { pulseColor: "rgba(120,190,255,0.55)" },
+    },
     dashBite: {
         name: "Dash Bite",
         category: "dash",
@@ -164,14 +172,15 @@ const abilities = {
         selfStatus: [{ type: "regen", duration: 4.0, magnitude: 4.0 }],
     },
 };
-
 const species = {
     dog: {
         name: "Dog",
         compositeKey: "animal",
         role: "fighter",
         baseStats: { pAtk: 12, eAtk: 2, range: 24, maxHP: 110, spd: 70, castSpd: 1, size: 10, stamina: 25, energy: 10, recoverStamina: 6, recoverEnergy: 3 },
-        moveset: ["ram", "dashBite", "rallyHowl"],
+        moveset: ["ram", "dashBite", "rallyHowl", "stomp"], learnset: [], //later, add at what level it learns what
+        morphOptions: [] //{option: speciesKey, pointsNeeded: value}
+
     },
     sparkit: {
         name: "Sparkit",
@@ -195,7 +204,6 @@ const species = {
         moveset: ["pebbleShot", "ram"],
     },
 };
-
 const biomeDefs = {
     plains: {
         color: "#89a87c",
@@ -223,7 +231,6 @@ const biomeDefs = {
         nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}],
     },
 };
-
 const itemDefs = {
     berry_red: { name: "Red Berry", type: "heal", amount: 40 },
     berry_blue: { name: "Blue Berry", type: "heal", amount: 25 },
@@ -233,7 +240,6 @@ const itemDefs = {
     battery_seed: { name: "Battery Seed", type: "energy", amount: 16, stamina: 10 },
     lure_meat: { name: "Lure Meat", type: "bait", tameBonus: 0.25, requiredHPRatio: 0.45 },
 };
-
 const nodeDefs = {
     berry_bush: { color: "#bb2f58", reward: { key: "berry_red", amount: 2 }, cooldown: 12 },
     berry_bush_blue: { color: "#4a90e2", reward: { key: "berry_blue", amount: 2 }, cooldown: 12 },
@@ -243,7 +249,6 @@ const nodeDefs = {
     energy_crystal: { color: "#5fc7ff", reward: { key: "battery_seed", amount: 1 }, cooldown: 14 },
     bait_shrub: { color: "#a6a052", reward: { key: "lure_meat", amount: 1 }, cooldown: 16 },
 };
-
 /* =========================
    systems: effects/status/progression
 ========================= */
@@ -267,19 +272,16 @@ const EffectEngine = {
         const composite = composites[creature.compositeKey] ?? composites.animal;
         const effects = composite.specialEffects ?? [];
         creature.effectState.buff.energyBonus = 0;
-
         const ctx = { dt, target: creature, targetState: creature.effectState };
         for (const effectKey of effects) {
             const fn = compositeEffects[effectKey];
             if (typeof fn === "function") fn(ctx);
         }
-
         const s = creature.effectState.soak;
         s.water = Math.max(0, s.water - dt * 0.25);
         s.electric = Math.max(0, s.electric - dt * 0.4);
         s.chemical = Math.max(0, s.chemical - dt * 0.35);
         s.heat = Math.max(0, s.heat - dt * 0.2);
-
         let slowMult = 1;
         let speedBonus = 0;
         let atkBonus = 0;
@@ -321,11 +323,9 @@ const EffectEngine = {
         return 1 + (source.effectState?.buff?.energyBonus ?? 0);
     },
 };
-
 function xpNeededForLevel(level) {
     return 35 + (level - 1) * 22;
 }
-
 /* =========================
    input
 ========================= */
@@ -341,7 +341,6 @@ class InputManager {
             this.keys.set(e.code, true);
         });
         window.addEventListener("keyup", (e) => this.keys.set(e.code, false));
-
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
         canvas.addEventListener("mousemove", (e) => {
             const rect = canvas.getBoundingClientRect();
@@ -385,7 +384,6 @@ class InputManager {
         this.pressed.clear();
     }
 }
-
 /* =========================
    camera
 ========================= */
@@ -407,13 +405,11 @@ class Camera {
         return { x: (sx - canvas.width / 2) / this.zoom + this.x, z: (sz - canvas.height / 2) / this.zoom + this.z };
     }
 }
-
 /* =========================
    creature + factory (single creation path)
 ========================= */
 let NEXT_ID = 1;
 let NEXT_OWNED_ID = 1;
-
 class Creature {
     constructor(id, speciesKey, team, x, z, def) {
         this.id = id;
@@ -422,7 +418,6 @@ class Creature {
         this.pos = { x, z };
         this.vel = { x: 0, z: 0 };
         this.angle = 0;
-
         this.speciesBaseStats = { ...def.baseStats };
         this.growthStats = { pAtk: 0, eAtk: 0, range: 0, maxHP: 0, spd: 0, castSpd: 0, size: 0, stamina: 0, energy: 0, recoverStamina: 0, recoverEnergy: 0 };
         this.permanentStats = { ...def.baseStats };
@@ -430,19 +425,15 @@ class Creature {
         this.compositeKey = def.compositeKey;
         this.effectState = EffectEngine.createState();
         this.statusEffects = [];
-
         this.currentHP = this.permanentStats.maxHP;
         this.currentStamina = this.permanentStats.stamina;
         this.currentEnergy = this.permanentStats.energy;
-
         this.level = 1;
         this.xp = 0;
         this.nextXP = xpNeededForLevel(this.level);
-
         this.moveset = [...def.moveset];
         this.cooldowns = Object.fromEntries(this.moveset.map(k => [k, 0]));
         this.combatContributors = new Map();
-
         this.runtimeSpeedMult = 1;
         this.runtimeAtkMult = 1;
         this.runtimeDmgReduction = 0;
@@ -457,27 +448,22 @@ class Creature {
         this.castState = null;
         this.recoveryRemaining = 0;
         this.globalCooldown = 0;
-
         // Command system payload used by brains.
         this.command = { type: "follow", issuedAt: 0, targetId: null, point: null };
     }
-
     makeEmptyIntent() {
         return { move: { x: 0, z: 0 }, abilityKey: null, targetId: null, aimAt: null };
     }
-
     isCasting() {
         return !!this.castState;
     }
-
     isRecovering() {
         return this.recoveryRemaining > 0;
     }
-
     addXP(amount) {
         const events = [];
         this.xp += amount;
-        
+        //add by level-up composite stats.
         while (this.xp >= this.nextXP) {
             this.xp -= this.nextXP;
             this.level += 1;
@@ -492,7 +478,6 @@ class Creature {
         }
         return events;
     }
-
     rebuildStats() {
         this.permanentStats = {
             pAtk: this.speciesBaseStats.pAtk + this.growthStats.pAtk,
@@ -509,32 +494,25 @@ class Creature {
         };
         this.modifiedStats = { ...this.permanentStats };
     }
-
     tick(dt, world) {
         if (this.lifecycle !== "alive") return;
         for (const key of Object.keys(this.cooldowns)) this.cooldowns[key] = Math.max(0, this.cooldowns[key] - dt);
         this.globalCooldown = Math.max(0, this.globalCooldown - dt);
         this.recoveryRemaining = Math.max(0, this.recoveryRemaining - dt);
-
         this.currentStamina = Math.min(this.modifiedStats.stamina, this.currentStamina + this.modifiedStats.recoverStamina * dt);
         this.currentEnergy = Math.min(this.modifiedStats.energy, this.currentEnergy + this.modifiedStats.recoverEnergy * dt);
         EffectEngine.tickCreature(this, dt);
-
         const mv = norm2D(this.intent.move.x, this.intent.move.z);
         this.vel.x = mv.x * this.modifiedStats.spd * this.runtimeSpeedMult;
         this.vel.z = mv.z * this.modifiedStats.spd * this.runtimeSpeedMult;
-
         this.pos.x = clamp(this.pos.x + this.vel.x * dt, 0, world.width);
         this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
-
         if (mv.x !== 0 || mv.z !== 0) this.angle = Math.atan2(mv.z, mv.x);
         world.tickAbilityCast(this, dt);
         if (this.intent.abilityKey && this.intent.targetId) world.tryUseAbility(this, this.intent.abilityKey, this.intent.targetId, this.intent.aimAt);
-
         this.hitFlash = Math.max(0, this.hitFlash - dt * 5);
     }
 }
-
 class CreatureFactory {
     create(speciesKey, team, x, z, opts = {}) {
         const def = species[speciesKey];
@@ -558,7 +536,6 @@ class CreatureFactory {
         return c;
     }
 }
-
 /* =========================
    brain (explicit commands + stance handling)
 ========================= */
@@ -579,7 +556,6 @@ class Brain {
         if (h.mode === "pet") this.thinkPet(world);
         else this.thinkWild(world);
     }
-
     thinkPet(world) {
         const h = this.host;
         const player = world.player;
@@ -587,39 +563,32 @@ class Brain {
         const activeControlMode = player.activeControlMode ?? "AUTO";
         const followAnchor = world.getPetFollowAnchor(h.id);
         const stance = isActive ? "aggressive" : player.stance;
-
         if (isActive && h.manualCastRequest) {
             const handled = this.executeManualCast(world, h);
             if (handled) return;
         }
-
         // Explicit command priority for active pet.
         if (h.command?.type && (isActive || h.command.type === "hold" || h.command.type === "follow")) {
             const done = this.executeCommand(world, h, h.command, isActive, followAnchor);
             if (!done) return;
         }
-
         if (isActive && activeControlMode === "MANUAL") {
             // MANUAL mode: no autonomous target acquisition / auto-casting.
             this.moveTowardAnchor(h, followAnchor, 20);
             return;
         }
-
         if (stance === "hold" && !isActive) {
             h.intent.move = { x: 0, z: 0 };
             return;
         }
-
         const acquisitionRange = stance === "follow" ? 120 : 190;
         const target = world.findNearestEnemyOf(h, acquisitionRange);
         if (target) {
             this.fightTarget(world, h, target, stance === "follow" ? 100 : null);
             return;
         }
-
         this.moveTowardAnchor(h, followAnchor, stance === "follow" ? 8 : 14);
     }
-
     executeCommand(world, h, cmd, isActive, followAnchor) {
         if (cmd.type === "hold") {
             h.intent.move = { x: 0, z: 0 };
@@ -647,7 +616,6 @@ class Brain {
         }
         return true;
     }
-
     executeManualCast(world, h) {
         const req = h.manualCastRequest;
         if (!req) return false;
@@ -657,7 +625,6 @@ class Brain {
             world.setManualCastStatus(h, "Unknown ability");
             return false;
         }
-
         if (ability.category === "utility" || ability.category === "barrier") {
             const gate = world.evaluateAbilityUse(h, req.abilityKey, h);
             if (!gate.ok) {
@@ -672,7 +639,6 @@ class Brain {
             h.manualCastRequest = null;
             return true;
         }
-
         const commandTarget = world.getCreatureById(world.player.commandTargetId);
         let target = null;
         if (commandTarget && commandTarget.lifecycle === "alive" && commandTarget.team !== h.team) {
@@ -680,13 +646,11 @@ class Brain {
         } else {
             target = world.findNearestEnemyOf(h, ability.range ?? Infinity) ?? world.findNearestEnemyOf(h, Infinity);
         }
-
         if (!target) {
             world.setManualCastStatus(h, "No target");
             h.manualCastRequest = null;
             return true;
         }
-
         const gate = world.evaluateAbilityUse(h, req.abilityKey, target);
         if (!gate.ok) {
             if (gate.reason === "out of range") {
@@ -702,7 +666,6 @@ class Brain {
             h.manualCastRequest = null;
             return true;
         }
-
         h.intent.abilityKey = req.abilityKey;
         h.intent.targetId = target.id;
         h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
@@ -710,7 +673,6 @@ class Brain {
         h.manualCastRequest = null;
         return true;
     }
-
     moveTowardAnchor(h, anchor, tolerance) {
         const dx = anchor.x - h.pos.x;
         const dz = anchor.z - h.pos.z;
@@ -720,24 +682,20 @@ class Brain {
             h.intent.move = { x: n.x, z: n.z };
         }
     }
-
     thinkWild(world) {
         const h = this.host;
         const target = world.findNearestEnemyOf(h, 140);
         if (!target) return;
         this.fightTarget(world, h, target, null);
     }
-
     fightTarget(world, h, target, maxPursuitDistance = null) {
         const dx = target.pos.x - h.pos.x;
         const dz = target.pos.z - h.pos.z;
         const d = Math.hypot(dx, dz);
         const n = norm2D(dx, dz);
         const ctx = this.getLocalCombatContext(world, h, target);
-
         const preferredRange = this.role === "ranged" ? 95 : 18;
         const leash = this.role === "ranged" ? 20 : 8;
-
         if (maxPursuitDistance != null) {
             const anchor = world.getPetFollowAnchor(h.id);
             if (dist(target.pos.x, target.pos.z, anchor.x, anchor.z) > maxPursuitDistance) {
@@ -745,15 +703,12 @@ class Brain {
                 return;
             }
         }
-
         if (this.role === "ranged" && (ctx.outnumbered || ctx.hpRatio < 0.45) && d < preferredRange + 10) {
             h.intent.move = { x: -n.x, z: -n.z };
         } else if (d > preferredRange + leash) h.intent.move = { x: n.x, z: n.z };
         else if (d < preferredRange - leash) h.intent.move = { x: -n.x, z: -n.z };
         else h.intent.move = { x: 0, z: 0 };
-
         if (h.isCasting() || h.isRecovering() || h.globalCooldown > 0) return;
-
         const bestAbility = this.pickAbility(world, h, target, d, ctx);
         if (bestAbility) {
             const ability = abilities[bestAbility]
@@ -763,7 +718,6 @@ class Brain {
             h.intent.aimAt = { x: target.pos.x, z: target.pos.z };
         }
     }
-
     getLocalCombatContext(world, creature, target) {
         let nearbyAllies = 0;
         let nearbyEnemies = 0;
@@ -791,7 +745,6 @@ class Brain {
             outnumbered: nearbyEnemies > nearbyAllies + 1,
         };
     }
-
     shouldDashEngage(creature, target, ability, distToTarget, ctx) {
         if (!ability?.dash) return false;
         const dashReach = (ability.dash.distance ?? 70) + (ability.range ?? 20);
@@ -801,14 +754,12 @@ class Brain {
         if (ctx.hpRatio < 0.35 && ctx.outnumbered) return false;
         return ctx.targetRatio < 0.65 || this.role !== "ranged";
     }
-
     shouldDashEscape(creature, target, ability, distToTarget, ctx) {
         if (ability.category !== "retreat" && ability.category !== "dash") return false;
         const lowResources = ctx.staminaRatio < 0.3 && ctx.energyRatio < 0.3;
         const tooCloseForRanged = this.role === "ranged" && distToTarget < 50;
         return ctx.hpRatio < 0.38 || lowResources || ctx.outnumbered || tooCloseForRanged;
     }
-
     shouldUseBarrier(creature, ctx) {
         if (ctx.hpRatio < 0.45) return true;
         if (ctx.outnumbered) return true;
@@ -816,7 +767,6 @@ class Brain {
         if (this.role === "ranged" && ctx.nearbyEnemies > 0 && ctx.energyRatio > 0.4) return true;
         return false;
     }
-
     scoreAbilityUse(creature, target, ability, distToTarget, ctx) {
         let score =
             (ability.flatDmg?.p ?? 0) +
@@ -824,11 +774,9 @@ class Brain {
             (ability.dmgScale?.p ?? 0) * creature.modifiedStats.pAtk +
             (ability.dmgScale?.e ?? 0) * creature.modifiedStats.eAtk +
             (ability.effectsOnHit ? 2 : 0);
-
         if (ability.category === "barrier") {
             return this.shouldUseBarrier(creature, ctx) ? 35 : -10;
         }
-
         if (ability.category === "dash" || ability.category === "gap_close") {
             if (this.shouldDashEscape(creature, target, ability, distToTarget, ctx) && this.role === "ranged") score += 10;
             if (this.shouldDashEngage(creature, target, ability, distToTarget, ctx)) score += 16;
@@ -840,7 +788,6 @@ class Brain {
         if (ctx.targetRatio < 0.3) score += 5;
         return score;
     }
-
     pickAbility(world, creature, target, distToTarget, ctx) {
         let best = null;
         let bestScore = -Infinity;
@@ -850,13 +797,11 @@ class Brain {
             if ((creature.cooldowns[key] ?? 0) > 0) continue;
             if ((a.resourceUse?.stamina ?? 0) > creature.currentStamina) continue;
             if ((a.resourceUse?.energy ?? 0) > creature.currentEnergy) continue;
-
             const isDash = a.category === "dash" || a.category === "gap_close" || a.category === "retreat";
             const inNormalRange = distToTarget <= (a.range ?? 999);
             const inDashReach = isDash && distToTarget <= ((a.dash?.distance ?? 70) + (a.range ?? 20));
             const isBarrier = a.category === "barrier";
             if (!isBarrier && !inNormalRange && !inDashReach) continue;
-
             const score = this.scoreAbilityUse(creature, target, a, distToTarget, ctx);
             if (score > bestScore) {
                 bestScore = score;
@@ -866,7 +811,6 @@ class Brain {
         return best;
     }
 }
-
 /* =========================
    world helpers: biome, spawn, interactables
 ========================= */
@@ -884,7 +828,9 @@ const BiomeSystem = {
         return { key, ...biomeDefs[key] };
     },
 };
+const ChunkSystem = {
 
+}
 class SpawnField {
     constructor(radius = 260, innerNoSpawn = 90, maxWild = 8, interval = 1.6) {
         this.radius = radius;
@@ -904,7 +850,6 @@ class SpawnField {
     trySpawn(world) {
         const currentWild = world.creatures.filter(c => c.mode === "wild" && c.lifecycle === "alive").length;
         if (currentWild >= this.maxWild) return;
-
         const player = world.player;
         for (let i = 0; i < 14; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -912,7 +857,6 @@ class SpawnField {
             const x = player.pos.x + Math.cos(angle) * d;
             const z = player.pos.z + Math.sin(angle) * d;
             if (x < 0 || x > world.width || z < 0 || z > world.height) continue;
-
             const biome = BiomeSystem.getBiomeAt(x, z);
             const speciesKey = pickWeighted(biome.spawns);
             const wild = world.factory.create(speciesKey, 1, x, z, { mode: "wild" });
@@ -932,7 +876,6 @@ class SpawnField {
         });
     }
 }
-
 class InteractableNode {
     constructor(type, x, z) {
         this.type = type;
@@ -946,7 +889,6 @@ class InteractableNode {
         return this.cooldown <= 0;
     }
 }
-
 class BarrierZone {
     constructor(x, z, team, radius, duration, opts = {}) {
         this.pos = { x, z };
@@ -959,7 +901,6 @@ class BarrierZone {
         this.color = opts.color ?? "rgba(120,190,255,0.18)";
     }
 }
-
 /* =========================
    player + commands/items/taming
 ========================= */
@@ -970,11 +911,9 @@ class PlayerEntity {
         this.MANUAL_LEASH_RADIUS = 96;
         this.MANUAL_FOLLOW_SPEED = 170;
         this.MANUAL_LEASH_PULL_SPEED = 240;
-
         this.pos = { x, z };
         this.vel = { x: 0, z: 0 };
         this.spd = 140;
-
         this.petIds = [null, null, null];
         this.partyOwnedIds = [null, null, null];
         this.selectAll = false;
@@ -1027,11 +966,9 @@ class PlayerEntity {
             this.vel.z *= 0.85;
             return;
         }
-
         const speed = Math.hypot(activePet.vel.x, activePet.vel.z);
         let heading = { x: Math.cos(activePet.angle), z: Math.sin(activePet.angle) };
         if (speed > 0.5) heading = norm2D(activePet.vel.x, activePet.vel.z);
-
         const anchor = {
             x: activePet.pos.x - heading.x * this.MANUAL_FOLLOW_DISTANCE,
             z: activePet.pos.z - heading.z * this.MANUAL_FOLLOW_DISTANCE,
@@ -1039,7 +976,6 @@ class PlayerEntity {
         const dx = anchor.x - this.pos.x;
         const dz = anchor.z - this.pos.z;
         const d = Math.hypot(dx, dz);
-
         if (d > this.MANUAL_FOLLOW_DEADZONE) {
             const n = norm2D(dx, dz);
             const desiredVx = n.x * this.MANUAL_FOLLOW_SPEED;
@@ -1051,10 +987,8 @@ class PlayerEntity {
             this.vel.x *= 0.8;
             this.vel.z *= 0.8;
         }
-
         this.pos.x = clamp(this.pos.x + this.vel.x * dt, 0, world.width);
         this.pos.z = clamp(this.pos.z + this.vel.z * dt, 0, world.height);
-
         this.enforceActivePetLeash(world, dt);
     }
     enforceActivePetLeash(world, dt) {
@@ -1064,13 +998,11 @@ class PlayerEntity {
         const dz = this.pos.z - activePet.pos.z;
         const d = Math.hypot(dx, dz);
         if (d <= this.MANUAL_LEASH_RADIUS) return;
-
         const n = norm2D(dx, dz);
         const overshoot = d - this.MANUAL_LEASH_RADIUS;
         const pull = Math.min(overshoot, this.MANUAL_LEASH_PULL_SPEED * dt);
         this.pos.x -= n.x * pull;
         this.pos.z -= n.z * pull;
-
         // Safety clamp to avoid ever drifting outside due to low frame rates.
         const safeD = Math.hypot(this.pos.x - activePet.pos.x, this.pos.z - activePet.pos.z);
         if (safeD > this.MANUAL_LEASH_RADIUS) {
@@ -1081,7 +1013,6 @@ class PlayerEntity {
     update(dt, input, world) {
         if (this.activeControlMode === "MANUAL") this.updateManualFollow(world, dt);
         else this.updateAutoMovement(input, dt, world);
-
         if (input.consumePress("Digit1")) this.activePetIndex = 0;
         if (input.consumePress("Digit2")) this.activePetIndex = 1;
         if (input.consumePress("Digit3")) this.activePetIndex = 2;
@@ -1115,12 +1046,10 @@ class PlayerEntity {
         if (input.consumePress("KeyZ")) world.useSelectedItem();
         if (input.consumePress("KeyA")) world.queueManualCast(0);
         if (input.consumePress("KeyS")) world.queueManualCast(1);
-
         if (input.consumePress("KeyF")) world.tryInteractNearestNode();
         if (input.consumePress("BracketLeft")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
         if (input.consumePress("BracketRight")) this.selectedReserveIndex += 1;
         if (input.consumePress("KeyT")) world.swapActiveWithReserve(this.selectedReserveIndex);
-
         const worldPos = world.camera.screenToWorld(input.mouse.x, input.mouse.y);
         if (input.consumeMouseLeftPress()) {
             const target = world.findNearestEnemyToPoint(worldPos.x, worldPos.z, 32);
@@ -1135,10 +1064,11 @@ class PlayerEntity {
             this.commandTargetId = null;
             this.lastLog = "Move command";
         }
-
     }
 }
+class BuildingManager {
 
+}
 /* =========================
    world
 ========================= */
@@ -1147,24 +1077,19 @@ class World {
         this.width = 1600;
         this.height = 1100;
         this.time = 0;
-
         this.camera = new Camera();
         this.player = new PlayerEntity(this.width / 2, this.height / 2);
         this.creatures = [];
         this.factory = new CreatureFactory();
         this.spawnField = new SpawnField();
-
         this.nodes = [];
         this.nodeSpawnTimer = 0;
         this.barriers = [];
-
         this.floatingTexts = [];
         this.combatFx = [];
     }
-
     initialize(starterSpeciesKey = "dog") {
         this.camera.follow(this.player);
-
         const ownedStarter = this.createOwnedCreatureRecord(starterSpeciesKey);
         this.player.partyOwnedIds = [ownedStarter.ownedId, null, null];
         this.hydratePartyRuntime();
@@ -1222,14 +1147,12 @@ class World {
             if (pet) this.player.petIds[i] = pet.id;
         }
     }
-
     getFirstOpenPartySlot() {
         for (let i = 0; i < this.player.partyOwnedIds.length; i++) {
             if (this.player.partyOwnedIds[i] == null) return i;
         }
         return -1;
     }
-
     createOwnedCreatureRecord(speciesKey, runtime = null) {
         const def = species[speciesKey];
         const owned = {
@@ -1246,11 +1169,9 @@ class World {
         this.player.ownedCreatures.push(owned);
         return owned;
     }
-
     getOwnedCreatureById(ownedId) {
         return this.player.ownedCreatures.find(o => o.ownedId === ownedId) ?? null;
     }
-
     syncOwnedCreatureFromRuntime(runtimeCreature) {
         if (runtimeCreature.ownedId == null) return;
         const owned = this.getOwnedCreatureById(runtimeCreature.ownedId);
@@ -1262,23 +1183,19 @@ class World {
         owned.moveset = [...runtimeCreature.moveset];
         owned.compositeKey = runtimeCreature.compositeKey;
     }
-
     update(dt, input) {
         this.time += dt;
         this.player.update(dt, input, this);
         this.normalizeReserveSelection();
         this.spawnField.update(dt, this);
-
         this.nodeSpawnTimer += dt;
         if (this.nodeSpawnTimer > 7.5 && this.nodes.length < 20) {
             this.nodeSpawnTimer = 0;
             this.spawnBiomeNodesAroundPlayer(2);
         }
         for (const node of this.nodes) node.update(dt);
-
         for (const c of this.creatures) if (c.brain) c.brain.think(this);
         for (const c of this.creatures) c.tick(dt, this);
-
         this.resolveSimpleSeparation();
         this.cleanupDefeatedCreatures();
         this.rebuildPartyPetIds();
@@ -1287,7 +1204,6 @@ class World {
         this.updateFx(dt);
         this.camera.update(dt);
     }
-
     normalizeReserveSelection() {
         if (this.player.reserveOwnedIds.length <= 0) {
             this.player.selectedReserveIndex = 0;
@@ -1295,7 +1211,6 @@ class World {
         }
         this.player.selectedReserveIndex = clamp(this.player.selectedReserveIndex, 0, this.player.reserveOwnedIds.length - 1);
     }
-
     rebuildPartyPetIds() {
         this.player.petIds = this.player.partyOwnedIds.map((ownedId) => {
             if (ownedId == null) return null;
@@ -1309,13 +1224,11 @@ class World {
             return runtime?.id ?? null
         });
     }
-
     commandActivePet(command) {
         const pet = this.getCreatureById(this.player.activePetId);
         if (!pet || pet.lifecycle !== "alive") return;
         pet.command = { ...command };
     }
-
     commandAllPets(command) {
         for (const id of this.player.petIds) {
             const pet = this.getCreatureById(id);
@@ -1323,11 +1236,9 @@ class World {
             pet.command = { ...command };
         }
     }
-
     getCreatureById(id) {
         return this.creatures.find(c => c.id === id) ?? null;
     }
-
     getPetFollowAnchor(petId) {
         const ids = this.player.petIds;
         const idx = ids.indexOf(petId);
@@ -1339,7 +1250,6 @@ class World {
         ];
         return anchors[idx] ?? { x: p.x, z: p.z + 30 };
     }
-
     findNearestEnemyOf(creature, maxRange = Infinity) {
         let best = null;
         let bestD = Infinity;
@@ -1353,7 +1263,6 @@ class World {
         }
         return best;
     }
-
     evaluateAbilityUse(source, abilityKey, target) {
         const a = abilities[abilityKey];
         if (!a) return { ok: false, reason: "unknown ability" };
@@ -1376,7 +1285,6 @@ class World {
         if (d > (a.range ?? Infinity)) return { ok: false, reason: "out of range" };
         return { ok: true, reason: "ready" };
     }
-
     getAbilityTiming(abilityDef, source = null) {
         const defaultsByCategory = {
             melee: { castTime: 0.3, recovery: 0.2, gcd: 0.7 },
@@ -1398,7 +1306,6 @@ class World {
             gcd: (abilityDef?.gcd ?? defaults.gcd) / castSpd,
         };
     }
-
     queueManualCast(slotIndex) {
         const pet = this.getCreatureById(this.player.activePetId);
         if (!pet || pet.lifecycle !== "alive") return false;
@@ -1419,13 +1326,11 @@ class World {
         this.setManualCastStatus(pet, `Queued ${abilities[abilityKey]?.name ?? abilityKey}`);
         return true;
     }
-
     setManualCastStatus(creature, text, ttl = 1.2) {
         if (!creature) return;
         creature.manualCastStatus = { text, until: this.time + ttl };
         if (creature.team === 0 && creature.id === this.player.activePetId) this.player.lastLog = text;
     }
-
     findNearestEnemyToPoint(x, z, maxRange = 30) {
         let best = null;
         let bestD = Infinity;
@@ -1439,7 +1344,6 @@ class World {
         }
         return best;
     }
-
     isCreatureEngaged(creature) {
         for (const other of this.creatures) {
             if (other.id === creature.id || other.lifecycle !== "alive" || other.team === creature.team) continue;
@@ -1447,13 +1351,11 @@ class World {
         }
         return false;
     }
-
     beginAbilityCast(source, abilityKey, targetId, aimAt = null) {
         const a = abilities[abilityKey];
         const target = this.getCreatureById(targetId);
         const gate = this.evaluateAbilityUse(source, abilityKey, target);
         if (!gate.ok) return false;
-
         source.currentStamina -= a.resourceUse?.stamina ?? 0;
         source.currentEnergy -= a.resourceUse?.energy ?? 0;
         source.cooldowns[abilityKey] = a.cooldown;
@@ -1469,13 +1371,11 @@ class World {
         };
         return true;
     }
-
     cancelAbilityCast(source, reason = "cancelled") {
         if (!source?.castState) return;
         source.castState = null;
         this.setManualCastStatus(source, reason, 0.7);
     }
-
     executeAbilityCast(source) {
         const cast = source.castState;
         if (!cast || cast.executed || source.lifecycle !== "alive") return false;
@@ -1485,7 +1385,6 @@ class World {
             return false;
         }
         cast.executed = true;
-
         if (a.category === "utility") {
             EffectEngine.applyAbilityEffects(source, source, a);
             this.pushFloatingText(source.pos.x, source.pos.z - 10, a.name, "#88ffb5");
@@ -1499,13 +1398,11 @@ class World {
             this.combatFx.push({ type: "pulse", x: atX, z: atZ, radius: a.barrier?.radius ?? 48, ttl: 0.22, color: a.fx?.pulseColor ?? "rgba(120,190,255,0.25)" });
             return true;
         }
-
         const target = this.getCreatureById(cast.targetId);
         if (!target || target.lifecycle !== "alive" || target.team === source.team) {
             this.setManualCastStatus(source, `${a.name} fizzled`, 0.9);
             return false;
         }
-
         const d = dist(source.pos.x, source.pos.z, target.pos.x, target.pos.z);
         if (a.category === "dash" || a.category === "gap_close" || a.category === "retreat") {
             const dashReach = (a.dash?.distance ?? 70) + (a.range ?? 20);
@@ -1525,13 +1422,11 @@ class World {
             this.setManualCastStatus(source, `${a.name} out of range`, 0.9);
             return false;
         }
-
         const dmg =
             (a.flatDmg?.p ?? 0) +
             (a.flatDmg?.e ?? 0) +
             (a.dmgScale?.p ?? 0) * source.modifiedStats.pAtk +
             (a.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
-
         if (a.category === "aoe") {
             const radius = a.area?.radius ?? 30;
             for (const other of this.creatures) {
@@ -1542,12 +1437,10 @@ class World {
             this.combatFx.push({ type: "pulse", x: target.pos.x, z: target.pos.z, radius, ttl: 0.2, color: a.fx?.pulseColor ?? "rgba(255,255,255,0.4)" });
             return true;
         }
-
         this.applyDamagePacket(source, target, dmg, a);
         if (a.fx?.lineColor) this.combatFx.push({ type: "line", x1: source.pos.x, z1: source.pos.z, x2: target.pos.x, z2: target.pos.z, ttl: 0.12, color: a.fx.lineColor });
         return true;
     }
-
     tickAbilityCast(source, dt) {
         if (!source?.castState) return;
         if (source.lifecycle !== "alive") {
@@ -1565,11 +1458,9 @@ class World {
             if (cast.recoveryRemaining <= 0) source.castState = null;
         }
     }
-
     tryUseAbility(source, abilityKey, targetId, aimAt = null) {
         return this.beginAbilityCast(source, abilityKey, targetId, aimAt);
     }
-
     applyDamagePacket(source, target, dmg, abilityDef) {
         const effBonus = EffectEngine.applyAbilityEffects(source, target, abilityDef);
         const composite = composites[target.compositeKey] ?? composites.animal;
@@ -1582,17 +1473,14 @@ class World {
         const atkScaled = (scaled || dmg) * (source.runtimeAtkMult ?? 1);
         const reduced = atkScaled * (1 - (target.runtimeDmgReduction ?? 0));
         const finalDmg = Math.max(1, reduced);
-
         target.currentHP = Math.max(0, target.currentHP - finalDmg);
         target.hitFlash = 1;
         target.combatContributors.set(source.id, this.time);
         this.pushFloatingText(target.pos.x, target.pos.z - 12, `${Math.round(finalDmg)}`, "#ffd7d7");
-
         if (target.currentHP <= 0) {
             target.lifecycle = "defeated";
         }
     }
-
     cleanupDefeatedCreatures() {
         for (const c of this.creatures) {
             if (c.lifecycle !== "defeated" || c._deathHandled) continue;
@@ -1601,7 +1489,6 @@ class World {
             this.handleCreatureDefeat(c);
         }
     }
-
     handleCreatureDefeat(dead) {
         if (dead.team === 0) return;
         const contributors = [];
@@ -1616,17 +1503,17 @@ class World {
             if (!pet || pet.lifecycle !== "alive") continue;
             if (!contributors.includes(pet) && dist(pet.pos.x, pet.pos.z, dead.pos.x, dead.pos.z) < 140) contributors.push(pet);
         }
-
-        const baseXP = 100;
+        const baseXP = 75;
+        const deadLevel = dead.level;
+        const adjustedXP = Math.floor(baseXP * (1 + deadLevel * 0.12));
         for (const pet of contributors) {
-            const events = pet.addXP(baseXP);
+            const events = pet.addXP(adjustedXP);
             this.syncOwnedCreatureFromRuntime(pet);
             for (const ev of events) {
                 if (ev.type === "leveledUp") this.pushFloatingText(pet.pos.x, pet.pos.z - 14, `Lv Up! ${ev.newLevel}`, "#fff799");
             }
         }
     }
-
     useItem(itemKey, targetMode) {
         const def = itemDefs[itemKey];
         if (!def) return false;
@@ -1669,7 +1556,6 @@ class World {
                 this.player.lastLog = "Bait ready - use V on weakened wild";
             }
         }
-
         if (targetMode === "wildTarget") {
             const t = this.getCreatureById(this.player.commandTargetId);
             if (!t || t.team !== 1 || t.lifecycle !== "alive") return false;
@@ -1680,11 +1566,9 @@ class World {
                 this.player.lastLog = "Capture failed! Wild enraged.";
             }
         }
-
         this.player.inventory[itemKey] -= 1;
         return true;
     }
-
     tryTameWild(wild, itemDef) {
         if (itemDef.type !== "bait") return false;
         const hpRatio = wild.currentHP / wild.modifiedStats.maxHP;
@@ -1692,10 +1576,8 @@ class World {
             this.player.lastLog = "Wild too healthy to tame";
             return false;
         }
-
         const chance = clamp((1 - hpRatio) * 0.45 + (itemDef.tameBonus ?? 0), 0.1, 0.85);
         if (Math.random() > chance) return false;
-
         wild.lifecycle = "captured";
         const owned = this.createOwnedCreatureRecord(wild.speciesKey, wild);
         const openSlot = this.getFirstOpenPartySlot();
@@ -1707,11 +1589,9 @@ class World {
             this.player.reserveOwnedIds.push(owned.ownedId);
             this.player.lastLog = `Tamed ${wild.speciesKey} -> reserve`;
         }
-
         this.pushFloatingText(wild.pos.x, wild.pos.z - 18, "Captured!", "#ffe38e");
         return true;
     }
-
     swapActiveWithReserve(reserveIndex) {
         const reserveOwnedId = this.player.reserveOwnedIds[reserveIndex];
         if (reserveOwnedId == null) return false;
@@ -1725,7 +1605,6 @@ class World {
         this.player.lastLog = `Swapped in ${reserveData?.speciesKey ?? "pet"}`;
         return true;
     }
-
     spawnBiomeNodesAroundPlayer(count) {
         const p = this.player.pos;
         for (let i = 0; i < count; i++) {
@@ -1736,7 +1615,6 @@ class World {
             this.nodes.push(new InteractableNode(type, x, z));
         }
     }
-
     tryInteractNearestNode() {
         let best = null;
         let bestD = Infinity;
@@ -1752,7 +1630,6 @@ class World {
             this.player.lastLog = "No node nearby";
             return false;
         }
-
         const def = nodeDefs[best.type];
         this.player.inventory[def.reward.key] = (this.player.inventory[def.reward.key] ?? 0) + def.reward.amount;
         best.cooldown = def.cooldown;
@@ -1760,14 +1637,12 @@ class World {
         this.pushFloatingText(best.pos.x, best.pos.z - 10, `+${def.reward.key}`, "#ffffff");
         return true;
     }
-
     removeDeadCommandTarget() {
         const id = this.player.commandTargetId;
         if (id == null) return;
         const t = this.getCreatureById(id);
         if (!t || t.lifecycle !== "alive") this.player.commandTargetId = null;
     }
-
     resolveSimpleSeparation() {
         const minDist = 16;
         for (let i = 0; i < this.creatures.length; i++) {
@@ -1789,11 +1664,9 @@ class World {
             }
         }
     }
-
     pushFloatingText(x, z, text, color = "#fff") {
         this.floatingTexts.push({ x, z, text, color, ttl: 0.9 });
     }
-
     updateFx(dt) {
         for (const fx of this.floatingTexts) {
             fx.ttl -= dt;
@@ -1803,7 +1676,6 @@ class World {
         for (const fx of this.combatFx) fx.ttl -= dt;
         this.combatFx = this.combatFx.filter(fx => fx.ttl > 0);
     }
-
     spawnBarrier(source, x, z, barrierDef) {
         const zone = new BarrierZone(
             x,
@@ -1820,7 +1692,6 @@ class World {
         );
         this.barriers.push(zone);
     }
-
     updateBarriers(dt) {
         for (const b of this.barriers) {
             b.ttl -= dt;
@@ -1843,10 +1714,8 @@ class World {
         }
         this.barriers = this.barriers.filter(b => b.ttl > 0);
     }
-
     draw(ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         // Biome flavor: coarse tiles tinted by biome.
         const tile = 90;
         const minX = Math.floor((this.camera.x - canvas.width / this.camera.zoom / 2) / tile) - 1;
@@ -1863,12 +1732,10 @@ class World {
                 ctx.fillRect(s.sx, s.sz, tile * this.camera.zoom + 1, tile * this.camera.zoom + 1);
             }
         }
-
         const tl = this.camera.worldToScreen(0, 0);
         ctx.strokeStyle = "#3d4b36";
         ctx.lineWidth = 2;
         ctx.strokeRect(tl.sx, tl.sz, this.width * this.camera.zoom, this.height * this.camera.zoom);
-
         // Interactables.
         for (const node of this.nodes) {
             const def = nodeDefs[node.type];
@@ -1880,7 +1747,6 @@ class World {
             ctx.fill();
             ctx.globalAlpha = 1;
         }
-
         for (const b of this.barriers) {
             const s = this.camera.worldToScreen(b.pos.x, b.pos.z);
             ctx.fillStyle = b.color;
@@ -1893,13 +1759,11 @@ class World {
             ctx.arc(s.sx, s.sz, b.radius * this.camera.zoom, 0, Math.PI * 2);
             ctx.stroke();
         }
-
         const ps = this.camera.worldToScreen(this.player.pos.x, this.player.pos.z);
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
         ctx.arc(ps.sx, ps.sz, 7, 0, Math.PI * 2);
         ctx.fill();
-
         // Combat feedback lines/pulses.
         for (const fx of this.combatFx) {
             if (fx.type === "line") {
@@ -1919,12 +1783,10 @@ class World {
                 ctx.fill();
             }
         }
-
         for (const c of this.creatures) {
             const s = this.camera.worldToScreen(c.pos.x, c.pos.z);
             const isActive = c.id === this.player.activePetId;
             const isCommandTarget = c.id === this.player.commandTargetId;
-
             if (c.lifecycle === "captured" || c.lifecycle === "despawned") continue;
             if (c.lifecycle === "defeated") {
                 ctx.strokeStyle = "#222";
@@ -1936,12 +1798,10 @@ class World {
                 ctx.stroke();
                 continue;
             }
-
             ctx.fillStyle = c.team === 0 ? "#4a90d9" : "#d95c5c";
             ctx.beginPath();
             ctx.arc(s.sx, s.sz, 9, 0, Math.PI * 2);
             ctx.fill();
-
             if (c.hitFlash > 0) {
                 ctx.strokeStyle = `rgba(255,255,255,${c.hitFlash})`;
                 ctx.lineWidth = 2;
@@ -1949,7 +1809,6 @@ class World {
                 ctx.arc(s.sx, s.sz, 12, 0, Math.PI * 2);
                 ctx.stroke();
             }
-
             if (isActive) {
                 ctx.strokeStyle = "#fff799";
                 ctx.lineWidth = 2;
@@ -1957,13 +1816,11 @@ class World {
                 ctx.arc(s.sx, s.sz, 13, 0, Math.PI * 2);
                 ctx.stroke();
             }
-
             if (isCommandTarget) {
                 ctx.strokeStyle = "#ffefef";
                 ctx.lineWidth = 2;
                 ctx.strokeRect(s.sx - 12, s.sz - 12, 24, 24);
             }
-
             if (c.command?.type === "attack" && c.command?.targetId) {
                 const t = this.getCreatureById(c.command.targetId);
                 if (t && t.lifecycle === "alive") {
@@ -1977,7 +1834,6 @@ class World {
                     ctx.setLineDash([]);
                 }
             }
-
             if (c.isCasting()) {
                 const cast = c.castState;
                 const ability = abilities[cast.abilityKey];
@@ -1997,30 +1853,25 @@ class World {
                 ctx.arc(s.sx, s.sz, 14, 0, Math.PI * 2);
                 ctx.stroke();
             }
-
             const hpRatio = c.currentHP / c.modifiedStats.maxHP;
             ctx.fillStyle = "#222";
             ctx.fillRect(s.sx - 16, s.sz - 20, 32, 4);
             ctx.fillStyle = hpRatio > 0.5 ? "#5ad15a" : hpRatio > 0.25 ? "#e7c04a" : "#df5a5a";
             ctx.fillRect(s.sx - 16, s.sz - 20, 32 * hpRatio, 4);
-
             if (c.team === 0) {
                 ctx.fillStyle = "#fff";
                 ctx.font = "10px monospace";
                 ctx.fillText(`Lv${c.level}`, s.sx - 12, s.sz - 25);
             }
         }
-
         for (const fx of this.floatingTexts) {
             const s = this.camera.worldToScreen(fx.x, fx.z);
             ctx.fillStyle = fx.color;
             ctx.font = "12px monospace";
             ctx.fillText(fx.text, s.sx - 10, s.sz);
         }
-
         const biome = BiomeSystem.getBiomeAt(this.player.pos.x, this.player.pos.z).key;
         ctx.font = "12px monospace";
-
         // Left party panel.
         const partyX = 10;
         const partyY = 10;
@@ -2030,7 +1881,6 @@ class World {
         ctx.fillRect(partyX, partyY, partyW, slotH * 3 + 14);
         ctx.fillStyle = "#fff";
         ctx.fillText(`Party (${biome})`, partyX + 10, partyY + 18);
-
         for (let i = 0; i < 3; i++) {
             const slotY = partyY + 24 + i * slotH;
             const runtimeId = this.player.petIds[i];
@@ -2040,7 +1890,6 @@ class World {
             ctx.fillRect(partyX + 8, slotY, partyW - 16, slotH - 6);
             ctx.strokeStyle = isActiveSlot ? "#fff799" : "rgba(255,255,255,0.16)";
             ctx.strokeRect(partyX + 8, slotY, partyW - 16, slotH - 6);
-
             if (!c) {
                 ctx.fillStyle = "#bbb";
                 ctx.fillText(`${i + 1}. (empty)`, partyX + 16, slotY + 18);
@@ -2055,7 +1904,6 @@ class World {
             ctx.fillText(`HP ${Math.round(c.currentHP)}/${Math.round(c.modifiedStats.maxHP)}`, partyX + 166, slotY + 18);
             if (c.lifecycle == "alive"){
                 ctx.fillStyle = "#cbd8ff";
-
                 ctx.fillText(`${i + 1}. ${species[c.speciesKey]?.name ?? c.speciesKey}  Lv${c.level}`, partyX + 16, slotY + 18);
                 ctx.fillText(`Cmd/Stance: ${slotCmd}`, partyX + 16, slotY + 34);
             }else {
@@ -2067,7 +1915,6 @@ class World {
             drawGauge(ctx, partyX + 16, slotY + 56, partyW - 34, 8, enRatio, "#55b9ff");
             drawGauge(ctx, partyX + 16, slotY + 70, partyW - 34, 8, stamRatio, "#ffe045");
         }
-
         // Right reserve panel.
         const reserveW = 250;
         const reserveX = canvas.width - reserveW - 10;
@@ -2077,7 +1924,6 @@ class World {
         ctx.fillRect(reserveX, reserveY, reserveW, reserveH);
         ctx.fillStyle = "#fff";
         ctx.fillText("Reserve ([ / ] select, T swap)", reserveX + 10, reserveY + 18);
-
         const selected = this.player.selectedReserveIndex;
         const maxRows = 8;
         const start = Math.max(0, Math.min(selected - Math.floor(maxRows / 2), Math.max(0, this.player.reserveOwnedIds.length - maxRows)));
@@ -2100,7 +1946,6 @@ class World {
         const selectedItemDef = itemDefs[selectedItemKey];
         const selectedItemCount = this.player.inventory[selectedItemKey] ?? 0;
         const activePet = this.getCreatureById(this.player.activePetId);
-
         const castPanelW = 360;
         const castPanelH = 90;
         const castPanelX = canvas.width - castPanelW - 10;
@@ -2157,7 +2002,6 @@ class World {
                 ctx.fillText(`Buffs: ${buffNames.join(" | ")}`, castPanelX + 10, castPanelY - 8);
             }
         }
-
         const barH = 58;
         const barY = canvas.height - barH - 10;
         ctx.fillStyle = "rgba(0,0,0,0.62)";
@@ -2171,7 +2015,6 @@ class World {
         )
     }
 }
-
 /* =========================
    game
 ========================= */
@@ -2187,24 +2030,19 @@ class Game {
         );
         this.last = 0;
     }
-
     start() {
         this.input.bind(canvas);
         requestAnimationFrame((ts) => this.loop(ts));
     }
-
     loop(ts) {
         const dt = this.last ? Math.min((ts - this.last) / 1000, 0.05) : 0.016;
         this.last = ts;
-
         this.sceneManager.update(dt, this.input);
         this.sceneManager.draw(ctx);
         this.input.endFrame();
-
         requestAnimationFrame((next) => this.loop(next));
     }
 }
-
 class SceneManager {
     constructor(defs, startId) {
         this.defs = defs;
@@ -2215,7 +2053,6 @@ class SceneManager {
         this._events = [];
         this.set(startId);
     }
-
     set(id, payload = {}) {
         if (this.scene?.onExit) this.scene.onExit(this, payload);
         this.id = id;
@@ -2226,7 +2063,6 @@ class SceneManager {
         if (!this.scene) throw new Error(`Unknown scene: ${id}`);
         if (this.scene.onEnter) this.scene.onEnter(this, payload);
     }
-
     update(dt, input) {
         this.t += dt;
         for (const ev of this._events) {
@@ -2237,68 +2073,56 @@ class SceneManager {
         }
         if (this.scene?.update) this.scene.update(this, dt, input);
     }
-
     draw(ctx) {
         if (this.scene?.draw) this.scene.draw(this, ctx);
     }
 }
-
 class IntroScene {
     constructor() {
         this.starterKeys = ["dog", "sparkit", "cinderpup"];
         this.selectedIndex = 0;
     }
-
     onEnter(sm) {
         this.selectedIndex = 0;
     }
-
     update(sm, dt, input) {
         if (input.consumePress("ArrowLeft") || input.consumePress("KeyA")) this.selectedIndex = (this.selectedIndex + this.starterKeys.length - 1) % this.starterKeys.length;
         if (input.consumePress("ArrowRight") || input.consumePress("KeyD")) this.selectedIndex = (this.selectedIndex + 1) % this.starterKeys.length;
         if (input.consumePress("ArrowUp")) this.selectedIndex = (this.selectedIndex + this.starterKeys.length - 1) % this.starterKeys.length;
         if (input.consumePress("ArrowDown")) this.selectedIndex = (this.selectedIndex + 1) % this.starterKeys.length;
-
         if (input.consumePress("Digit1")) this.selectedIndex = 0;
         if (input.consumePress("Digit2")) this.selectedIndex = 1;
         if (input.consumePress("Digit3")) this.selectedIndex = 2;
-
         if (input.consumePress("Enter") || input.consumePress("Space")) {
             sm.set("mainScene", { starterKey: this.starterKeys[this.selectedIndex] });
         }
     }
-
     draw(sm, ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "#111";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
         ctx.fillStyle = "#fff";
         ctx.font = "24px monospace";
         ctx.fillText("Choose Your Starter", 40, 54);
         ctx.font = "14px monospace";
         ctx.fillText("Arrow keys / A-D to move, Enter or Space to confirm", 40, 82);
-
         const cardW = 250;
         const cardH = 210;
         const gap = 20;
         const totalW = cardW * this.starterKeys.length + gap * (this.starterKeys.length - 1);
         const startX = Math.floor((canvas.width - totalW) / 2);
         const y = 130;
-
         for (let i = 0; i < this.starterKeys.length; i++) {
             const key = this.starterKeys[i];
             const def = species[key];
             const s = def?.baseStats ?? {};
             const x = startX + i * (cardW + gap);
             const selected = i === this.selectedIndex;
-
             ctx.fillStyle = selected ? "rgba(255,247,153,0.18)" : "rgba(255,255,255,0.06)";
             ctx.fillRect(x, y, cardW, cardH);
             ctx.strokeStyle = selected ? "#fff799" : "rgba(255,255,255,0.26)";
             ctx.lineWidth = selected ? 2 : 1;
             ctx.strokeRect(x, y, cardW, cardH);
-
             ctx.fillStyle = "#fff";
             ctx.font = "18px monospace";
             ctx.fillText(`${i + 1}. ${def?.name ?? key}`, x + 14, y + 28);
@@ -2315,24 +2139,36 @@ class IntroScene {
         }
     }
 }
-
 class MainScene {
     constructor() {
         this.world = new World();
     }
-
     onEnter(sm, payload) {
         this.world = new World();
         this.world.initialize(payload?.starterKey ?? "dog");
     }
-
     update(sm, dt, input) {
         this.world.update(dt, input);
     }
-
     draw(sm, ctx) {
         this.world.draw(ctx);
     }
 }
 const game = new Game();
 game.start();
+// Notes2: Later in const species definition, re-add 
+// learnset: [{move: movekey, level: at what level it can learn it}].
+// Also add morphOptions that has the key to what it can morph into and how many morphpoints
+// are needed for it. Changes: scaled defeated creatures level into addXP arguments.
+// Added skeleton for BuildingManager: may be hosted inside World or ChunkManager or
+// whichever hosts BiomeManager (chunkmanager doesn't actually exist in this iteration but does in the roblox version.
+// Maybe biomesystem is an overlay to chunkManager or they mix in together.
+// roblox version isn't voxel based, but js game prototype can be, maybe should be.).
+// Added Tree as interactable node. Right now it can be "picked" by player with nothing
+// special. Later, may want to use creature ability to "damage" the tree. In this case, 
+// interactable node and creature have to be selected by player maybe, so maybe have a
+//  super class that they extend from or something. Added Chunk system as an object. 
+//  It is technically tp down for now so there isn't a need for height maps, digging, etc.
+//  World class is cluttered with things that you could put in a manager.
+//   Probably refactor with world.combat.methods(args) that are already there, 
+//   use world.playerInteraction.methods and other stuff.
