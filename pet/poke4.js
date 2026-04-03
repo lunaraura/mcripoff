@@ -828,19 +828,37 @@ class Brain {
 ========================= */
 const BiomeSystem = {
     getBiomeKeyAt(x, z) {
-        const n = Math.sin(x * 0.004) + Math.cos(z * 0.005) + Math.sin((x + z) * 0.0025);
-        if (n < -1.0) return "desert";
-        if (n < -0.2) return "plains";
-        if (n < 0.45) return "forest";
-        if (n < 1.15) return "stormfield";
-        return "volcanic";
+        const mix = this.getBiomeMix(x, z);
+        return this.getDominantBiomeKey(mix);
     },
-    getBiomeMix(x,z){
-        return {
-        plains: 0.55,
-        forest: 0.30,
-        stormfield: 0.15
+    getBiomeMix(x, z) {
+        const keys = Object.keys(biomeDefs);
+        const weights = {};
+        let total = 0;
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            const phase = (i + 1) * 1.618;
+            const n1 = Math.sin((x * 0.0017) + phase) * 0.55;
+            const n2 = Math.cos((z * 0.0013) - phase * 0.5) * 0.45;
+            const n3 = Math.sin(((x + z) * 0.0009) + phase * 1.3) * 0.35;
+            const base = 1 + n1 + n2 + n3;
+            const value = Math.max(0.001, base);
+            weights[key] = value;
+            total += value;
         }
+        for (const key of keys) weights[key] /= total;
+        return weights;
+    },
+    getDominantBiomeKey(mix) {
+        let best = "plains";
+        let bestWeight = -Infinity;
+        for (const key of Object.keys(mix)) {
+            if (mix[key] > bestWeight) {
+                bestWeight = mix[key];
+                best = key;
+            }
+        }
+        return best;
     },
     getBiomeAt(x, z) {
         const key = this.getBiomeKeyAt(x, z);
@@ -851,6 +869,10 @@ const ChunkSystem = {
   CHUNK_SIZE: 256,
   CELL_SIZE: 16,
   LOAD_RADIUS: 2,
+  WATER_LEVEL: -24,
+  SHORE_HEIGHT_DELTA: 8,
+  SLOPE_ROUGH: 0.9,
+  SLOPE_CLIFF: 2.1,
 
   key(cx, cz) {
     return `${cx}|${cz}`;
@@ -863,6 +885,44 @@ const ChunkSystem = {
     };
   },
 
+  dominantBiomeKey(biomeMix) {
+    return BiomeSystem.getDominantBiomeKey(biomeMix);
+  },
+
+  getChunkAtWorld(world, x, z) {
+    const { cx, cz } = this.worldToChunk(x, z);
+    return world.chunks.get(this.key(cx, cz)) ?? null;
+  },
+
+  getCellAtWorld(world, x, z) {
+    const chunk = this.getChunkAtWorld(world, x, z);
+    if (!chunk) return null;
+    const localX = Math.floor((x - chunk.x0) / this.CELL_SIZE);
+    const localZ = Math.floor((z - chunk.z0) / this.CELL_SIZE);
+    if (localX < 0 || localZ < 0 || localX >= chunk.cellsPerSide || localZ >= chunk.cellsPerSide) return null;
+    return chunk.cells[localZ * chunk.cellsPerSide + localX] ?? null;
+  },
+
+  forEachLoadedChunk(world, fn) {
+    for (const chunk of world.chunks.values()) fn(chunk);
+  },
+
+  collectLoadedNodes(world) {
+    const out = [];
+    this.forEachLoadedChunk(world, (chunk) => {
+      for (const node of chunk.nodes) out.push(node);
+    });
+    return out;
+  },
+
+  collectLoadedSpawnPoints(world) {
+    const out = [];
+    this.forEachLoadedChunk(world, (chunk) => {
+      for (const point of chunk.spawnPoints) out.push(point);
+    });
+    return out;
+  },
+
   ensureChunk(world, cx, cz) {
     const key = this.key(cx, cz);
     if (world.chunks.has(key)) return world.chunks.get(key);
@@ -872,26 +932,193 @@ const ChunkSystem = {
     return chunk;
   },
 
+  randFromInt(seed) {
+    const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  },
+
+  deterministicChoice(cx, cz, idx, salt = 1) {
+    const seed = cx * 928371 + cz * 364583 + idx * 193 + salt * 101;
+    return this.randFromInt(seed);
+  },
+
   generateChunk(world, cx, cz) {
-    const chunk = {
-      cx, cz,
-      cells: [],
-      nodes: [],
-      obstacles: [],
-      spawnPoints: [],
-      dominantBiome: "plains",
-      biomeMix: null,
+    const chunkSize = this.CHUNK_SIZE;
+    const cellSize = this.CELL_SIZE;
+    const cellsPerSide = Math.floor(chunkSize / cellSize);
+    const x0 = cx * chunkSize;
+    const z0 = cz * chunkSize;
+    const x1 = x0 + chunkSize;
+    const z1 = z0 + chunkSize;
+    const chunkKey = this.key(cx, cz);
+
+    const cells = [];
+    const biomeWeightSums = {};
+    for (const key of Object.keys(biomeDefs)) biomeWeightSums[key] = 0;
+
+    for (let gz = 0; gz < cellsPerSide; gz++) {
+      for (let gx = 0; gx < cellsPerSide; gx++) {
+        const x = x0 + gx * cellSize + cellSize * 0.5;
+        const z = z0 + gz * cellSize + cellSize * 0.5;
+        const y = this.sampleHeight(x, z);
+        const biomeMix = BiomeSystem.getBiomeMix(x, z);
+        const dominantBiome = this.dominantBiomeKey(biomeMix);
+        for (const key of Object.keys(biomeMix)) biomeWeightSums[key] += biomeMix[key];
+        const yPx = this.sampleHeight(x + cellSize, z);
+        const yNx = this.sampleHeight(x - cellSize, z);
+        const yPz = this.sampleHeight(x, z + cellSize);
+        const yNz = this.sampleHeight(x, z - cellSize);
+        const slope = (Math.abs(yPx - yNx) + Math.abs(yPz - yNz)) / (cellSize * 2);
+        const water = y <= this.WATER_LEVEL;
+        const nearWater = !water && (
+            this.sampleHeight(x + cellSize * 0.5, z) <= this.WATER_LEVEL ||
+            this.sampleHeight(x - cellSize * 0.5, z) <= this.WATER_LEVEL ||
+            this.sampleHeight(x, z + cellSize * 0.5) <= this.WATER_LEVEL ||
+            this.sampleHeight(x, z - cellSize * 0.5) <= this.WATER_LEVEL ||
+            Math.abs(y - this.WATER_LEVEL) < this.SHORE_HEIGHT_DELTA
+        );
+        let terrainClass = "land";
+        if (water) terrainClass = "water";
+        else if (slope >= this.SLOPE_CLIFF) terrainClass = "cliff";
+        else if (nearWater) terrainClass = "shore";
+        else if (slope >= this.SLOPE_ROUGH) terrainClass = "rough";
+
+        const blocked = terrainClass === "water" || terrainClass === "cliff";
+        let moveCost = 1;
+        if (terrainClass === "rough") moveCost = 1.25;
+        if (terrainClass === "shore") moveCost = 1.12;
+        if (blocked) moveCost = 999;
+
+        cells.push({
+          gx,
+          gz,
+          x,
+          z,
+          y,
+          biomeMix,
+          dominantBiome,
+          slope,
+          terrainClass,
+          blocked,
+          water,
+          moveCost,
+        });
+      }
+    }
+
+    const biomeMixSummary = {};
+    const cellCount = cells.length;
+    for (const key of Object.keys(biomeWeightSums)) biomeMixSummary[key] = biomeWeightSums[key] / Math.max(1, cellCount);
+    const dominantBiome = this.dominantBiomeKey(biomeMixSummary);
+
+    const obstacles = [];
+    const nodes = [];
+    const spawnPoints = [];
+
+    const canPlaceAround = (x, z, radius, list, extra = []) => {
+      for (const o of list) {
+        if (dist(x, z, o.x, o.z) < radius + (o.radius ?? 8)) return false;
+      }
+      for (const o of extra) {
+        if (dist(x, z, o.x, o.z) < radius + (o.radius ?? 8)) return false;
+      }
+      return true;
     };
 
-    // fill this next
-    return chunk;
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      const r = this.deterministicChoice(cx, cz, i, 7);
+      const r2 = this.deterministicChoice(cx, cz, i, 17);
+      const r3 = this.deterministicChoice(cx, cz, i, 27);
+      if (!cell.blocked && !cell.water) {
+        let obstacleChance = 0.0;
+        let obstacleType = null;
+        if (cell.dominantBiome === "forest") {
+          obstacleChance = 0.16;
+          obstacleType = "tree";
+        } else if (cell.dominantBiome === "volcanic" || cell.dominantBiome === "desert" || cell.terrainClass === "rough") {
+          obstacleChance = 0.11;
+          obstacleType = "rock";
+        } else if (cell.dominantBiome === "stormfield") {
+          obstacleChance = 0.07;
+          obstacleType = "crystal";
+        }
+        if (obstacleType && r < obstacleChance) {
+          const ox = cell.x + (r2 - 0.5) * (cellSize * 0.6);
+          const oz = cell.z + (r3 - 0.5) * (cellSize * 0.6);
+          const radius = obstacleType === "tree" ? 5 + r3 * 4 : 4 + r2 * 4;
+          obstacles.push({
+            id: `obs-${chunkKey}-${i}`,
+            type: obstacleType,
+            x: ox,
+            z: oz,
+            radius,
+            blocksMovement: true,
+            chunkKey,
+          });
+        }
+      }
+    }
+
+    const nodeTable = biomeDefs[dominantBiome]?.nodes ?? biomeDefs.plains.nodes;
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      if (cell.blocked || cell.water) continue;
+      if (cell.terrainClass === "cliff") continue;
+      const placeRoll = this.deterministicChoice(cx, cz, i, 53);
+      if (placeRoll > 0.032) continue;
+      if (!canPlaceAround(cell.x, cell.z, 14, obstacles, nodes)) continue;
+      const type = pickWeighted(nodeTable);
+      nodes.push(new InteractableNode(type, cell.x, cell.z));
+      nodes[nodes.length - 1].chunkKey = chunkKey;
+      nodes[nodes.length - 1].id = `node-${chunkKey}-${i}`;
+    }
+
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      if (cell.blocked || cell.water) continue;
+      if (cell.terrainClass === "cliff") continue;
+      const placeRoll = this.deterministicChoice(cx, cz, i, 71);
+      if (placeRoll > 0.045) continue;
+      if (!canPlaceAround(cell.x, cell.z, 22, obstacles, spawnPoints)) continue;
+      const spBiome = cell.dominantBiome;
+      spawnPoints.push({
+        id: `spawn-${chunkKey}-${i}`,
+        x: cell.x,
+        z: cell.z,
+        biomeKey: spBiome,
+        levelBias: Math.round((cell.y - this.WATER_LEVEL) / 18),
+        spawnWeights: biomeDefs[spBiome]?.spawns ?? biomeDefs.plains.spawns,
+        blocked: false,
+        chunkKey,
+      });
+    }
+
+    return {
+      cx,
+      cz,
+      x0,
+      z0,
+      x1,
+      z1,
+      cellsPerSide,
+      cells,
+      nodes,
+      obstacles,
+      spawnPoints,
+      dominantBiome,
+      biomeMixSummary,
+      generated: true,
+    };
   },
-    sampleHeight(x, z) {
+
+  sampleHeight(x, z) {
     const n1 = Math.sin(x * 0.003) * 40;
     const n2 = Math.cos(z * 0.004) * 20;
     const n3 = Math.sin((x + z) * 0.006) * 10;
     return n1 + n2 + n3;
   },
+
   updateLoadedChunks(world) {
     const { cx, cz } = this.worldToChunk(world.player.pos.x, world.player.pos.z);
 
@@ -906,6 +1133,8 @@ const ChunkSystem = {
         world.chunks.delete(key);
       }
     }
+
+    world.nodes = this.collectLoadedNodes(world);
   }
 };
 class SpawnField {
@@ -928,20 +1157,29 @@ class SpawnField {
         const currentWild = world.creatures.filter(c => c.mode === "wild" && c.lifecycle === "alive").length;
         if (currentWild >= this.maxWild) return;
         const player = world.player;
-        for (let i = 0; i < 14; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const d = this.innerNoSpawn + Math.random() * (this.radius - this.innerNoSpawn);
-            const x = player.pos.x + Math.cos(angle) * d;
-            const z = player.pos.z + Math.sin(angle) * d;
-            if (x < 0 || x > world.width || z < 0 || z > world.height) continue;
-            const biome = BiomeSystem.getBiomeAt(x, z);
-            const speciesKey = pickWeighted(biome.spawns);
+        const candidates = ChunkSystem.collectLoadedSpawnPoints(world)
+            .filter((sp) => !sp.blocked)
+            .filter((sp) => sp.x >= 0 && sp.x <= world.width && sp.z >= 0 && sp.z <= world.height)
+            .filter((sp) => {
+                const d = dist(player.pos.x, player.pos.z, sp.x, sp.z);
+                return d >= this.innerNoSpawn && d <= this.radius;
+            });
+        if (candidates.length <= 0) return;
+
+        for (let i = 0; i < 6; i++) {
+            const sp = candidates[Math.floor(Math.random() * candidates.length)];
+            const cell = ChunkSystem.getCellAtWorld(world, sp.x, sp.z);
+            if (!cell || cell.blocked || cell.water) continue;
+            const nearbyWild = world.creatures.some((c) => c.mode === "wild" && c.lifecycle === "alive" && dist(c.pos.x, c.pos.z, sp.x, sp.z) < 40);
+            if (nearbyWild) continue;
+
+            const speciesKey = pickWeighted(sp.spawnWeights ?? biomeDefs[sp.biomeKey]?.spawns ?? biomeDefs.plains.spawns);
             const avgPartyLevel = world.player.petIds
                 .map(id => world.getCreatureById(id))
                 .filter(c => c && c.lifecycle === "alive")
                 .reduce((sum, c) => sum + c.level, 0) / Math.max(1, world.player.petIds.length);
-            const wildLevel = Math.max(1, Math.round(avgPartyLevel + (Math.random() * 4 - 2)));
-            const wild = world.factory.create(speciesKey, 1, x, z, { mode: "wild", level: wildLevel });
+            const wildLevel = Math.max(1, Math.round(avgPartyLevel + (sp.levelBias ?? 0) * 0.2 + (Math.random() * 4 - 2)));
+            const wild = world.factory.create(speciesKey, 1, sp.x, sp.z, { mode: "wild", level: wildLevel });
             const brain = new Brain();
             brain.attach(wild);
             world.creatures.push(wild);
@@ -1176,7 +1414,6 @@ class World {
         const ownedStarter = this.createOwnedCreatureRecord(starterSpeciesKey);
         this.player.partyOwnedIds = [ownedStarter.ownedId, null, null];
         this.hydratePartyRuntime();
-        this.spawnBiomeNodesAroundPlayer(8);
     }
     commandPets(petIds, command){
         for (const id of petIds){
@@ -1272,11 +1509,6 @@ class World {
         this.normalizeReserveSelection();
         ChunkSystem.updateLoadedChunks(this);
         this.spawnField.update(dt, this);
-        this.nodeSpawnTimer += dt;
-        if (this.nodeSpawnTimer > 7.5 && this.nodes.length < 20) {
-            this.nodeSpawnTimer = 0;
-            this.spawnBiomeNodesAroundPlayer(2);
-        }
         for (const node of this.nodes) node.update(dt);
         for (const c of this.creatures) if (c.brain) c.brain.think(this);
         for (const c of this.creatures) c.tick(dt, this);
@@ -1695,14 +1927,8 @@ class World {
         return true;
     }
     spawnBiomeNodesAroundPlayer(count) {
-        const p = this.player.pos;
-        for (let i = 0; i < count; i++) {
-            const x = clamp(p.x + (Math.random() - 0.5) * 450, 20, this.width - 20);
-            const z = clamp(p.z + (Math.random() - 0.5) * 320, 20, this.height - 20);
-            const biome = BiomeSystem.getBiomeAt(x, z);
-            const type = pickWeighted(biome.nodes);
-            this.nodes.push(new InteractableNode(type, x, z));
-        }
+        // Legacy path intentionally disabled; chunk generation now owns node placement.
+        return count;
     }
     tryInteractNearestNode() {
         let best = null;
@@ -1755,6 +1981,37 @@ class World {
                 b.pos.x += n.x * push;
                 b.pos.z += n.z * push;
             }
+        }
+        this.applyChunkCollisionToEntity(this.player, 10);
+        for (const c of this.creatures) {
+            if (c.lifecycle !== "alive") continue;
+            this.applyChunkCollisionToEntity(c, c.modifiedStats?.size ?? 10);
+        }
+    }
+    applyChunkCollisionToEntity(entity, radius = 8) {
+        entity.pos.x = clamp(entity.pos.x, 0, this.width);
+        entity.pos.z = clamp(entity.pos.z, 0, this.height);
+        const cell = ChunkSystem.getCellAtWorld(this, entity.pos.x, entity.pos.z);
+        if (cell?.blocked) {
+            const dx = entity.pos.x - cell.x;
+            const dz = entity.pos.z - cell.z;
+            const n = norm2D(dx, dz);
+            const pushDist = ChunkSystem.CELL_SIZE * 0.55 + radius;
+            entity.pos.x = clamp(cell.x + n.x * pushDist, 0, this.width);
+            entity.pos.z = clamp(cell.z + n.z * pushDist, 0, this.height);
+        }
+        const chunk = ChunkSystem.getChunkAtWorld(this, entity.pos.x, entity.pos.z);
+        if (!chunk) return;
+        for (const obstacle of chunk.obstacles) {
+            if (!obstacle.blocksMovement) continue;
+            const dx = entity.pos.x - obstacle.x;
+            const dz = entity.pos.z - obstacle.z;
+            const d = Math.hypot(dx, dz) || 0.001;
+            const minD = radius + obstacle.radius;
+            if (d >= minD) continue;
+            const n = { x: dx / d, z: dz / d };
+            entity.pos.x = clamp(obstacle.x + n.x * minD, 0, this.width);
+            entity.pos.z = clamp(obstacle.z + n.z * minD, 0, this.height);
         }
     }
     pushFloatingText(x, z, text, color = "#fff") {
@@ -1809,21 +2066,39 @@ class World {
     }
     draw(ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // Biome flavor: coarse tiles tinted by biome.
-        const tile = 90;
-        const minX = Math.floor((this.camera.x - canvas.width / this.camera.zoom / 2) / tile) - 1;
-        const maxX = Math.floor((this.camera.x + canvas.width / this.camera.zoom / 2) / tile) + 1;
-        const minZ = Math.floor((this.camera.z - canvas.height / this.camera.zoom / 2) / tile) - 1;
-        const maxZ = Math.floor((this.camera.z + canvas.height / this.camera.zoom / 2) / tile) + 1;
-        for (let gx = minX; gx <= maxX; gx++) {
-            for (let gz = minZ; gz <= maxZ; gz++) {
-                const wx = gx * tile;
-                const wz = gz * tile;
-                const b = BiomeSystem.getBiomeAt(wx + tile * 0.5, wz + tile * 0.5);
-                const s = this.camera.worldToScreen(wx, wz);
-                ctx.fillStyle = b.color;
-                ctx.fillRect(s.sx, s.sz, tile * this.camera.zoom + 1, tile * this.camera.zoom + 1);
+        // Chunk surface cells are the source of truth for terrain rendering.
+        for (const chunk of this.chunks.values()) {
+            for (const cell of chunk.cells) {
+                const biome = biomeDefs[cell.dominantBiome] ?? biomeDefs.plains;
+                const s = this.camera.worldToScreen(cell.x - ChunkSystem.CELL_SIZE * 0.5, cell.z - ChunkSystem.CELL_SIZE * 0.5);
+                let color = biome.color;
+                if (cell.terrainClass === "water") color = "#4e7fa8";
+                else if (cell.terrainClass === "shore") color = "#8fae84";
+                else if (cell.terrainClass === "rough") color = "#7a7a6e";
+                else if (cell.terrainClass === "cliff") color = "#54545a";
+                ctx.fillStyle = color;
+                ctx.fillRect(
+                    s.sx,
+                    s.sz,
+                    ChunkSystem.CELL_SIZE * this.camera.zoom + 1,
+                    ChunkSystem.CELL_SIZE * this.camera.zoom + 1
+                );
             }
+            // Obstacles
+            for (const obstacle of chunk.obstacles) {
+                const s = this.camera.worldToScreen(obstacle.x, obstacle.z);
+                ctx.fillStyle = obstacle.type === "tree" ? "#2f5f2f" : (obstacle.type === "crystal" ? "#7db7d8" : "#7c6758");
+                ctx.beginPath();
+                ctx.arc(s.sx, s.sz, obstacle.radius * this.camera.zoom, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "rgba(0,0,0,0.45)";
+                ctx.stroke();
+            }
+            // Debug: chunk border
+            const cs = this.camera.worldToScreen(chunk.x0, chunk.z0);
+            ctx.strokeStyle = "rgba(255,255,255,0.15)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(cs.sx, cs.sz, ChunkSystem.CHUNK_SIZE * this.camera.zoom, ChunkSystem.CHUNK_SIZE * this.camera.zoom);
         }
         const tl = this.camera.worldToScreen(0, 0);
         ctx.strokeStyle = "#3d4b36";
@@ -1963,7 +2238,8 @@ class World {
             ctx.font = "12px monospace";
             ctx.fillText(fx.text, s.sx - 10, s.sz);
         }
-        const biome = BiomeSystem.getBiomeAt(this.player.pos.x, this.player.pos.z).key;
+        const biome = ChunkSystem.getCellAtWorld(this, this.player.pos.x, this.player.pos.z)?.dominantBiome
+            ?? BiomeSystem.getBiomeAt(this.player.pos.x, this.player.pos.z).key;
         ctx.font = "12px monospace";
         // Left party panel.
         const partyX = 10;
