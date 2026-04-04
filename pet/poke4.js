@@ -34,11 +34,39 @@ const seed = 1337
    runtime registries (no legacy conceptBank paths)
 ========================= */
 const composites = {
-    animal: { effectiveness: { physical: 1, energy: 1 }, specialEffects: [] },
-    water: { effectiveness: { physical: 0.75, energy: 1.25 }, specialEffects: ["waterAdd"] },
-    voltage: { effectiveness: { physical: 1.5, energy: 0.75 }, specialEffects: ["waterVolt"] },
-    fire: { effectiveness: { physical: 0.5, energy: 1.75 }, specialEffects: ["fireUp", "burnoff"] },
-    rock: { effectiveness: { physical: 1, energy: 0.5 }, specialEffects: ["hardSurface"] },
+    animal: { effectiveness: { physical: 1, energy: 1 }, specialEffects: [], traits: { toughness: 0, conductivity: 0.25, heatRetention: 0.35, mobilityBias: 0.08, energyBias: 0.05, regenBias: 0.10 } },
+    water: { effectiveness: { physical: 0.75, energy: 1.25 }, specialEffects: ["waterAdd"], traits: { toughness: -0.05, conductivity: 0.90, heatRetention: -0.35, mobilityBias: 0.10, energyBias: 0.10, regenBias: 0.18 } },
+    voltage: { effectiveness: { physical: 1.5, energy: 0.75 }, specialEffects: ["waterVolt"], traits: { toughness: -0.10, conductivity: 1.00, heatRetention: 0.05, mobilityBias: 0.18, energyBias: 0.28, regenBias: 0.00 } },
+    fire: { effectiveness: { physical: 0.5, energy: 1.75 }, specialEffects: ["fireUp", "burnoff"], traits: { toughness: -0.08, conductivity: 0.10, heatRetention: 0.95, mobilityBias: 0.05, energyBias: 0.20, regenBias: -0.05 } },
+    rock: { effectiveness: { physical: 1, energy: 0.5 }, specialEffects: ["hardSurface"], traits: { toughness: 0.35, conductivity: 0.15, heatRetention: 0.65, mobilityBias: -0.12, energyBias: -0.05, regenBias: 0.00 } },
+    arcane: { effectiveness: { physical: 0.9, energy: 1.2 }, specialEffects: [], traits: { toughness: -0.04, conductivity: 0.60, heatRetention: 0.20, mobilityBias: 0.05, energyBias: 0.30, regenBias: 0.05 } },
+    frost: { effectiveness: { physical: 1.1, energy: 0.95 }, specialEffects: [], traits: { toughness: 0.08, conductivity: 0.35, heatRetention: -0.25, mobilityBias: -0.04, energyBias: 0.05, regenBias: 0.10 } },
+};
+const familyDefs = {
+    canine: {
+        aiTendency: { aggression: 0.65, formation: "pack", engageRangeBias: 1.0 },
+        statMult: { maxHP: 1.04, spd: 1.05, stamina: 1.10, energy: 0.95 },
+    },
+    feline: {
+        aiTendency: { aggression: 0.55, formation: "flank", engageRangeBias: 1.08 },
+        statMult: { maxHP: 0.95, spd: 1.15, stamina: 1.00, energy: 1.08 },
+    },
+    ursine: {
+        aiTendency: { aggression: 0.72, formation: "bruiser", engageRangeBias: 0.92 },
+        statMult: { maxHP: 1.22, spd: 0.88, stamina: 1.14, energy: 0.90 },
+    },
+    crust_rock: {
+        aiTendency: { aggression: 0.50, formation: "anchor", engageRangeBias: 1.15 },
+        statMult: { maxHP: 1.12, spd: 0.90, stamina: 1.00, energy: 0.92 },
+    },
+    avian: {
+        aiTendency: { aggression: 0.48, formation: "kite", engageRangeBias: 1.25 },
+        statMult: { maxHP: 0.90, spd: 1.20, stamina: 0.95, energy: 1.15 },
+    },
+    slime: {
+        aiTendency: { aggression: 0.40, formation: "swarm", engageRangeBias: 0.95 },
+        statMult: { maxHP: 1.08, spd: 0.92, stamina: 0.92, energy: 1.10 },
+    },
 };
 const compositeEffects = {
     waterVolt(ctx) {
@@ -186,33 +214,112 @@ const abilities = {
 const species = {
     dog: {
         name: "Dog",
+        familyKey: "canine",
+        outerCompositeKey: "animal",
+        innerCompositeKey: "animal",
         compositeKey: "animal",
         role: "fighter",
         baseStats: { pAtk: 12, eAtk: 2, range: 24, maxHP: 110, spd: 70, castSpd: 1, size: 10, stamina: 25, energy: 10, recoverStamina: 2, recoverEnergy: 1 },
         moveset: ["ram", "dashBite", "rallyHowl", "stomp"], learnset: [], //later, add at what level it learns what
-        morphOptions: [] //{option: speciesKey, pointsNeeded: value}
+        morphOptions: [
+            { option: "warden_hound", pointsNeeded: 3, path: "guardian", biomeAffinity: ["plains", "forest"], materialFocus: "stone" },
+            { option: "storm_hound", pointsNeeded: 3, path: "skirmisher", biomeAffinity: ["stormfield", "polar"], materialFocus: "crystal_shard" },
+        ],
 
     },
     sparkit: {
         name: "Sparkit",
+        familyKey: "feline",
+        outerCompositeKey: "animal",
+        innerCompositeKey: "voltage",
         compositeKey: "voltage",
         role: "ranged",
         baseStats: { pAtk: 4, eAtk: 12, range: 100, maxHP: 85, spd: 65, castSpd: 1, size: 9, stamina: 16, energy: 24, recoverStamina: 1, recoverEnergy: 2 },
         moveset: ["zap", "staticBurst", "staticBarrier"],
+        signatureMoveConcept: "Arc Lash (chain spark that weakens energy defense)",
     },
     cinderpup: {
         name: "Cinderpup",
+        familyKey: "ursine",
+        outerCompositeKey: "fire",
+        innerCompositeKey: "animal",
         compositeKey: "fire",
         role: "fighter",
         baseStats: { pAtk: 10, eAtk: 8, range: 30, maxHP: 95, spd: 74, castSpd: 1, size: 9, stamina: 24, energy: 18, recoverStamina: 2, recoverEnergy: 2 },
         moveset: ["emberClaw", "ram"],
+        signatureMoveConcept: "Cinder Guard (short self-shield then slam)",
+        morphOptions: [{ option: "magma_ursa", pointsNeeded: 3, path: "juggernaut", biomeAffinity: ["volcanic"] }],
     },
     pebblit: {
         name: "Pebblit",
+        familyKey: "crust_rock",
+        outerCompositeKey: "rock",
+        innerCompositeKey: "animal",
         compositeKey: "rock",
         role: "ranged",
         baseStats: { pAtk: 9, eAtk: 3, range: 120, maxHP: 120, spd: 58, castSpd: 1, size: 11, stamina: 22, energy: 12, recoverStamina: 1, recoverEnergy: 1 },
         moveset: ["pebbleShot", "ram"],
+        signatureMoveConcept: "Shard Burst (cone of fragments)",
+    },
+    warden_hound: {
+        name: "Warden Hound",
+        familyKey: "canine",
+        outerCompositeKey: "rock",
+        innerCompositeKey: "animal",
+        compositeKey: "rock",
+        role: "tank",
+        baseStats: { pAtk: 12, eAtk: 4, range: 26, maxHP: 135, spd: 62, castSpd: 0.95, size: 11, stamina: 28, energy: 12, recoverStamina: 2.1, recoverEnergy: 1.0 },
+        moveset: ["ram", "stomp", "rallyHowl"],
+        signatureMoveConcept: "Bulwark Bark (team toughness pulse)",
+        morphOptions: [],
+    },
+    storm_hound: {
+        name: "Storm Hound",
+        familyKey: "canine",
+        outerCompositeKey: "animal",
+        innerCompositeKey: "voltage",
+        compositeKey: "voltage",
+        role: "skirmisher",
+        baseStats: { pAtk: 9, eAtk: 10, range: 90, maxHP: 96, spd: 78, castSpd: 1.1, size: 10, stamina: 24, energy: 20, recoverStamina: 2.0, recoverEnergy: 2.1 },
+        moveset: ["dashBite", "zap", "staticBurst"],
+        signatureMoveConcept: "Tempest Pounce (dash that primes shock)",
+        morphOptions: [],
+    },
+    magma_ursa: {
+        name: "Magma Ursa",
+        familyKey: "ursine",
+        outerCompositeKey: "rock",
+        innerCompositeKey: "fire",
+        compositeKey: "rock",
+        role: "tank",
+        baseStats: { pAtk: 14, eAtk: 7, range: 30, maxHP: 150, spd: 56, castSpd: 0.9, size: 13, stamina: 30, energy: 16, recoverStamina: 2.2, recoverEnergy: 1.2 },
+        moveset: ["emberClaw", "stomp", "ram"],
+        signatureMoveConcept: "Lava Shell (burn aura while bracing)",
+        morphOptions: [],
+    },
+    glintswift: {
+        name: "Glintswift",
+        familyKey: "avian",
+        outerCompositeKey: "frost",
+        innerCompositeKey: "arcane",
+        compositeKey: "frost",
+        role: "ranged",
+        baseStats: { pAtk: 5, eAtk: 11, range: 110, maxHP: 80, spd: 82, castSpd: 1.2, size: 8, stamina: 18, energy: 25, recoverStamina: 1.3, recoverEnergy: 2.4 },
+        moveset: ["zap", "staticBurst", "disengage"],
+        signatureMoveConcept: "Prism Draft (slow field + reposition)",
+        morphOptions: [],
+    },
+    miregel: {
+        name: "Miregel",
+        familyKey: "slime",
+        outerCompositeKey: "water",
+        innerCompositeKey: "arcane",
+        compositeKey: "water",
+        role: "utility",
+        baseStats: { pAtk: 6, eAtk: 9, range: 70, maxHP: 112, spd: 52, castSpd: 1.0, size: 11, stamina: 18, energy: 22, recoverStamina: 1.0, recoverEnergy: 2.1 },
+        moveset: ["ram", "rallyHowl", "staticBarrier"],
+        signatureMoveConcept: "Gel Flux (team sustain pulse)",
+        morphOptions: [],
     },
 };
 const biomeDefs = {
@@ -227,7 +334,7 @@ const biomeDefs = {
             softness: 0.28,
             bias: 1.0,
         },
-        spawns: [{ key: "dog", weight: 5 }, { key: "pebblit", weight: 2 }],
+        spawns: [{ key: "dog", weight: 4 }, { key: "pebblit", weight: 2 }, { key: "warden_hound", weight: 1 }],
         nodes: [{ key: "berry_bush_red", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     ocean: {
@@ -241,7 +348,7 @@ const biomeDefs = {
             softness: 0.22,
             bias: 0.82,
         },
-        spawns: [{ key: "sparkit", weight: 3 }, { key: "dog", weight: 1 }],
+        spawns: [{ key: "sparkit", weight: 2 }, { key: "dog", weight: 1 }, { key: "miregel", weight: 2 }],
         nodes: [{ key: "energy_crystal", weight: 6 }, { key: "replenish_berry_bush", weight: 4 }, { key: "bait_shrub", weight: 1 }],
     },
     forest: {
@@ -255,7 +362,7 @@ const biomeDefs = {
             softness: 0.26,
             bias: 1.05,
         },
-        spawns: [{ key: "dog", weight: 3 }, { key: "cinderpup", weight: 2 }],
+        spawns: [{ key: "dog", weight: 3 }, { key: "cinderpup", weight: 2 }, { key: "miregel", weight: 1 }],
         nodes: [{ key: "berry_bush_red", weight: 22 }, { key: "bait_shrub", weight: 3 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     desert: {
@@ -283,7 +390,7 @@ const biomeDefs = {
             softness: 0.24,
             bias: 0.85,
         },
-        spawns: [{ key: "sparkit", weight: 6 }, { key: "dog", weight: 2 }],
+        spawns: [{ key: "sparkit", weight: 5 }, { key: "dog", weight: 1 }, { key: "storm_hound", weight: 2 }],
         nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush_red", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     volcanic: {
@@ -297,7 +404,7 @@ const biomeDefs = {
             softness: 0.20,
             bias: 0.70,
         },
-        spawns: [{ key: "cinderpup", weight: 6 }, { key: "pebblit", weight: 2 }],
+        spawns: [{ key: "cinderpup", weight: 5 }, { key: "pebblit", weight: 2 }, { key: "magma_ursa", weight: 1 }],
         nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     tundra: {
@@ -311,7 +418,7 @@ const biomeDefs = {
             softness: 0.21,
             bias: 0.72,
         },
-        spawns: [{ key: "dog", weight: 3 }, { key: "pebblit", weight: 3 }],
+        spawns: [{ key: "dog", weight: 2 }, { key: "pebblit", weight: 3 }, { key: "glintswift", weight: 1 }],
         nodes: [{ key: "replenish_berry_bush", weight: 5 }, { key: "revive_berry_bush", weight: 3 }, { key: "energy_crystal", weight: 2 }],
     },
     polar: {
@@ -325,7 +432,7 @@ const biomeDefs = {
             softness: 0.18,
             bias: 0.55,
         },
-        spawns: [{ key: "sparkit", weight: 2 }, { key: "pebblit", weight: 2 }],
+        spawns: [{ key: "sparkit", weight: 2 }, { key: "pebblit", weight: 2 }, { key: "glintswift", weight: 2 }],
         nodes: [{ key: "energy_crystal", weight: 6 }, { key: "replenish_berry_bush", weight: 2 }, { key: "revive_berry_bush", weight: 2 }],
     },
 };
@@ -618,7 +725,11 @@ class Creature {
         this.growthStats = { pAtk: 0, eAtk: 0, range: 0, maxHP: 0, spd: 0, castSpd: 0, size: 0, stamina: 0, energy: 0, recoverStamina: 0, recoverEnergy: 0 };
         this.permanentStats = { ...def.baseStats };
         this.modifiedStats = { ...def.baseStats };
-        this.compositeKey = def.compositeKey;
+        this.familyKey = def.familyKey ?? "canine";
+        this.outerCompositeKey = def.outerCompositeKey ?? def.compositeKey ?? "animal";
+        this.innerCompositeKey = def.innerCompositeKey ?? def.compositeKey ?? "animal";
+        this.compositeKey = this.outerCompositeKey;
+        this.aiTendency = { ...(familyDefs[this.familyKey]?.aiTendency ?? { aggression: 0.5, formation: "pack", engageRangeBias: 1.0 }) };
         this.effectState = EffectEngine.createState();
         this.statusEffects = [];
         this.currentHP = this.permanentStats.maxHP;
@@ -675,7 +786,7 @@ class Creature {
         return events;
     }
     rebuildStats() {
-        this.permanentStats = {
+        const base = {
             pAtk: this.speciesBaseStats.pAtk + this.growthStats.pAtk,
             eAtk: this.speciesBaseStats.eAtk + this.growthStats.eAtk,
             range: this.speciesBaseStats.range + this.growthStats.range,
@@ -688,6 +799,22 @@ class Creature {
             recoverStamina: this.speciesBaseStats.recoverStamina + this.growthStats.recoverStamina,
             recoverEnergy: this.speciesBaseStats.recoverEnergy + this.growthStats.recoverEnergy,
         };
+        const family = familyDefs[this.familyKey] ?? null;
+        const outerTraits = composites[this.outerCompositeKey]?.traits ?? composites.animal.traits;
+        const innerTraits = composites[this.innerCompositeKey]?.traits ?? composites.animal.traits;
+        this.permanentStats = { ...base };
+        if (family?.statMult) {
+            this.permanentStats.maxHP *= family.statMult.maxHP ?? 1;
+            this.permanentStats.spd *= family.statMult.spd ?? 1;
+            this.permanentStats.stamina *= family.statMult.stamina ?? 1;
+            this.permanentStats.energy *= family.statMult.energy ?? 1;
+        }
+        this.permanentStats.maxHP *= 1 + ((outerTraits.toughness ?? 0) * 0.35);
+        this.permanentStats.spd *= 1 + ((outerTraits.mobilityBias ?? 0) * 0.25);
+        this.permanentStats.energy *= 1 + ((innerTraits.energyBias ?? 0) * 0.45);
+        this.permanentStats.recoverEnergy *= 1 + ((innerTraits.regenBias ?? 0) * 0.35);
+        this.permanentStats.recoverStamina *= 1 + ((outerTraits.regenBias ?? 0) * 0.25);
+        this.permanentStats.castSpd *= 1 + ((innerTraits.energyBias ?? 0) * 0.12);
         this.modifiedStats = { ...this.permanentStats };
     }
     tick(dt, world) {
@@ -777,7 +904,8 @@ class Brain {
             h.intent.move = { x: 0, z: 0 };
             return;
         }
-        const acquisitionRange = stance === "follow" ? 120 : 190;
+        const engageBias = h.aiTendency?.engageRangeBias ?? 1;
+        const acquisitionRange = (stance === "follow" ? 120 : 190) * engageBias;
         const target = world.findNearestEnemyOf(h, acquisitionRange);
         if (target) {
             this.fightTarget(world, h, target, stance === "follow" ? 100 : null);
@@ -890,7 +1018,8 @@ class Brain {
         const d = Math.hypot(dx, dz);
         const n = norm2D(dx, dz);
         const ctx = this.getLocalCombatContext(world, h, target);
-        const preferredRange = this.role === "ranged" ? 95 : 18;
+        const familyRangeBias = h.aiTendency?.engageRangeBias ?? 1;
+        const preferredRange = (this.role === "ranged" ? 95 : 18) * familyRangeBias;
         const leash = this.role === "ranged" ? 20 : 8;
         if (maxPursuitDistance != null) {
             const anchor = world.getPetFollowAnchor(h.id);
@@ -1573,8 +1702,8 @@ class PlayerEntity {
         this.itemBar =  ['berry_red', 'battery_seed', "lure_meat", "revive_berry"]
         this.selectedItemKey = this.itemBar[this.selectedItemIndex] ?? null;
         this.toolbelt = ["hammer", "gather_tool"];
-        this.selectedToolIndex = 0;
-        this.selectedToolKey = "hammer";
+        this.selectedToolIndex = -1;
+        this.selectedToolKey = null;
         this.toolMode = "build";
         this.selectedBuildKey = "shelter";
         this.reserveOwnedIds = [];
@@ -2292,7 +2421,7 @@ class World {
         ctx.fillStyle = "#fff";
         ctx.fillText(`Controls: 1/2/3 pet  W/D + Arrows move(AUTO)  M mode  LMB target  RMB tool/move  A/S cast  [ / ] reserve  T swap  | ${this.player.lastLog}`, 18, barY + 46);
         ctx.fillText(
-            `Mode: ${this.player.activeControlMode}  Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}  Tool: ${this.player.selectedToolKey}  Build: ${this.player.toolMode}/${this.player.selectedBuildKey}`,
+            `Mode: ${this.player.activeControlMode}  Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}  Tool: ${this.player.selectedToolKey ?? "none"}  Build: ${this.player.toolMode}/${this.player.selectedBuildKey}`,
             18,
             barY + 20
         )
