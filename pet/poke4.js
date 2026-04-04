@@ -185,104 +185,107 @@ const abilities = {
 };
 const species = {
     dog: {
-        name: "Dog",
+        name: "Puppy",
         compositeKey: "animal",
         role: "fighter",
         baseStats: { pAtk: 12, eAtk: 2, range: 24, maxHP: 110, spd: 70, castSpd: 1, size: 10, stamina: 25, energy: 10, recoverStamina: 2, recoverEnergy: 1 },
         moveset: ["ram", "dashBite", "rallyHowl", "stomp"], learnset: [], //later, add at what level it learns what
-        morphOptions: [] //{option: speciesKey, pointsNeeded: value}
-
+        morphOptions: {
+            stage1: [
+                {name: "cyberdog", composite: "metal", pointsNeeded: [{key: "electric", amt: 25}, {key: 'metal', amt: 25}]},
+                {name: "stonedog", composite: "stone",  pointsNeeded: [{key: "stone", amt: 25}]},
+            ],
+            stage2: {}
+        }
     },
-    sparkit: {
-        name: "Sparkit",
+    cat: {
+        name: "Kitten",
         compositeKey: "voltage",
         role: "ranged",
         baseStats: { pAtk: 4, eAtk: 12, range: 100, maxHP: 85, spd: 65, castSpd: 1, size: 9, stamina: 16, energy: 24, recoverStamina: 1, recoverEnergy: 2 },
-        moveset: ["zap", "staticBurst", "staticBarrier"],
+        moveset: ["zap", "staticBurst", "staticBarrier"], learnset: [],
     },
-    cinderpup: {
-        name: "Cinderpup",
+    bear: {
+        name: "Cub",
         compositeKey: "fire",
         role: "fighter",
         baseStats: { pAtk: 10, eAtk: 8, range: 30, maxHP: 95, spd: 74, castSpd: 1, size: 9, stamina: 24, energy: 18, recoverStamina: 2, recoverEnergy: 2 },
-        moveset: ["emberClaw", "ram"],
+        moveset: ["emberClaw", "ram"], learnset: [],
     },
     pebblit: {
         name: "Pebblit",
         compositeKey: "rock",
         role: "ranged",
         baseStats: { pAtk: 9, eAtk: 3, range: 120, maxHP: 120, spd: 58, castSpd: 1, size: 11, stamina: 22, energy: 12, recoverStamina: 1, recoverEnergy: 1 },
-        moveset: ["pebbleShot", "ram"],
+        moveset: ["pebbleShot", "ram"], learnset: [],
     },
 };
+//plains: regular animals, ocean: water types
+//forest: plant types, //desert: ground/crystal/fire
+//stormfield: electric, volcanic: lava.
+//tundra: frost, polar: ice types, jungle: plant/poison/slime? 
+//mountain: metal/eelctric
+
 const biomeDefs = {
     plains: {
-        color: "#89a87c",
+        color: "#89a87c", rules: {temperature: 0.55,rainfall: 0.45,
+        lithosphere: 0.45,barrenness: 0.35,softness: 0.28,arcane: 0.2,bias: 1.0,},
         spawns: [{ key: "dog", weight: 5 }, { key: "pebblit", weight: 2 }],
         nodes: [{ key: "berry_bush_red", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
+    ocean: {
+        color: "#4a90d9", rules: {temperature: 0.65,rainfall: 0.85,lithosphere: 0.15,
+        barrenness: 0.10,softness: 0.30,arcane: 0.1,bias: 1.10,},
+        spawns: [{ key: "cat", weight: 6 }, { key: "dog", weight: 2 }],
+        nodes: [],
+    },
     forest: {
-        color: "#6e9a5f",
-        spawns: [{ key: "dog", weight: 3 }, { key: "cinderpup", weight: 2 }],
+        color: "#6e9a5f", rules:{temperature: 0.50,rainfall: 0.75,lithosphere: 0.42,
+        barrenness: 0.15,softness: 0.26,arcane: 0.4,bias: 1.05,},
+        spawns: [{ key: "dog", weight: 3 }, { key: "bear", weight: 2 }],
         nodes: [{ key: "berry_bush_red", weight: 22 }, { key: "bait_shrub", weight: 3 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     desert: {
-        color: "#b8a56c",
-        spawns: [{ key: "pebblit", weight: 5 }, { key: "cinderpup", weight: 3 }],
+        color: "#b8a56c", rules:{temperature: 0.82,rainfall: 0.12,lithosphere: 0.40,
+        barrenness: 0.90,softness: 0.22,arcane: 0.1,bias: 0.95,},
+        spawns: [{ key: "pebblit", weight: 5 }, { key: "bear", weight: 3 }],
         nodes: [{ key: "energy_crystal", weight: 5 }, { key: "bait_shrub", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     stormfield: {
-        color: "#74879b",
-        spawns: [{ key: "sparkit", weight: 6 }, { key: "dog", weight: 2 }],
+        color: "#74879b", rules:{temperature: 0.45,rainfall: 0.85,lithosphere: 0.55,
+        barrenness: 0.55,softness: 0.24,arcane: 0.8,bias: 0.45,},
+        spawns: [{ key: "cat", weight: 6 }, { key: "dog", weight: 2 }],
         nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush_red", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     volcanic: {
-        color: "#8b5c4f",
-        spawns: [{ key: "cinderpup", weight: 6 }, { key: "pebblit", weight: 2 }],
+        color: "#8b5c4f", rules: {temperature: 0.88,rainfall: 0.18,lithosphere: 0.82,
+        barrenness: 0.78,softness: 0.20,arcane: 0.5,bias: 0.70,},
+        spawns: [{ key: "bear", weight: 6 }, { key: "pebblit", weight: 2 }],
         nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
+    tundra: {
+        color: "#cad7e0", rules: {temperature: 0.25,rainfall: 0.35,lithosphere: 0.65,
+        barrenness: 0.65,softness: 0.20,arcane: 0.1,bias: 0.85,},
+        spawns: [{ key: "cat", weight: 6 }, { key: "dog", weight: 2 }],
+        nodes: [{ key: "berry_bush_red", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
+    },
+    polar: {
+        color: "#e1f2f9", rules: {temperature: 0.15,rainfall: 0.25,lithosphere: 0.75,
+        barrenness: 0.75,softness: 0.20,arcane: 0.1,bias: 0.85,},
+        spawns: [{ key: "cat", weight: 6 }, { key: "dog", weight: 2 }],
+        nodes: [{ key: "berry_bush_red", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
+    }
+
 };
 const biomeRules = {
-    plains: {
-        temperature: 0.55,
-        rainfall: 0.45,
-        lithosphere: 0.45,
-        barrenness: 0.35,
-        softness: 0.28,
-        bias: 1.0,
-    },
-    forest: {
-        temperature: 0.50,
-        rainfall: 0.75,
-        lithosphere: 0.42,
-        barrenness: 0.15,
-        softness: 0.26,
-        bias: 1.05,
-    },
-    desert: {
-        temperature: 0.82,
-        rainfall: 0.12,
-        lithosphere: 0.40,
-        barrenness: 0.90,
-        softness: 0.22,
-        bias: 0.95,
-    },
-    stormfield: {
-        temperature: 0.45,
-        rainfall: 0.65,
-        lithosphere: 0.55,
-        barrenness: 0.55,
-        softness: 0.24,
-        bias: 0.85,
-    },
-    volcanic: {
-        temperature: 0.88,
-        rainfall: 0.18,
-        lithosphere: 0.82,
-        barrenness: 0.78,
-        softness: 0.20,
-        bias: 0.70,
-    },
+    plains: biomeDefs.plains.rules,
+    ocean:  biomeDefs.ocean.rules,
+    forest:  biomeDefs.forest.rules,
+    desert: biomeDefs.desert.rules,
+    stormfield: biomeDefs.stormfield.rules,
+    volcanic: biomeDefs.volcanic.rules,
+    tundra: biomeDefs.tundra.rules,
+    polar: biomeDefs.polar.rules,
 };
 const itemDefs = {
     berry_red: { name: "Red Berry", type: "heal", amount: 40 },
@@ -317,6 +320,9 @@ const placeableDefs = {
     buildCost: [{ key: "berry_red", amount: 1 }],
     growTime: 12,
     rewards: [{ key: "berry_red", amount: 1 }],
+    placementRadius: 11,
+    blocksMovement: false,
+    destroyRefund: [{ key: "berry_red", amount: 1, chance: 0.6 }],
   },
   berry_bush_blue: {
     kind: "farm",
@@ -330,6 +336,9 @@ const placeableDefs = {
     buildCost: [{ key: "berry_blue", amount: 1 }],
     growTime: 12,
     rewards: [{ key: "berry_blue", amount: 1 }],
+    placementRadius: 11,
+    blocksMovement: false,
+    destroyRefund: [{ key: "berry_blue", amount: 1, chance: 0.6 }],
   },
   berry_bush_yellow: {
     kind: "farm",
@@ -343,6 +352,9 @@ const placeableDefs = {
     buildCost: [{ key: "berry_yellow", amount: 1 }],
     growTime: 12,
     rewards: [{ key: "berry_yellow", amount: 1 }],
+    placementRadius: 11,
+    blocksMovement: false,
+    destroyRefund: [{ key: "berry_yellow", amount: 1, chance: 0.6 }],
   },
   shelter: {
     kind: "structure",
@@ -354,14 +366,17 @@ const placeableDefs = {
     destroyTime: 4.0,
     buildCost: [{ key: "wood_plank", amount: 3 }],
     provides: { restHeal: 0.02 },
+    placementRadius: 16,
+    blocksMovement: true,
+    destroyRefund: [{ key: "wood_plank", amount: 1, chance: 1.0 }],
   },
 
 };
 const toolDefs = {
   hammer: {
     name: "Hammer",
-    modes: ["build", "destroy"],
-    buildTypes: ["shelter", "berry_bush_red"],
+    modes: ["none", "build", "destroy"],
+    buildTypes: ["shelter", "berry_bush_red", "berry_bush_blue", "berry_bush_yellow"],
     canDestroy: true,
     range: 40,
   },
@@ -678,6 +693,7 @@ class Brain {
         const player = world.player;
         const isActive = h.id === player.activePetId;
         const activeControlMode = player.activeControlMode ?? "AUTO";
+        
         const followAnchor = world.getPetFollowAnchor(h.id);
         const stance = isActive ? "aggressive" : player.stance;
         if (isActive && h.manualCastRequest) {
@@ -957,11 +973,19 @@ const BiomeSystem = {
             Math.sin(z * 0.00037) * 0.18 +
             Math.cos((x + z) * 0.00019) * 0.14;
 
+        const arcane =
+            0.5 +
+            Math.sin(x * 0.00018) * 0.35 +
+            Math.cos(z * 0.00016) * 0.25 +
+            Math.sin((x + z) * 0.00006) * 0.20;
+
+
         return {
             temperature: clamp(temperature, 0, 1),
             rainfall: clamp(rainfall, 0, 1),
             lithosphere: clamp(lithosphere, 0, 1),
             barrenness: clamp(barrenness, 0, 1),
+            arcane: clamp(arcane, 0, 1),
         };
     },
 
@@ -984,6 +1008,7 @@ const BiomeSystem = {
             score *= this.scoreField(f.rainfall, rule.rainfall, rule.softness);
             score *= this.scoreField(f.lithosphere, rule.lithosphere, rule.softness);
             score *= this.scoreField(f.barrenness, rule.barrenness, rule.softness);
+            score *= this.scoreField(f.arcane, rule.arcane, rule.softness);
             score *= rule.bias ?? 1;
 
             score = Math.max(0.0001, score);
@@ -1450,13 +1475,13 @@ class PlayerEntity {
         this.commandTargetId = null;
         this.stance = "aggressive";
         this.selectedItemIndex = 0
-        this.inventory = { berry_red: 10, battery_seed: 5, lure_meat: 5, revive_berry: 3 };
+        this.inventory = { berry_red: 10, berry_blue: 4, berry_yellow: 4, wood_plank: 8, battery_seed: 5, lure_meat: 5, revive_berry: 3 };
         this.itemBar =  ['berry_red', 'battery_seed', "lure_meat", "revive_berry"]
         this.selectedItemKey = this.itemBar[this.selectedItemIndex] ?? null;
         this.toolbelt = ["hammer"];
         this.selectedToolIndex = 0;
         this.selectedToolKey = "hammer";
-        this.toolMode = "build";
+        this.toolMode = "none";
         this.selectedBuildKey = "shelter";
         this.reserveOwnedIds = [];
         this.selectedReserveIndex = 0;
@@ -1555,6 +1580,11 @@ class PlayerEntity {
         }
         if (input.consumePress("KeyM")) {
             this.activeControlMode = this.activeControlMode === "AUTO" ? "MANUAL" : "AUTO";
+            if (this.activeControlMode === "MANUAL") {
+                world.camera.follow(world.getCreatureById(this.activePetId));
+            } else {
+                world.camera.follow(world.player);
+            }
             this.lastLog = `Control: ${this.activeControlMode}`;
         }
         if (input.consumePress("KeyQ")) this.cycleItem(-1);
@@ -1565,6 +1595,9 @@ class PlayerEntity {
         if (input.consumePress("KeyD")) world.CM.queueManualCast(2);
         if (input.consumePress("KeyF")) world.CM.queueManualCast(3);
         if (input.consumePress("KeyG")) world.PIS.tryInteractNearestNode();
+        if (input.consumePress("KeyR")) world.BS.cycleToolMode(1);
+        if (input.consumePress("KeyB")) world.BS.cycleBuildType(1);
+        if (input.consumePress("KeyH")) world.BS.tryHarvestNearestFarm();
         if (input.consumePress("BracketLeft")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
         if (input.consumePress("BracketRight")) this.selectedReserveIndex += 1;
         if (input.consumePress("KeyT")) world.PIS.swapActiveWithReserve(this.selectedReserveIndex);
@@ -1578,9 +1611,15 @@ class PlayerEntity {
             }
         }
         if (input.consumeMouseRightPress()) {
-            world.PIS.commandPets(this.targetPetIds, { type: "move", point: worldPos, issuedAt: world.time });
-            this.commandTargetId = null;
-            this.lastLog = "Move command";
+            if (this.selectedToolKey === "hammer" && this.toolMode === "build") {
+                world.BS.tryPlaceSelectedAt(worldPos.x, worldPos.z);
+            } else if (this.selectedToolKey === "hammer" && this.toolMode === "destroy") {
+                world.BS.tryStartDestroyNearest();
+            } else {
+                world.PIS.commandPets(this.targetPetIds, { type: "move", point: worldPos, issuedAt: world.time });
+                this.commandTargetId = null;
+                this.lastLog = "Move command";
+            }
         }
     }
 }
@@ -1597,10 +1636,14 @@ class World {
         this.player = new PlayerEntity(this.width / 2, this.height / 2);
         this.PIS = new PlayerInteractionSystem(this)
         this.CM = new CombatManager(this)
+        this.BS = new BuildSystem(this);
         this.creatures = [];
         this.factory = new CreatureFactory();
         this.spawnField = new SpawnField();
         this.nodes = [];
+        this.buildablesById = new Map();
+        this.buildableIdsByChunk = new Map();
+        this.nextBuildId = 1;
         this.nodeSpawnTimer = 0;
         this.floatingTexts = [];
         this.combatFx = [];
@@ -1692,6 +1735,7 @@ class World {
         for (const c of this.creatures) if (c.brain) c.brain.think(this);
         for (const c of this.creatures) c.tick(dt, this);
         this.resolveSimpleSeparation();
+        this.BS.update(dt, input);
         this.CM.cleanupDefeatedCreatures();
         this.rebuildPartyPetIds();
         this.removeDeadCommandTarget();
@@ -1819,6 +1863,7 @@ class World {
             entity.pos.x = obstacle.x + n.x * minD;
             entity.pos.z = obstacle.z + n.z * minD;
         }
+        this.BS.applyBuildCollisionToEntity(entity, radius);
     }
     pushFloatingText(x, z, text, color = "#fff") {
         this.floatingTexts.push({ x, z, text, color, ttl: 0.9 });
@@ -1896,6 +1941,8 @@ class World {
             ctx.arc(s.sx, s.sz, b.radius * this.camera.zoom, 0, Math.PI * 2);
             ctx.stroke();
         }
+        this.BS.drawPlacedBuildables(ctx);
+        this.BS.drawBuildPreview(ctx);
         const ps = this.camera.worldToScreen(this.player.pos.x, this.player.pos.z);
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
@@ -2145,11 +2192,16 @@ class World {
         ctx.fillRect(10, barY, canvas.width - 20, barH);
         ctx.fillStyle = "#fff";
         ctx.fillText(`Controls: 1/2/3 pet  W/D + Arrows move(AUTO)  M mode  LMB target  RMB move  A/S cast  [ / ] reserve  T swap  | ${this.player.lastLog}`, 18, barY + 40);
+        const toolLabel =
+            this.player.selectedToolKey === "hammer"
+                ? `Hammer: ${this.player.toolMode}`
+                : "Tool: none";
+
         ctx.fillText(
-            `Mode: ${this.player.activeControlMode}  Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}   [ Q / E cycle ] [ Z use ]`,
-            18,
-            barY + 20
-        )
+        `Mode: ${this.player.activeControlMode}  Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}  ${toolLabel}  BuildType: ${this.player.selectedBuildKey} [R mode, B build, H harvest]`,
+        18,
+        barY + 20
+        );
     }
 }
 class PlayerInteractionSystem {
@@ -2595,45 +2647,375 @@ class CombatManager {
 class BuildSystem {
     constructor(world) {
         this.world = world;
+        this.destroyAction = null;
+        this.harvestAction = null;
+        this.preview = { x: world.player.pos.x, z: world.player.pos.z };
     }
-
-    getChunkRecordMap(chunkKey) {
-        if (!this.world.playerBuildsByChunk.has(chunkKey)) {
-            this.world.playerBuildsByChunk.set(chunkKey, []);
+    cycleToolMode(dir = 1) {
+        const player = this.world.player;
+        const tool = toolDefs[player.selectedToolKey];
+        if (!tool?.modes?.length) return;
+        const idx = Math.max(0, tool.modes.indexOf(player.toolMode));
+        player.toolMode = tool.modes[(idx + dir + tool.modes.length) % tool.modes.length];
+        player.lastLog = `Tool mode: ${player.toolMode}`;
+    }
+    cycleBuildType(dir = 1) {
+        const player = this.world.player;
+        const tool = toolDefs[player.selectedToolKey];
+        const builds = tool?.buildTypes ?? [];
+        if (!builds.length) return;
+        const idx = Math.max(0, builds.indexOf(player.selectedBuildKey));
+        player.selectedBuildKey = builds[(idx + dir + builds.length) % builds.length];
+        player.lastLog = `Build type: ${player.selectedBuildKey}`;
+    }
+    getToolRange() {
+        const tool = toolDefs[this.world.player.selectedToolKey];
+        return tool?.range ?? 0;
+    }
+    isHammerActionAllowed(mode) {
+        const player = this.world.player;
+        const tool = toolDefs[player.selectedToolKey];
+        return player.selectedToolKey === "hammer" && tool?.modes?.includes(mode);
+    }
+    getBuildDef(buildKey) {
+        return placeableDefs[buildKey] ?? null;
+    }
+    canAffordCost(cost = []) {
+        const inv = this.world.player.inventory;
+        for (const c of cost) {
+            if ((inv[c.key] ?? 0) < c.amount) return false;
         }
-        return this.world.playerBuildsByChunk.get(chunkKey);
+        return true;
     }
-
-    placeStructure(type, x, z) {
-        const check = this.canPlaceAt(type, x, z);
-        if (!check.ok) return false;
-
-        const cell = ChunkSystem.getCellAtWorld(this.world, x, z);
-        const { cx, cz } = ChunkSystem.worldToChunk(x, z);
-        const chunkKey = ChunkSystem.key(cx, cz);
-
-        const record = {
+    consumeBuildCost(cost = []) {
+        if (!this.canAffordCost(cost)) return false;
+        const inv = this.world.player.inventory;
+        for (const c of cost) inv[c.key] = (inv[c.key] ?? 0) - c.amount;
+        return true;
+    }
+    grantItems(rewards = []) {
+        const player = this.world.player;
+        for (const r of rewards) {
+            if (!player.itemBar.includes(r.key)) player.itemBar.push(r.key);
+            player.inventory[r.key] = (player.inventory[r.key] ?? 0) + r.amount;
+        }
+    }
+    getPlacementRadius(def) {
+        return def?.placementRadius ?? def?.radius ?? 10;
+    }
+    createBuildRecord(type, x, z) {
+        const def = this.getBuildDef(type);
+        const radius = this.getPlacementRadius(def);
+        return {
             id: this.world.nextBuildId++,
             type,
-            x, z,
-            y: cell?.y ?? 0,
-            radius: type === "shelter" ? 14 : 10,
-            hp: 100,
+            kind: def.kind,
+            x,
+            z,
+            radius,
+            hp: def.maxHP,
+            maxHP: def.maxHP,
+            blocksMovement: !!def.blocksMovement,
             placedAt: this.world.time,
+            provides: def.provides ? { ...def.provides } : null,
+            farmState: def.kind === "farm" ? "planted" : null,
+            plantedTimer: def.kind === "farm" ? 1.0 : 0,
+            growTimer: def.kind === "farm" ? (def.growTime ?? 0) : 0,
+            destroyProgress: 0,
         };
-
-        this.getChunkRecordMap(chunkKey).push(record);
-        return record;
     }
-
-    removeStructure(buildId) {
-        for (const [chunkKey, list] of this.world.playerBuildsByChunk) {
-            const idx = list.findIndex(b => b.id === buildId);
-            if (idx >= 0) {
-                return list.splice(idx, 1)[0];
+    addBuildable(buildable) {
+        this.world.buildablesById.set(buildable.id, buildable);
+        this.indexBuildableToChunk(buildable);
+    }
+    removeBuildable(buildId) {
+        const b = this.world.buildablesById.get(buildId);
+        if (!b) return null;
+        this.unindexBuildableFromChunk(b);
+        this.world.buildablesById.delete(buildId);
+        return b;
+    }
+    indexBuildableToChunk(buildable) {
+        const { cx, cz } = ChunkSystem.worldToChunk(buildable.x, buildable.z);
+        const chunkKey = ChunkSystem.key(cx, cz);
+        if (!this.world.buildableIdsByChunk.has(chunkKey)) this.world.buildableIdsByChunk.set(chunkKey, new Set());
+        this.world.buildableIdsByChunk.get(chunkKey).add(buildable.id);
+        buildable.chunkKey = chunkKey;
+    }
+    unindexBuildableFromChunk(buildable) {
+        if (!buildable.chunkKey) return;
+        const set = this.world.buildableIdsByChunk.get(buildable.chunkKey);
+        if (!set) return;
+        set.delete(buildable.id);
+        if (set.size <= 0) this.world.buildableIdsByChunk.delete(buildable.chunkKey);
+    }
+    getBuildablesInChunk(cx, cz) {
+        const key = ChunkSystem.key(cx, cz);
+        const ids = this.world.buildableIdsByChunk.get(key);
+        if (!ids) return [];
+        const out = [];
+        for (const id of ids) {
+            const b = this.world.buildablesById.get(id);
+            if (b) out.push(b);
+        }
+        return out;
+    }
+    getBuildablesNear(x, z, range = 0) {
+        const chunkRadius = Math.max(0, Math.ceil((range + 20) / ChunkSystem.CHUNK_SIZE));
+        const { cx, cz } = ChunkSystem.worldToChunk(x, z);
+        const out = [];
+        for (let dz = -chunkRadius; dz <= chunkRadius; dz++) {
+            for (let dx = -chunkRadius; dx <= chunkRadius; dx++) {
+                const list = this.getBuildablesInChunk(cx + dx, cz + dz);
+                for (const b of list) out.push(b);
             }
         }
-        return null;
+        return out;
+    }
+    canPlaceAt(type, x, z) {
+        const def = this.getBuildDef(type);
+        if (!def) return { ok: false, reason: "Unknown build type" };
+        const radius = this.getPlacementRadius(def);
+        const cell = ChunkSystem.getCellAtWorld(this.world, x, z);
+        if (!cell) return { ok: false, reason: "Chunk not loaded" };
+        if (cell.blocked || cell.water || cell.terrainClass === "cliff") return { ok: false, reason: "Blocked terrain" };
+        const toolRange = this.getToolRange();
+        const player = this.world.player;
+        if (dist(player.pos.x, player.pos.z, x, z) > toolRange) return { ok: false, reason: "Out of tool range" };
+        if (!this.canAffordCost(def.buildCost ?? [])) return { ok: false, reason: "Missing resources" };
+        const chunk = ChunkSystem.getChunkAtWorld(this.world, x, z);
+        for (const o of chunk?.obstacles ?? []) {
+            if (dist(x, z, o.x, o.z) < radius + (o.radius ?? 8)) return { ok: false, reason: "Overlaps obstacle" };
+        }
+        for (const node of this.world.nodes) {
+            if (dist(x, z, node.pos.x, node.pos.z) < radius + 10) return { ok: false, reason: "Overlaps node" };
+        }
+        for (const c of this.world.creatures) {
+            if (c.lifecycle !== "alive") continue;
+            const creatureRadius = c.modifiedStats?.size ?? 10;
+            if (dist(x, z, c.pos.x, c.pos.z) < radius + creatureRadius) return { ok: false, reason: "Overlaps creature" };
+        }
+        for (const b of this.getBuildablesNear(x, z, radius + 22)) {
+            if (dist(x, z, b.x, b.z) < radius + b.radius) return { ok: false, reason: "Overlaps buildable" };
+        }
+        return { ok: true, reason: "ok" };
+    }
+    tryPlaceSelectedAt(x, z) {
+        if (!this.isHammerActionAllowed("build")) return false;
+        const buildKey = this.world.player.selectedBuildKey;
+        const check = this.canPlaceAt(buildKey, x, z);
+        if (!check.ok) {
+            this.world.player.lastLog = `Cannot place: ${check.reason}`;
+            return false;
+        }
+        const def = this.getBuildDef(buildKey);
+        if (!this.consumeBuildCost(def.buildCost ?? [])) {
+            this.world.player.lastLog = "Cannot place: Missing resources";
+            return false;
+        }
+        const record = this.createBuildRecord(buildKey, x, z);
+        this.addBuildable(record);
+        this.world.player.lastLog = `Placed ${buildKey}`;
+        return true;
+    }
+    findNearestBuildableInRange(x, z, maxRange, filterFn = null) {
+        let best = null;
+        let bestD = Infinity;
+        for (const b of this.getBuildablesNear(x, z, maxRange)) {
+            const d = dist(x, z, b.x, b.z);
+            if (d > maxRange || d >= bestD) continue;
+            if (filterFn && !filterFn(b)) continue;
+            best = b;
+            bestD = d;
+        }
+        return best;
+    }
+    tryStartDestroyNearest() {
+        if (!this.isHammerActionAllowed("destroy")) return false;
+        const player = this.world.player;
+        const nearest = this.findNearestBuildableInRange(player.pos.x, player.pos.z, this.getToolRange());
+        if (!nearest) {
+            player.lastLog = "No buildable in range";
+            return false;
+        }
+        this.destroyAction = { targetId: nearest.id, progress: 0 };
+        player.lastLog = `Destroying ${nearest.type}`;
+        return true;
+    }
+    updateDestroyAction(dt) {
+        if (!this.destroyAction) return;
+        if (!this.isHammerActionAllowed("destroy")) {
+            this.destroyAction = null;
+            return;
+        }
+        const player = this.world.player;
+        const target = this.world.buildablesById.get(this.destroyAction.targetId);
+        if (!target) {
+            this.destroyAction = null;
+            return;
+        }
+        if (dist(player.pos.x, player.pos.z, target.x, target.z) > this.getToolRange() + 2) {
+            this.destroyAction = null;
+            player.lastLog = "Destroy cancelled: Out of range";
+            return;
+        }
+        const def = this.getBuildDef(target.type);
+        const destroyTime = Math.max(0.1, def?.destroyTime ?? 2);
+        this.destroyAction.progress += dt;
+        target.destroyProgress = this.destroyAction.progress / destroyTime;
+        if (this.destroyAction.progress < destroyTime) return;
+        const removed = this.removeBuildable(target.id);
+        if (removed) {
+            this.tryGrantDestroyRefund(def);
+            this.world.pushFloatingText(removed.x, removed.z - 12, "Destroyed", "#ffb3a1");
+            player.lastLog = `Destroyed ${removed.type}`;
+        }
+        this.destroyAction = null;
+    }
+    tryGrantDestroyRefund(def) {
+        const refunds = def?.destroyRefund ?? [];
+        const granted = [];
+        for (const r of refunds) {
+            const chance = r.chance ?? 1;
+            if (Math.random() > chance) continue;
+            this.grantItems([{ key: r.key, amount: r.amount }]);
+            granted.push(`${r.key} x${r.amount}`);
+        }
+        if (granted.length) this.world.player.lastLog += ` (+${granted.join(", ")})`;
+    }
+    tryHarvestNearestFarm() {
+        const player = this.world.player;
+        const nearest = this.findNearestBuildableInRange(
+            player.pos.x,
+            player.pos.z,
+            this.getToolRange(),
+            (b) => b.kind === "farm" && b.farmState === "mature"
+        );
+        if (!nearest) {
+            player.lastLog = "No mature farm in range";
+            return false;
+        }
+        this.harvestAction = { targetId: nearest.id, progress: 0 };
+        player.lastLog = `Harvesting ${nearest.type}`;
+        return true;
+    }
+    updateHarvestAction(dt) {
+        if (!this.harvestAction) return;
+        const farm = this.world.buildablesById.get(this.harvestAction.targetId);
+        if (!farm || farm.kind !== "farm") {
+            this.harvestAction = null;
+            return;
+        }
+        const player = this.world.player;
+        if (dist(player.pos.x, player.pos.z, farm.x, farm.z) > this.getToolRange() + 2) {
+            this.harvestAction = null;
+            player.lastLog = "Harvest cancelled: Out of range";
+            return;
+        }
+        if (farm.farmState !== "mature") {
+            this.harvestAction = null;
+            return;
+        }
+        const def = this.getBuildDef(farm.type);
+        const harvestTime = Math.max(0.1, def?.harvestTime ?? 1);
+        this.harvestAction.progress += dt;
+        if (this.harvestAction.progress < harvestTime) return;
+        this.harvestFarm(farm, def);
+        this.harvestAction = null;
+    }
+    harvestFarm(farm, def) {
+        this.grantItems(def?.rewards ?? []);
+        farm.farmState = "planted";
+        farm.plantedTimer = 1.0;
+        farm.growTimer = def?.growTime ?? 0;
+        this.world.pushFloatingText(farm.x, farm.z - 10, "Harvested", "#9dffb0");
+        this.world.player.lastLog = `Harvested ${farm.type}`;
+    }
+    updateFarmGrowth(dt) {
+        for (const b of this.world.buildablesById.values()) {
+            if (b.kind !== "farm") continue;
+            if (b.farmState === "planted") {
+                b.plantedTimer = Math.max(0, b.plantedTimer - dt);
+                if (b.plantedTimer <= 0) b.farmState = "growing";
+                continue;
+            }
+            if (b.farmState !== "growing") continue;
+            b.growTimer = Math.max(0, b.growTimer - dt);
+            if (b.growTimer <= 0) b.farmState = "mature";
+        }
+    }
+    applyBuildCollisionToEntity(entity, radius = 8) {
+        for (const b of this.getBuildablesNear(entity.pos.x, entity.pos.z, radius + 40)) {
+            if (!b.blocksMovement) continue;
+            const dx = entity.pos.x - b.x;
+            const dz = entity.pos.z - b.z;
+            const d = Math.hypot(dx, dz) || 0.001;
+            const minD = radius + b.radius;
+            if (d >= minD) continue;
+            const n = { x: dx / d, z: dz / d };
+            entity.pos.x = b.x + n.x * minD;
+            entity.pos.z = b.z + n.z * minD;
+        }
+    }
+    drawPlacedBuildables(ctx) {
+        for (const b of this.world.buildablesById.values()) {
+            const def = this.getBuildDef(b.type);
+            const s = this.world.camera.worldToScreen(b.x, b.z);
+            let fill = def?.color ?? "#888";
+            if (b.kind === "farm" && b.farmState === "planted") fill = "rgba(120,120,95,0.95)";
+            if (b.kind === "farm" && b.farmState === "growing") fill = "rgba(120,160,120,0.95)";
+            if (b.kind === "farm" && b.farmState === "mature") fill = def?.color ?? "#88c070";
+            ctx.fillStyle = fill;
+            ctx.beginPath();
+            ctx.arc(s.sx, s.sz, b.radius * this.world.camera.zoom, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(0,0,0,0.45)";
+            ctx.stroke();
+            if (b.kind === "farm") {
+                ctx.fillStyle = "#fff";
+                ctx.font = "10px monospace";
+                const label = b.farmState === "mature"
+                    ? "READY"
+                    : (b.farmState === "planted" ? "PLANTED" : `${Math.ceil(b.growTimer)}s`);
+                ctx.fillText(label, s.sx - 16, s.sz - b.radius * this.world.camera.zoom - 6);
+            }
+            if (b.destroyProgress > 0) {
+                const ratio = clamp(b.destroyProgress, 0, 1);
+                ctx.fillStyle = "rgba(30,30,30,0.75)";
+                ctx.fillRect(s.sx - 16, s.sz + b.radius * this.world.camera.zoom + 4, 32, 4);
+                ctx.fillStyle = "#ff926b";
+                ctx.fillRect(s.sx - 16, s.sz + b.radius * this.world.camera.zoom + 4, 32 * ratio, 4);
+            }
+        }
+    }
+    drawBuildPreview(ctx) {
+        const player = this.world.player;
+        if (player.toolMode !== "build") return;
+        if (!this.isHammerActionAllowed("build")) return;
+        const def = this.getBuildDef(player.selectedBuildKey);
+        if (!def) return;
+        const check = this.canPlaceAt(player.selectedBuildKey, this.preview.x, this.preview.z);
+        const s = this.world.camera.worldToScreen(this.preview.x, this.preview.z);
+        const radius = this.getPlacementRadius(def) * this.world.camera.zoom;
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = check.ok ? "#66ff88" : "#ff6767";
+        ctx.beginPath();
+        ctx.arc(s.sx, s.sz, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = check.ok ? "#9effb4" : "#ff9c9c";
+        ctx.stroke();
+        ctx.fillStyle = "#fff";
+        ctx.font = "11px monospace";
+        ctx.fillText(player.selectedBuildKey, s.sx - 30, s.sz - radius - 8);
+    }
+    update(dt, input) {
+        const mouseWorld = this.world.camera.screenToWorld(input.mouse.x, input.mouse.y);
+        this.preview.x = mouseWorld.x;
+        this.preview.z = mouseWorld.z;
+        this.updateFarmGrowth(dt);
+        this.updateDestroyAction(dt);
+        this.updateHarvestAction(dt);
     }
 }
 /* =========================
@@ -2700,7 +3082,7 @@ class SceneManager {
 }
 class IntroScene {
     constructor() {
-        this.starterKeys = ["dog", "sparkit", "cinderpup"];
+        this.starterKeys = ["dog", "cat", "bear"];
         this.selectedIndex = 0;
     }
     onEnter(sm) {
@@ -2723,10 +3105,10 @@ class IntroScene {
         ctx.fillStyle = "#111";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "#fff";
-        ctx.font = "24px monospace";
-        ctx.fillText("Choose Your Starter", 40, 54);
-        ctx.font = "14px monospace";
-        ctx.fillText("Arrow keys / A-D to move, Enter or Space to confirm", 40, 82);
+        // ctx.font = "24px monospace";
+        // ctx.fillText("Choose Your Starter", 40, 54);
+        // ctx.font = "14px monospace";
+        // ctx.fillText("Arrow keys / A-D to move, Enter or Space to confirm", 40, 82);
         const cardW = 250;
         const cardH = 210;
         const gap = 20;
