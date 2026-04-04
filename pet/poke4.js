@@ -218,72 +218,118 @@ const species = {
 const biomeDefs = {
     plains: {
         color: "#89a87c",
+        rules: {
+            temperature: 0.55,
+            rainfall: 0.45,
+            lithosphere: 0.45,
+            barrenness: 0.35,
+            arcane: 0.45,
+            softness: 0.28,
+            bias: 1.0,
+        },
         spawns: [{ key: "dog", weight: 5 }, { key: "pebblit", weight: 2 }],
         nodes: [{ key: "berry_bush_red", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
+    ocean: {
+        color: "#4b7396",
+        rules: {
+            temperature: 0.46,
+            rainfall: 0.86,
+            lithosphere: 0.22,
+            barrenness: 0.20,
+            arcane: 0.50,
+            softness: 0.22,
+            bias: 0.82,
+        },
+        spawns: [{ key: "sparkit", weight: 3 }, { key: "dog", weight: 1 }],
+        nodes: [{ key: "energy_crystal", weight: 6 }, { key: "replenish_berry_bush", weight: 4 }, { key: "bait_shrub", weight: 1 }],
+    },
     forest: {
         color: "#6e9a5f",
+        rules: {
+            temperature: 0.50,
+            rainfall: 0.75,
+            lithosphere: 0.42,
+            barrenness: 0.15,
+            arcane: 0.42,
+            softness: 0.26,
+            bias: 1.05,
+        },
         spawns: [{ key: "dog", weight: 3 }, { key: "cinderpup", weight: 2 }],
         nodes: [{ key: "berry_bush_red", weight: 22 }, { key: "bait_shrub", weight: 3 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     desert: {
         color: "#b8a56c",
+        rules: {
+            temperature: 0.82,
+            rainfall: 0.12,
+            lithosphere: 0.40,
+            barrenness: 0.90,
+            arcane: 0.30,
+            softness: 0.22,
+            bias: 0.95,
+        },
         spawns: [{ key: "pebblit", weight: 5 }, { key: "cinderpup", weight: 3 }],
         nodes: [{ key: "energy_crystal", weight: 5 }, { key: "bait_shrub", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     stormfield: {
         color: "#74879b",
+        rules: {
+            temperature: 0.45,
+            rainfall: 0.65,
+            lithosphere: 0.55,
+            barrenness: 0.55,
+            arcane: 0.76,
+            softness: 0.24,
+            bias: 0.85,
+        },
         spawns: [{ key: "sparkit", weight: 6 }, { key: "dog", weight: 2 }],
         nodes: [{ key: "energy_crystal", weight: 6 }, { key: "berry_bush_red", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     volcanic: {
         color: "#8b5c4f",
+        rules: {
+            temperature: 0.88,
+            rainfall: 0.18,
+            lithosphere: 0.82,
+            barrenness: 0.78,
+            arcane: 0.55,
+            softness: 0.20,
+            bias: 0.70,
+        },
         spawns: [{ key: "cinderpup", weight: 6 }, { key: "pebblit", weight: 2 }],
         nodes: [{ key: "bait_shrub", weight: 4 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
-};
-const biomeRules = {
-    plains: {
-        temperature: 0.55,
-        rainfall: 0.45,
-        lithosphere: 0.45,
-        barrenness: 0.35,
-        softness: 0.28,
-        bias: 1.0,
+    tundra: {
+        color: "#94a6ae",
+        rules: {
+            temperature: 0.20,
+            rainfall: 0.44,
+            lithosphere: 0.52,
+            barrenness: 0.55,
+            arcane: 0.38,
+            softness: 0.21,
+            bias: 0.72,
+        },
+        spawns: [{ key: "dog", weight: 3 }, { key: "pebblit", weight: 3 }],
+        nodes: [{ key: "replenish_berry_bush", weight: 5 }, { key: "revive_berry_bush", weight: 3 }, { key: "energy_crystal", weight: 2 }],
     },
-    forest: {
-        temperature: 0.50,
-        rainfall: 0.75,
-        lithosphere: 0.42,
-        barrenness: 0.15,
-        softness: 0.26,
-        bias: 1.05,
-    },
-    desert: {
-        temperature: 0.82,
-        rainfall: 0.12,
-        lithosphere: 0.40,
-        barrenness: 0.90,
-        softness: 0.22,
-        bias: 0.95,
-    },
-    stormfield: {
-        temperature: 0.45,
-        rainfall: 0.65,
-        lithosphere: 0.55,
-        barrenness: 0.55,
-        softness: 0.24,
-        bias: 0.85,
-    },
-    volcanic: {
-        temperature: 0.88,
-        rainfall: 0.18,
-        lithosphere: 0.82,
-        barrenness: 0.78,
-        softness: 0.20,
-        bias: 0.70,
+    polar: {
+        color: "#d7e7f0",
+        rules: {
+            temperature: 0.07,
+            rainfall: 0.26,
+            lithosphere: 0.58,
+            barrenness: 0.76,
+            arcane: 0.62,
+            softness: 0.18,
+            bias: 0.55,
+        },
+        spawns: [{ key: "sparkit", weight: 2 }, { key: "pebblit", weight: 2 }],
+        nodes: [{ key: "energy_crystal", weight: 6 }, { key: "replenish_berry_bush", weight: 2 }, { key: "revive_berry_bush", weight: 2 }],
     },
 };
+const biomeRules = Object.fromEntries(Object.entries(biomeDefs).map(([key, def]) => [key, { ...(def.rules ?? {}) }]));
 const itemDefs = {
     berry_red: { name: "Red Berry", type: "heal", amount: 40 },
     berry_blue: { name: "Blue Berry", type: "heal", amount: 25 },
@@ -944,6 +990,7 @@ class Brain {
    world helpers: biome, spawn, interactables
 ========================= */
 const BiomeSystem = {
+    RULE_EXCLUDE_KEYS: new Set(["softness", "bias"]),
     sampleWorldFields(x, z) {
         const temperature =
             0.5 +
@@ -968,12 +1015,18 @@ const BiomeSystem = {
             Math.cos(x * 0.00052) * 0.22 +
             Math.sin(z * 0.00037) * 0.18 +
             Math.cos((x + z) * 0.00019) * 0.14;
+        const arcane =
+            0.5 +
+            Math.sin(x * 0.00073 + 1.73) * 0.24 +
+            Math.cos(z * 0.00068 + 0.51) * 0.19 +
+            Math.sin((x - z) * 0.00021 + 3.12) * 0.13;
 
         return {
             temperature: clamp(temperature, 0, 1),
             rainfall: clamp(rainfall, 0, 1),
             lithosphere: clamp(lithosphere, 0, 1),
             barrenness: clamp(barrenness, 0, 1),
+            arcane: clamp(arcane, 0, 1),
         };
     },
 
@@ -988,14 +1041,17 @@ const BiomeSystem = {
         let total = 0;
 
         for (const key of Object.keys(biomeDefs)) {
-            const rule = biomeRules[key];
+            const rule = biomeDefs[key]?.rules ?? biomeRules[key];
             if (!rule) continue;
 
             let score = 1;
-            score *= this.scoreField(f.temperature, rule.temperature, rule.softness);
-            score *= this.scoreField(f.rainfall, rule.rainfall, rule.softness);
-            score *= this.scoreField(f.lithosphere, rule.lithosphere, rule.softness);
-            score *= this.scoreField(f.barrenness, rule.barrenness, rule.softness);
+            const softness = rule.softness ?? 0.24;
+            for (const field of Object.keys(rule)) {
+                if (this.RULE_EXCLUDE_KEYS.has(field)) continue;
+                if (typeof rule[field] !== "number") continue;
+                if (typeof f[field] !== "number") continue;
+                score *= this.scoreField(f[field], rule[field], softness);
+            }
             score *= rule.bias ?? 1;
 
             score = Math.max(0.0001, score);
@@ -1206,6 +1262,15 @@ const ChunkSystem = {
         if (cell.dominantBiome === "forest") {
           obstacleChance = 0.16;
           obstacleType = "tree";
+        } else if (cell.dominantBiome === "ocean") {
+          obstacleChance = 0.03;
+          obstacleType = "rock";
+        } else if (cell.dominantBiome === "tundra") {
+          obstacleChance = 0.09;
+          obstacleType = "rock";
+        } else if (cell.dominantBiome === "polar") {
+          obstacleChance = 0.10;
+          obstacleType = "crystal";
         } else if (cell.dominantBiome === "volcanic" || cell.dominantBiome === "desert" || cell.terrainClass === "rough") {
           obstacleChance = 0.11;
           obstacleType = "rock";
@@ -1306,10 +1371,13 @@ const ChunkSystem = {
 
     // Biome-specific terrain shaping.
     const plainsBias   = (mix.plains ?? 0) * -10;
+    const oceanBias    = (mix.ocean ?? 0) * -38;
     const forestBias   = (mix.forest ?? 0) * 4;
     const desertBias   = (mix.desert ?? 0) * -6;
     const stormBias    = (mix.stormfield ?? 0) * 10;
     const volcanicBias = (mix.volcanic ?? 0) * 24;
+    const tundraBias   = (mix.tundra ?? 0) * -8;
+    const polarBias    = (mix.polar ?? 0) * -16;
 
     const volcanicRough =
         (mix.volcanic ?? 0) *
@@ -1318,10 +1386,19 @@ const ChunkSystem = {
     const stormRough =
         (mix.stormfield ?? 0) *
         (Math.sin((x + z) * 0.0024) * 6 + Math.cos((x - z) * 0.0021) * 5);
+    const polarRough =
+        (mix.polar ?? 0) *
+        (Math.sin((x - z) * 0.0028) * 4 + Math.cos((x + z) * 0.0022) * 3);
 
     const plainFlatten =
         (mix.plains ?? 0) *
         (Math.sin(x * 0.0012) * -4 + Math.cos(z * 0.0011) * -3);
+    const oceanFlatten =
+        (mix.ocean ?? 0) *
+        (Math.sin(x * 0.0013) * -7 + Math.cos(z * 0.0014) * -6);
+    const tundraFlatten =
+        (mix.tundra ?? 0) *
+        (Math.sin(x * 0.0014) * -2 + Math.cos(z * 0.0013) * -2);
 
     return (
         broad +
@@ -1331,13 +1408,19 @@ const ChunkSystem = {
         moistureFlatten +
         barrenHarshness +
         plainsBias +
+        oceanBias +
         forestBias +
         desertBias +
         stormBias +
         volcanicBias +
+        tundraBias +
+        polarBias +
         volcanicRough +
         stormRough +
-        plainFlatten
+        polarRough +
+        plainFlatten +
+        oceanFlatten +
+        tundraFlatten
     );
   },
   updateLoadedChunks(world) {
