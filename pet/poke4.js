@@ -360,12 +360,12 @@ const placeableDefs = {
     buildTime: 3.0,
     destroyTime: 2.0,
     harvestTime: 2.0,
-    buildCost: [{ key: "berry_red", amount: 1 }],
+    buildCost: [{ key: "wood", amount: 1 }],
     growTime: 12,
     rewards: [{ key: "berry_red", amount: 1 }],
     placementRadius: 11,
     blocksMovement: false,
-    destroyRefund: [{ key: "berry_red", amount: 1, chance: 0.6 }],
+    destroyRefund: [{ key: "wood", amount: 1, chance: 0.6 }],
   },
   berry_bush_blue: {
     kind: "farm",
@@ -376,12 +376,12 @@ const placeableDefs = {
     buildTime: 3.0,
     destroyTime: 2.0,
     harvestTime: 2.0,
-    buildCost: [{ key: "berry_blue", amount: 1 }],
+    buildCost: [{ key: "wood", amount: 1 }],
     growTime: 12,
     rewards: [{ key: "berry_blue", amount: 1 }],
     placementRadius: 11,
     blocksMovement: false,
-    destroyRefund: [{ key: "berry_blue", amount: 1, chance: 0.6 }],
+    destroyRefund: [{ key: "wood", amount: 1, chance: 0.6 }],
   },
   berry_bush_yellow: {
     kind: "farm",
@@ -392,12 +392,12 @@ const placeableDefs = {
     buildTime: 3.0,
     destroyTime: 2.0,
     harvestTime: 2.0,
-    buildCost: [{ key: "berry_yellow", amount: 1 }],
+    buildCost: [{ key: "wood", amount: 1 }],
     growTime: 12,
     rewards: [{ key: "berry_yellow", amount: 1 }],
     placementRadius: 11,
     blocksMovement: false,
-    destroyRefund: [{ key: "berry_yellow", amount: 1, chance: 0.6 }],
+    destroyRefund: [{ key: "wood", amount: 1, chance: 0.6 }],
   },
   shelter: {
     kind: "structure",
@@ -407,11 +407,11 @@ const placeableDefs = {
     radius: 16,
     buildTime: 6.0,
     destroyTime: 4.0,
-    buildCost: [{ key: "wood_plank", amount: 3 }],
+    buildCost: [{ key: "wood", amount: 5 }, { key: "stone", amount: 2 }],
     provides: { restHeal: 0.02 },
     placementRadius: 16,
     blocksMovement: true,
-    destroyRefund: [{ key: "wood_plank", amount: 1, chance: 1.0 }],
+    destroyRefund: [{ key: "wood", amount: 2, chance: 1.0 }, { key: "stone", amount: 1, chance: 0.7 }],
   },
 
 };
@@ -423,6 +423,27 @@ const toolDefs = {
     canDestroy: true,
     range: 40,
   },
+  gather_tool: {
+    name: "Gather Tool",
+    modes: ["gather"],
+    canGather: true,
+    range: 42,
+    gatherTime: 1.6,
+  },
+};
+const obstacleHarvestDefs = {
+    tree: {
+        gatherTime: 1.5,
+        rewards: [{ key: "wood", amount: 3 }],
+    },
+    rock: {
+        gatherTime: 1.8,
+        rewards: [{ key: "stone", amount: 2 }, { key: "metal_scrap", amount: 1, chance: 0.25 }],
+    },
+    crystal: {
+        gatherTime: 2.0,
+        rewards: [{ key: "crystal_shard", amount: 2 }],
+    },
 };
 /* =========================
    systems: effects/status/progression
@@ -1279,11 +1300,13 @@ const ChunkSystem = {
           obstacleType = "crystal";
         }
         if (obstacleType && r < obstacleChance) {
+          const obstacleId = `obs-${chunkKey}-${i}`;
+          if (world.harvestedObstacleIds?.has(obstacleId)) continue;
           const ox = cell.x + (r2 - 0.5) * (cellSize * 0.6);
           const oz = cell.z + (r3 - 0.5) * (cellSize * 0.6);
           const radius = obstacleType === "tree" ? 5 + r3 * 4 : 4 + r2 * 4;
           obstacles.push({
-            id: `obs-${chunkKey}-${i}`,
+            id: obstacleId,
             type: obstacleType,
             x: ox,
             z: oz,
@@ -1545,10 +1568,11 @@ class PlayerEntity {
         this.commandTargetId = null;
         this.stance = "aggressive";
         this.selectedItemIndex = 0
-        this.inventory = { berry_red: 10, berry_blue: 4, berry_yellow: 4, wood_plank: 8, battery_seed: 5, lure_meat: 5, revive_berry: 3 };
+        this.inventory = { berry_red: 10, berry_blue: 4, berry_yellow: 4, battery_seed: 5, lure_meat: 5, revive_berry: 3 };
+        this.materialsInventory = { wood: 6, stone: 4, crystal_shard: 0, metal_scrap: 0 };
         this.itemBar =  ['berry_red', 'battery_seed', "lure_meat", "revive_berry"]
         this.selectedItemKey = this.itemBar[this.selectedItemIndex] ?? null;
-        this.toolbelt = ["hammer"];
+        this.toolbelt = ["hammer", "gather_tool"];
         this.selectedToolIndex = 0;
         this.selectedToolKey = "hammer";
         this.toolMode = "build";
@@ -1572,6 +1596,12 @@ class PlayerEntity {
         if (!len) return;
         this.selectedItemIndex = (this.selectedItemIndex + dir + len) % len;
         this.selectedItemKey = this.itemBar[this.selectedItemIndex];
+    }
+    cycleTool(dir) {
+        const len = this.toolbelt.length;
+        if (!len) return;
+        this.selectedToolIndex = (this.selectedToolIndex + dir + len) % len;
+        this.selectedToolKey = this.toolbelt[this.selectedToolIndex];
     }
     updateAutoMovement(input, dt, world) {
         let mx = 0;
@@ -1660,6 +1690,7 @@ class PlayerEntity {
         if (input.consumePress("KeyD")) world.CM.queueManualCast(2);
         if (input.consumePress("KeyF")) world.CM.queueManualCast(3);
         if (input.consumePress("KeyG")) world.PIS.tryInteractNearestNode();
+        if (input.consumePress("KeyY")) world.BS.cycleSelectedTool(1);
         if (input.consumePress("KeyR")) world.BS.cycleToolMode(1);
         if (input.consumePress("KeyB")) world.BS.cycleBuildType(1);
         if (input.consumePress("KeyH")) world.BS.tryHarvestNearestFarm();
@@ -1680,6 +1711,8 @@ class PlayerEntity {
                 world.BS.tryPlaceSelectedAt(worldPos.x, worldPos.z);
             } else if (this.selectedToolKey === "hammer" && this.toolMode === "destroy") {
                 world.BS.tryStartDestroyNearest();
+            } else if (this.selectedToolKey === "gather_tool") {
+                world.BS.tryStartGatherNearestObstacle();
             } else {
                 world.PIS.commandPets(this.targetPetIds, { type: "move", point: worldPos, issuedAt: world.time });
                 this.commandTargetId = null;
@@ -1706,6 +1739,7 @@ class World {
         this.factory = new CreatureFactory();
         this.spawnField = new SpawnField();
         this.nodes = [];
+        this.harvestedObstacleIds = new Set();
         this.buildablesById = new Map();
         this.buildableIdsByChunk = new Map();
         this.nextBuildId = 1;
@@ -2251,17 +2285,19 @@ class World {
                 ctx.fillText(`Buffs: ${buffNames.join(" | ")}`, castPanelX + 10, castPanelY - 8);
             }
         }
-        const barH = 58;
+        const barH = 74;
         const barY = canvas.height - barH - 10;
         ctx.fillStyle = "rgba(0,0,0,0.62)";
         ctx.fillRect(10, barY, canvas.width - 20, barH);
         ctx.fillStyle = "#fff";
-        ctx.fillText(`Controls: 1/2/3 pet  W/D + Arrows move(AUTO)  M mode  LMB target  RMB move  A/S cast  [ / ] reserve  T swap  | ${this.player.lastLog}`, 18, barY + 40);
+        ctx.fillText(`Controls: 1/2/3 pet  W/D + Arrows move(AUTO)  M mode  LMB target  RMB tool/move  A/S cast  [ / ] reserve  T swap  | ${this.player.lastLog}`, 18, barY + 46);
         ctx.fillText(
-            `Mode: ${this.player.activeControlMode}  Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}   Build: ${this.player.toolMode}/${this.player.selectedBuildKey} [R mode, B build, H harvest]`,
+            `Mode: ${this.player.activeControlMode}  Item: ${selectedItemDef?.name ?? "none"} x${selectedItemCount}  Tool: ${this.player.selectedToolKey}  Build: ${this.player.toolMode}/${this.player.selectedBuildKey}`,
             18,
             barY + 20
         )
+        const mats = this.player.materialsInventory;
+        ctx.fillText(`Materials: wood ${mats.wood ?? 0} | stone ${mats.stone ?? 0} | crystal ${mats.crystal_shard ?? 0} | metal ${mats.metal_scrap ?? 0}  [Y tool, R mode, B build, H farm]`, 18, barY + 66);
     }
 }
 class PlayerInteractionSystem {
@@ -2709,7 +2745,17 @@ class BuildSystem {
         this.world = world;
         this.destroyAction = null;
         this.harvestAction = null;
+        this.gatherAction = null;
         this.preview = { x: world.player.pos.x, z: world.player.pos.z };
+    }
+    cycleSelectedTool(dir = 1) {
+        const player = this.world.player;
+        player.cycleTool(dir);
+        const tool = toolDefs[player.selectedToolKey];
+        if (tool?.modes?.length && !tool.modes.includes(player.toolMode)) {
+            player.toolMode = tool.modes[0];
+        }
+        player.lastLog = `Tool: ${player.selectedToolKey}`;
     }
     cycleToolMode(dir = 1) {
         const player = this.world.player;
@@ -2740,18 +2786,26 @@ class BuildSystem {
     getBuildDef(buildKey) {
         return placeableDefs[buildKey] ?? null;
     }
-    canAffordCost(cost = []) {
-        const inv = this.world.player.inventory;
+    canAffordMaterialCost(cost = []) {
+        const inv = this.world.player.materialsInventory;
         for (const c of cost) {
             if ((inv[c.key] ?? 0) < c.amount) return false;
         }
         return true;
     }
     consumeBuildCost(cost = []) {
-        if (!this.canAffordCost(cost)) return false;
-        const inv = this.world.player.inventory;
+        if (!this.canAffordMaterialCost(cost)) return false;
+        const inv = this.world.player.materialsInventory;
         for (const c of cost) inv[c.key] = (inv[c.key] ?? 0) - c.amount;
         return true;
+    }
+    grantMaterials(rewards = []) {
+        const inv = this.world.player.materialsInventory;
+        for (const r of rewards) {
+            const chance = r.chance ?? 1;
+            if (Math.random() > chance) continue;
+            inv[r.key] = (inv[r.key] ?? 0) + r.amount;
+        }
     }
     grantItems(rewards = []) {
         const player = this.world.player;
@@ -2842,7 +2896,7 @@ class BuildSystem {
         const toolRange = this.getToolRange();
         const player = this.world.player;
         if (dist(player.pos.x, player.pos.z, x, z) > toolRange) return { ok: false, reason: "Out of tool range" };
-        if (!this.canAffordCost(def.buildCost ?? [])) return { ok: false, reason: "Missing resources" };
+        if (!this.canAffordMaterialCost(def.buildCost ?? [])) return { ok: false, reason: "Missing materials" };
         const chunk = ChunkSystem.getChunkAtWorld(this.world, x, z);
         for (const o of chunk?.obstacles ?? []) {
             if (dist(x, z, o.x, o.z) < radius + (o.radius ?? 8)) return { ok: false, reason: "Overlaps obstacle" };
@@ -2870,7 +2924,7 @@ class BuildSystem {
         }
         const def = this.getBuildDef(buildKey);
         if (!this.consumeBuildCost(def.buildCost ?? [])) {
-            this.world.player.lastLog = "Cannot place: Missing resources";
+            this.world.player.lastLog = "Cannot place: Missing materials";
             return false;
         }
         const record = this.createBuildRecord(buildKey, x, z);
@@ -2934,14 +2988,72 @@ class BuildSystem {
     }
     tryGrantDestroyRefund(def) {
         const refunds = def?.destroyRefund ?? [];
-        const granted = [];
-        for (const r of refunds) {
-            const chance = r.chance ?? 1;
-            if (Math.random() > chance) continue;
-            this.grantItems([{ key: r.key, amount: r.amount }]);
-            granted.push(`${r.key} x${r.amount}`);
+        this.grantMaterials(refunds);
+    }
+    findNearestObstacleInRange(x, z, maxRange) {
+        const chunk = ChunkSystem.getChunkAtWorld(this.world, x, z);
+        if (!chunk) return null;
+        let best = null;
+        let bestD = Infinity;
+        for (const o of chunk.obstacles ?? []) {
+            if (!obstacleHarvestDefs[o.type]) continue;
+            const d = dist(x, z, o.x, o.z);
+            if (d > maxRange || d >= bestD) continue;
+            best = o;
+            bestD = d;
         }
-        if (granted.length) this.world.player.lastLog += ` (+${granted.join(", ")})`;
+        return best;
+    }
+    tryStartGatherNearestObstacle() {
+        const player = this.world.player;
+        const tool = toolDefs[player.selectedToolKey];
+        if (!tool?.canGather) return false;
+        const target = this.findNearestObstacleInRange(player.pos.x, player.pos.z, this.getToolRange());
+        if (!target) {
+            player.lastLog = "No obstacle to gather";
+            return false;
+        }
+        this.gatherAction = { chunkKey: target.chunkKey, obstacleId: target.id, progress: 0 };
+        player.lastLog = `Gathering ${target.type}`;
+        return true;
+    }
+    getObstacleByAction(action) {
+        const chunk = this.world.chunks.get(action.chunkKey);
+        if (!chunk) return null;
+        const obstacle = chunk.obstacles.find(o => o.id === action.obstacleId);
+        if (!obstacle) return null;
+        return { chunk, obstacle };
+    }
+    updateGatherAction(dt) {
+        if (!this.gatherAction) return;
+        const player = this.world.player;
+        const tool = toolDefs[player.selectedToolKey];
+        if (!tool?.canGather) {
+            this.gatherAction = null;
+            return;
+        }
+        const hit = this.getObstacleByAction(this.gatherAction);
+        if (!hit) {
+            this.gatherAction = null;
+            return;
+        }
+        const { chunk, obstacle } = hit;
+        if (dist(player.pos.x, player.pos.z, obstacle.x, obstacle.z) > this.getToolRange() + 2) {
+            player.lastLog = "Gather cancelled: Out of range";
+            this.gatherAction = null;
+            return;
+        }
+        const gatherDef = obstacleHarvestDefs[obstacle.type];
+        const gatherTime = Math.max(0.1, gatherDef?.gatherTime ?? tool.gatherTime ?? 1.5);
+        this.gatherAction.progress += dt;
+        if (this.gatherAction.progress < gatherTime) return;
+        this.grantMaterials(gatherDef?.rewards ?? []);
+        const idx = chunk.obstacles.findIndex(o => o.id === obstacle.id);
+        if (idx >= 0) chunk.obstacles.splice(idx, 1);
+        this.world.harvestedObstacleIds.add(obstacle.id);
+        this.world.pushFloatingText(obstacle.x, obstacle.z - 10, "+materials", "#d4ffc1");
+        player.lastLog = `Gathered ${obstacle.type}`;
+        this.gatherAction = null;
     }
     tryHarvestNearestFarm() {
         const player = this.world.player;
@@ -3075,6 +3187,7 @@ class BuildSystem {
         this.updateFarmGrowth(dt);
         this.updateDestroyAction(dt);
         this.updateHarvestAction(dt);
+        this.updateGatherAction(dt);
     }
 }
 /* =========================
