@@ -1706,6 +1706,7 @@ class PlayerEntity {
         this.selectedToolKey = null;
         this.toolMode = "build";
         this.selectedBuildKey = "shelter";
+        this.selectedMorphOptionIndex = 0;
         this.reserveOwnedIds = [];
         this.selectedReserveIndex = 0;
         this.ownedCreatures = [];
@@ -1823,7 +1824,9 @@ class PlayerEntity {
         if (input.consumePress("KeyR")) world.BS.cycleToolMode(1);
         if (input.consumePress("KeyB")) world.BS.cycleBuildType(1);
         if (input.consumePress("KeyH")) world.BS.tryHarvestNearestFarm();
-        if (input.consumePress("KeyP")) world.tryMorphActivePetToFirstOption();
+        if (input.consumePress("KeyJ")) world.cycleActiveMorphOption(-1);
+        if (input.consumePress("KeyK")) world.cycleActiveMorphOption(1);
+        if (input.consumePress("KeyP")) world.tryMorphActivePetSelectedOption();
         if (input.consumePress("BracketLeft")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
         if (input.consumePress("BracketRight")) this.selectedReserveIndex += 1;
         if (input.consumePress("KeyT")) world.PIS.swapActiveWithReserve(this.selectedReserveIndex);
@@ -1876,6 +1879,12 @@ class World {
         this.nodeSpawnTimer = 0;
         this.floatingTexts = [];
         this.combatFx = [];
+    }
+    createEmptyGrowthStats() {
+        return { pAtk: 0, eAtk: 0, range: 0, maxHP: 0, spd: 0, castSpd: 0, size: 0, stamina: 0, energy: 0, recoverStamina: 0, recoverEnergy: 0 };
+    }
+    cloneGrowthStats(source) {
+        return { ...this.createEmptyGrowthStats(), ...(source ?? {}) };
     }
     initialize(starterSpeciesKey = "dog") {
         this.camera.follow(this.player);
@@ -1935,12 +1944,13 @@ class World {
             level: source.level ?? 1,
             xp: source.xp ?? 0,
             nextXP: source.nextXP ?? xpNeededForLevel(source.level ?? 1),
-            growthStats: { ...(source.growthStats ?? { pAtk: 0, eAtk: 0, range: 0, maxHP: 0, spd: 0, castSpd: 0, size: 0, stamina: 0, energy: 0, recoverStamina: 0, recoverEnergy: 0 }) },
+            growthStats: this.cloneGrowthStats(source.growthStats),
             moveset: [...(source.moveset ?? def.moveset)],
             familyKey: source.familyKey ?? def.familyKey ?? "canine",
             outerCompositeKey: source.outerCompositeKey ?? def.outerCompositeKey ?? def.compositeKey,
             innerCompositeKey: source.innerCompositeKey ?? def.innerCompositeKey ?? def.compositeKey,
             compositeKey: source.compositeKey ?? def.compositeKey,
+            morphPoints: source.morphPoints ?? 0,
             morphHistory: [...(source.morphHistory ?? [])],
         };
         this.player.ownedCreatures.push(owned);
@@ -1956,15 +1966,25 @@ class World {
         owned.level = runtimeCreature.level;
         owned.xp = runtimeCreature.xp;
         owned.nextXP = runtimeCreature.nextXP;
-        owned.growthStats = { ...runtimeCreature.growthStats };
+        owned.growthStats = this.cloneGrowthStats(runtimeCreature.growthStats);
         owned.moveset = [...runtimeCreature.moveset];
         owned.familyKey = runtimeCreature.familyKey;
         owned.outerCompositeKey = runtimeCreature.outerCompositeKey;
         owned.innerCompositeKey = runtimeCreature.innerCompositeKey;
         owned.compositeKey = runtimeCreature.compositeKey;
+        owned.morphPoints = runtimeCreature.morphPoints ?? owned.morphPoints ?? 0;
     }
     getMorphPointsForOwned(owned) {
-        return Math.max(0, Math.floor((owned.level ?? 1) - 1));
+        return Math.max(0, owned?.morphPoints ?? 0);
+    }
+    awardMorphPointsToOwned(ownedId, amount, reason = "progress") {
+        if (amount <= 0) return;
+        const owned = this.getOwnedCreatureById(ownedId);
+        if (!owned) return;
+        owned.morphPoints = Math.max(0, (owned.morphPoints ?? 0) + amount);
+        const runtime = this.creatures.find(c => c.ownedId === ownedId && c.lifecycle === "alive");
+        if (runtime) runtime.morphPoints = owned.morphPoints;
+        this.player.lastLog = `+${amount} morph point${amount > 1 ? "s" : ""} (${reason})`;
     }
     getAvailableMorphsForOwned(ownedId) {
         const owned = this.getOwnedCreatureById(ownedId);
@@ -1974,7 +1994,7 @@ class World {
         const out = [];
         for (const option of options) {
             const check = this.canMorphOwnedCreature(ownedId, option.option, option);
-            if (check.ok) out.push(option);
+            out.push({ ...option, check });
         }
         return out;
     }
@@ -1999,7 +2019,41 @@ class World {
             const have = this.player.materialsInventory[option.materialFocus] ?? 0;
             if (have < amount) return { ok: false, reason: `Need ${option.materialFocus} x${amount}` };
         }
-        return { ok: true, reason: "ok", option };
+        return { ok: true, reason: "ok", option, points, pointsNeeded };
+    }
+    cycleActiveMorphOption(dir = 1) {
+        const ownedId = this.player.partyOwnedIds[this.player.activePetIndex];
+        if (ownedId == null) return;
+        const options = this.getAvailableMorphsForOwned(ownedId);
+        if (!options.length) {
+            this.player.selectedMorphOptionIndex = 0;
+            return;
+        }
+        const len = options.length;
+        this.player.selectedMorphOptionIndex = (this.player.selectedMorphOptionIndex + dir + len) % len;
+    }
+    getSelectedMorphOptionForActive() {
+        const ownedId = this.player.partyOwnedIds[this.player.activePetIndex];
+        if (ownedId == null) return null;
+        const options = this.getAvailableMorphsForOwned(ownedId);
+        if (!options.length) return null;
+        const idx = clamp(this.player.selectedMorphOptionIndex, 0, options.length - 1);
+        this.player.selectedMorphOptionIndex = idx;
+        return options[idx];
+    }
+    buildMorphMoveset(previousMoveset, targetMoveset, maxMoves = 4) {
+        const out = [];
+        const targetSet = new Set(targetMoveset);
+        const targetCategories = new Set(targetMoveset.map(m => abilities[m]?.category).filter(Boolean));
+        const carry = previousMoveset.find((m) => targetSet.has(m))
+            ?? previousMoveset.find((m) => targetCategories.has(abilities[m]?.category));
+        if (carry) out.push(carry);
+        for (const move of targetMoveset) {
+            if (out.includes(move)) continue;
+            out.push(move);
+            if (out.length >= maxMoves) break;
+        }
+        return out.slice(0, maxMoves);
     }
     applyOwnedIdentityToRuntime(runtimeCreature, owned, resetLevels = false) {
         if (!runtimeCreature || !owned) return;
@@ -2017,6 +2071,7 @@ class World {
             runtimeCreature.nextXP = owned.nextXP;
         }
         runtimeCreature.growthStats = { ...owned.growthStats };
+        runtimeCreature.morphPoints = owned.morphPoints ?? runtimeCreature.morphPoints ?? 0;
         runtimeCreature.aiTendency = { ...(familyDefs[runtimeCreature.familyKey]?.aiTendency ?? runtimeCreature.aiTendency) };
         runtimeCreature.rebuildStats();
     }
@@ -2042,12 +2097,13 @@ class World {
             this.player.materialsInventory[option.materialFocus] = Math.max(0, (this.player.materialsInventory[option.materialFocus] ?? 0) - amt);
         }
         const previousSpeciesKey = owned.speciesKey;
+        const previousMoveset = [...owned.moveset];
         owned.speciesKey = targetSpeciesKey;
         owned.familyKey = targetDef.familyKey ?? owned.familyKey;
         owned.outerCompositeKey = targetDef.outerCompositeKey ?? targetDef.compositeKey ?? owned.outerCompositeKey;
         owned.innerCompositeKey = targetDef.innerCompositeKey ?? targetDef.compositeKey ?? owned.innerCompositeKey;
         owned.compositeKey = targetDef.compositeKey ?? owned.outerCompositeKey;
-        owned.moveset = [...targetDef.moveset];
+        owned.moveset = this.buildMorphMoveset(previousMoveset, [...targetDef.moveset], 4);
         owned.morphHistory = [...(owned.morphHistory ?? []), { from: previousSpeciesKey, to: targetSpeciesKey, at: this.time }];
         const runtime = this.creatures.find(c => c.ownedId === ownedId && c.lifecycle === "alive");
         if (runtime) this.applyMorphToRuntimeCreature(runtime, owned);
@@ -2055,19 +2111,18 @@ class World {
         this.pushFloatingText(this.player.pos.x, this.player.pos.z - 20, `Morphed: ${targetDef.name}`, "#fff799");
         return { ok: true, reason: "Morphed", owned };
     }
-    tryMorphActivePetToFirstOption() {
+    tryMorphActivePetSelectedOption() {
         const ownedId = this.player.partyOwnedIds[this.player.activePetIndex];
         if (ownedId == null) {
             this.player.lastLog = "No active owned creature";
             return false;
         }
-        const owned = this.getOwnedCreatureById(ownedId);
-        const options = species[owned?.speciesKey]?.morphOptions ?? [];
-        if (!options.length) {
+        const selected = this.getSelectedMorphOptionForActive();
+        if (!selected) {
             this.player.lastLog = "No morph options";
             return false;
         }
-        const result = this.applyMorphToOwnedCreature(ownedId, options[0].option);
+        const result = this.applyMorphToOwnedCreature(ownedId, selected.option);
         if (!result.ok) this.player.lastLog = `Morph failed: ${result.reason}`;
         return result.ok;
     }
@@ -2544,7 +2599,13 @@ class World {
             barY + 20
         )
         const mats = this.player.materialsInventory;
-        ctx.fillText(`Materials: wood ${mats.wood ?? 0} | stone ${mats.stone ?? 0} | crystal ${mats.crystal_shard ?? 0} | metal ${mats.metal_scrap ?? 0}  [Y tool, R mode, B build, H farm, P morph]`, 18, barY + 66);
+        const selectedMorph = this.getSelectedMorphOptionForActive();
+        const morphLabel = selectedMorph
+            ? `${selectedMorph.option} (${selectedMorph.check.ok ? "ready" : selectedMorph.check.reason})`
+            : "none";
+        const activeOwned = this.getOwnedCreatureById(this.player.partyOwnedIds[this.player.activePetIndex]);
+        const morphPts = this.getMorphPointsForOwned(activeOwned);
+        ctx.fillText(`Materials: wood ${mats.wood ?? 0} | stone ${mats.stone ?? 0} | crystal ${mats.crystal_shard ?? 0} | metal ${mats.metal_scrap ?? 0}  MorphPts: ${morphPts}  Morph: ${morphLabel} [J/K select, P morph]`, 18, barY + 66);
     }
 }
 class PlayerInteractionSystem {
@@ -2639,6 +2700,7 @@ class PlayerInteractionSystem {
             this.player.lastLog = `Tamed ${wild.speciesKey} -> reserve`;
         }
         this.world.pushFloatingText(wild.pos.x, wild.pos.z - 18, "Captured!", "#ffe38e");
+        this.world.awardMorphPointsToOwned(owned.ownedId, 2, "capture");
         return true;
     }
     swapActiveWithReserve(reserveIndex) {
@@ -2943,6 +3005,10 @@ class CombatManager {
         for (const pet of contributors) {
             const events = pet.addXP(adjustedXP);
             this.world.syncOwnedCreatureFromRuntime(pet);
+            if (pet.ownedId != null) {
+                const gainedMorphPoints = Math.max(1, Math.floor(adjustedXP / 80));
+                this.world.awardMorphPointsToOwned(pet.ownedId, gainedMorphPoints, "defeat");
+            }
             for (const ev of events) {
                 if (ev.type === "leveledUp") this.world.pushFloatingText(pet.pos.x, pet.pos.z - 14, `Lv Up! ${ev.newLevel}`, "#fff799");
             }
