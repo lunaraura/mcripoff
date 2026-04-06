@@ -736,7 +736,15 @@ class Creature {
         this.currentStamina = this.permanentStats.stamina;
         this.currentEnergy = this.permanentStats.energy;
         this.level = 1;
-        this.aggroRange = this.modifiedStats.range * (this.level * 0.08 + 1) * this.aiTendency.engageRangeBias;
+        this.wildTier = "normal";
+        this.wildProfile = {
+            aggroMult: 1,
+            pursuitRange: null,
+            targetNearPlayerBias: 0,
+            statMult: null,
+            sizeMult: 1,
+        };
+        this.aggroRange = 140;
         this.xp = 0;
         this.nextXP = xpNeededForLevel(this.level);
         this.moveset = [...def.moveset];
@@ -758,6 +766,8 @@ class Creature {
         this.globalCooldown = 0;
         // Command system payload used by brains.
         this.command = { type: "follow", issuedAt: 0, targetId: null, point: null };
+        this.spawnAnchor = { x, z };
+        this.updateAggroRange();
     }
     makeEmptyIntent() {
         return { move: { x: 0, z: 0 }, abilityKey: null, targetId: null, aimAt: null };
@@ -785,6 +795,22 @@ class Creature {
             events.push({ type: "leveledUp", newLevel: this.level });
         }
         return events;
+    }
+    setWildProfile(tier = "normal", profile = null) {
+        this.wildTier = tier;
+        this.wildProfile = {
+            aggroMult: profile?.aggroMult ?? 1,
+            pursuitRange: profile?.pursuitRange ?? null,
+            targetNearPlayerBias: profile?.targetNearPlayerBias ?? 0,
+            statMult: profile?.statMult ?? null,
+            sizeMult: profile?.sizeMult ?? 1,
+        };
+        this.rebuildStats();
+    }
+    updateAggroRange() {
+        const baseRange = this.modifiedStats.range * (this.level * 0.08 + 1) * this.aiTendency.engageRangeBias;
+        const tierMult = this.wildProfile?.aggroMult ?? 1;
+        this.aggroRange = baseRange * tierMult;
     }
     rebuildStats() {
         const base = {
@@ -817,6 +843,14 @@ class Creature {
         this.permanentStats.recoverStamina *= 1 + ((outerTraits.regenBias ?? 0) * 0.25);
         this.permanentStats.castSpd *= 1 + ((innerTraits.energyBias ?? 0) * 0.12);
         this.modifiedStats = { ...this.permanentStats };
+        const wildMult = this.wildProfile?.statMult ?? null;
+        if (wildMult) {
+            for (const [k, v] of Object.entries(wildMult)) {
+                if (this.modifiedStats[k] != null) this.modifiedStats[k] *= v;
+            }
+        }
+        if (this.wildProfile?.sizeMult != null) this.modifiedStats.size *= this.wildProfile.sizeMult;
+        this.updateAggroRange();
     }
     tick(dt, world) {
         if (this.lifecycle !== "alive") return;
@@ -856,7 +890,13 @@ class CreatureFactory {
             c.cooldowns = Object.fromEntries(c.moveset.map(k => [k, 0]));
         }
         if (opts.ownedId != null) c.ownedId = opts.ownedId;
+        if (opts.spawnAnchor) c.spawnAnchor = { ...opts.spawnAnchor };
         if (opts.mode) c.mode = opts.mode;
+        if (opts.mode === "wild" || opts.wildTier || opts.wildProfile) {
+            c.setWildProfile(opts.wildTier ?? "normal", opts.wildProfile ?? null);
+        } else {
+            c.updateAggroRange();
+        }
         return c;
     }
 }
@@ -1010,9 +1050,28 @@ class Brain {
     thinkWild(world) {
         const h = this.host;
         const aggroRange = h.aggroRange ?? 140;
-        const target = world.findNearestEnemyOf(h, aggroRange);
+        const target = this.pickWildTarget(world, h, aggroRange);
         if (!target) return;
-        this.fightTarget(world, h, target, null);
+        this.fightTarget(world, h, target, h.wildProfile?.pursuitRange ?? null);
+    }
+    pickWildTarget(world, h, aggroRange) {
+        const nearPlayerBias = h.wildProfile?.targetNearPlayerBias ?? 0;
+        if (nearPlayerBias <= 0) return world.findNearestEnemyOf(h, aggroRange);
+        let best = null;
+        let bestScore = Infinity;
+        for (const other of world.creatures) {
+            if (other.id === h.id || other.lifecycle !== "alive" || other.team === h.team) continue;
+            const d = dist(h.pos.x, h.pos.z, other.pos.x, other.pos.z);
+            if (d > aggroRange) continue;
+            const dToPlayer = dist(world.player.pos.x, world.player.pos.z, other.pos.x, other.pos.z);
+            const nonPetPenalty = other.team === 0 ? 0 : 85;
+            const score = d + dToPlayer * nearPlayerBias + nonPetPenalty;
+            if (score < bestScore) {
+                best = other;
+                bestScore = score;
+            }
+        }
+        return best;
     }
     fightTarget(world, h, target, maxPursuitDistance = null) {
         const dx = target.pos.x - h.pos.x;
@@ -1024,7 +1083,9 @@ class Brain {
         const preferredRange = (this.role === "ranged" ? 95 : 18) * familyRangeBias;
         const leash = this.role === "ranged" ? 20 : 8;
         if (maxPursuitDistance != null) {
-            const anchor = world.getPetFollowAnchor(h.id);
+            const anchor = h.mode === "wild"
+                ? (h.spawnAnchor ?? h.pos)
+                : world.getPetFollowAnchor(h.id);
             if (dist(target.pos.x, target.pos.z, anchor.x, anchor.z) > maxPursuitDistance) {
                 this.moveTowardAnchor(h, anchor, 10);
                 return;
@@ -1611,10 +1672,69 @@ class SpawnField {
         }
         this.cleanup(world);
     }
+    getAveragePartyLevel(world) {
+        const livingParty = world.player.petIds
+            .map(id => world.getCreatureById(id))
+            .filter(c => c && c.lifecycle === "alive");
+        if (livingParty.length <= 0) return 1;
+        const total = livingParty.reduce((sum, c) => sum + c.level, 0);
+        return total / livingParty.length;
+    }
+    rollWildTier() {
+        const r = Math.random();
+        if (r < 0.24) return "small";
+        if (r < 0.92) return "normal";
+        return "big";
+    }
+    getTierConfig(tier) {
+        if (tier === "small") {
+            return {
+                team: 1,
+                levelDeltaMin: -3,
+                levelDeltaMax: 1,
+                aggroMult: 0.72,
+                pursuitRange: 120,
+                targetNearPlayerBias: 0.55,
+                statMult: { maxHP: 0.86, pAtk: 0.9, eAtk: 0.9, spd: 1.05 },
+                sizeMult: 0.85,
+                nearbyRadius: 34,
+            };
+        }
+        if (tier === "big") {
+            return {
+                team: 2,
+                levelDeltaMin: 2,
+                levelDeltaMax: 6,
+                aggroMult: 1.45,
+                pursuitRange: 240,
+                targetNearPlayerBias: 0,
+                statMult: { maxHP: 1.35, pAtk: 1.22, eAtk: 1.22, spd: 0.94 },
+                sizeMult: 1.26,
+                nearbyRadius: 90,
+            };
+        }
+        return {
+            team: 1,
+            levelDeltaMin: -2,
+            levelDeltaMax: 2,
+            aggroMult: 1,
+            pursuitRange: 170,
+            targetNearPlayerBias: 0,
+            statMult: null,
+            sizeMult: 1,
+            nearbyRadius: 40,
+        };
+    }
+    rollWildLevel(avgPartyLevel, levelBias, cfg) {
+        const deltaRoll = cfg.levelDeltaMin + Math.random() * (cfg.levelDeltaMax - cfg.levelDeltaMin);
+        const delta = deltaRoll + (levelBias ?? 0) * 0.2;
+        return Math.max(1, Math.round(avgPartyLevel + delta));
+    }
     trySpawn(world) {
         const currentWild = world.creatures.filter(c => c.mode === "wild" && c.lifecycle === "alive").length;
         if (currentWild >= this.maxWild) return;
         const player = world.player;
+        const avgPartyLevel = this.getAveragePartyLevel(world);
         const candidates = ChunkSystem.collectLoadedSpawnPoints(world)
             .filter((sp) => !sp.blocked)
             .filter((sp) => true)
@@ -1628,16 +1748,35 @@ class SpawnField {
             const sp = candidates[Math.floor(Math.random() * candidates.length)];
             const cell = ChunkSystem.getCellAtWorld(world, sp.x, sp.z);
             if (!cell || cell.blocked || cell.water) continue;
-            const nearbyWild = world.creatures.some((c) => c.mode === "wild" && c.lifecycle === "alive" && dist(c.pos.x, c.pos.z, sp.x, sp.z) < 40);
+            const tier = this.rollWildTier();
+            const cfg = this.getTierConfig(tier);
+            const nearbyWild = world.creatures.some((c) => c.mode === "wild" && c.lifecycle === "alive" && dist(c.pos.x, c.pos.z, sp.x, sp.z) < cfg.nearbyRadius);
             if (nearbyWild) continue;
+            if (tier === "big") {
+                const nearbyBig = world.creatures.some((c) =>
+                    c.mode === "wild" &&
+                    c.lifecycle === "alive" &&
+                    c.wildTier === "big" &&
+                    dist(c.pos.x, c.pos.z, sp.x, sp.z) < 170
+                );
+                if (nearbyBig) continue;
+            }
 
             const speciesKey = pickWeighted(sp.spawnWeights ?? biomeDefs[sp.biomeKey]?.spawns ?? biomeDefs.plains.spawns);
-            const avgPartyLevel = world.player.petIds
-                .map(id => world.getCreatureById(id))
-                .filter(c => c && c.lifecycle === "alive")
-                .reduce((sum, c) => sum + c.level, 0) / Math.max(1, world.player.petIds.length);
-            const wildLevel = Math.max(1, Math.round(avgPartyLevel + (sp.levelBias ?? 0) * 0.2 + (Math.random() * 4 - 2)));
-            const wild = world.factory.create(speciesKey, 1, sp.x, sp.z, { mode: "wild", level: wildLevel });
+            const wildLevel = this.rollWildLevel(avgPartyLevel, sp.levelBias, cfg);
+            const wild = world.factory.create(speciesKey, cfg.team, sp.x, sp.z, {
+                mode: "wild",
+                level: wildLevel,
+                wildTier: tier,
+                wildProfile: {
+                    aggroMult: cfg.aggroMult,
+                    pursuitRange: cfg.pursuitRange,
+                    targetNearPlayerBias: cfg.targetNearPlayerBias,
+                    statMult: cfg.statMult,
+                    sizeMult: cfg.sizeMult,
+                },
+                spawnAnchor: { x: sp.x, z: sp.z },
+            });
             const brain = new Brain();
             brain.attach(wild);
             world.creatures.push(wild);
