@@ -1,6 +1,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local AbilityConfig = require(ReplicatedStorage.Shared.Config.AbilityConfig)
-local CompositeConfig = require(ReplicatedStorage.Shared.Config.CompositeConfig)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
+local CompositeConfig = require(Config:WaitForChild("CompositeConfig"))
 
 local CombatService = {}
 CombatService.__index = CombatService

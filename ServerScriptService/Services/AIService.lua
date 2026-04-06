@@ -1,5 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local AbilityConfig = require(ReplicatedStorage.Shared.Config.AbilityConfig)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
 
 local AIService = {}
 AIService.__index = AIService

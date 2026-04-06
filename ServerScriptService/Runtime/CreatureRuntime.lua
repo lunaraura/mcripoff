@@ -1,7 +1,9 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SpeciesConfig = require(ReplicatedStorage.Shared.Config.SpeciesConfig)
-local FamilyConfig = require(ReplicatedStorage.Shared.Config.FamilyConfig)
-local CompositeConfig = require(ReplicatedStorage.Shared.Config.CompositeConfig)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
+local FamilyConfig = require(Config:WaitForChild("FamilyConfig"))
+local CompositeConfig = require(Config:WaitForChild("CompositeConfig"))
 
 local CreatureRuntime = {}
 CreatureRuntime.__index = CreatureRuntime

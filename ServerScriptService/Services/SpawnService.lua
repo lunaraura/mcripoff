@@ -1,7 +1,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local BiomeConfig = require(ReplicatedStorage.Shared.Config.BiomeConfig)
-local MathUtil = require(ReplicatedStorage.Shared.Util.MathUtil)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local Util = Shared:WaitForChild("Util")
+local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
+local MathUtil = require(Util:WaitForChild("MathUtil"))
 local ChunkSystem = require(script.Parent.Parent.Systems.ChunkSystem)
 
 local SpawnService = {}

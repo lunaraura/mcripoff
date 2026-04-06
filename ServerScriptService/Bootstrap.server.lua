@@ -1,6 +1,10 @@
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SSS = game:GetService("ServerScriptService")
+local Services = SSS:WaitForChild("Services")
+local Systems = SSS:WaitForChild("Systems")
+local Runtime = SSS:WaitForChild("Runtime")
 
 local function ensureRemote(name)
 	local folder = ReplicatedStorage:FindFirstChild("Remotes") or Instance.new("Folder")
@@ -22,17 +26,17 @@ local remotes = {
 	FloatingTextEvent = ensureRemote("FloatingTextEvent"),
 }
 
-local WorldService = require(script.Services.WorldService)
-local CreatureService = require(script.Services.CreatureService)
-local CombatService = require(script.Services.CombatService)
-local AIService = require(script.Services.AIService)
-local SpawnService = require(script.Services.SpawnService)
-local EffectService = require(script.Services.EffectService)
-local HarvestService = require(script.Services.HarvestService)
-local InventoryService = require(script.Services.InventoryService)
-local BuildService = require(script.Services.BuildService)
-local MorphService = require(script.Services.MorphService)
-local PlayerDataService = require(script.Services.PlayerDataService)
+local WorldService = require(Services:WaitForChild("WorldService"))
+local CreatureService = require(Services:WaitForChild("CreatureService"))
+local CombatService = require(Services:WaitForChild("CombatService"))
+local AIService = require(Services:WaitForChild("AIService"))
+local SpawnService = require(Services:WaitForChild("SpawnService"))
+local EffectService = require(Services:WaitForChild("EffectService"))
+local HarvestService = require(Services:WaitForChild("HarvestService"))
+local InventoryService = require(Services:WaitForChild("InventoryService"))
+local BuildService = require(Services:WaitForChild("BuildService"))
+local MorphService = require(Services:WaitForChild("MorphService"))
+local PlayerDataService = require(Services:WaitForChild("PlayerDataService"))
 
 local playerDataService = PlayerDataService.new()
 local worldService = WorldService.new(remotes)
@@ -101,5 +105,3 @@ RunService.Heartbeat:Connect(function(dt)
 	worldService:removeDead()
 	-- TODO: Add nearby-only UI/state replication stream for cooldowns/hp bars.
 end)
-
-print("[Pet4 Roblox Slice] Bootstrapped")

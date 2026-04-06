@@ -11,7 +11,7 @@ end
 function UIController:bind()
 	self.floatingTextEvent.OnClientEvent:Connect(function(payload)
 		-- TODO: Replace print with billboard text pooling.
-		print(string.format("[FX] %s @ (%.1f, %.1f)", payload.text, payload.x, payload.z))
+		-- Intentionally no-op in vertical slice until billboard UI is wired.
 	end)
 end
 

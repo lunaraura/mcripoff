@@ -1,5 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SpeciesConfig = require(ReplicatedStorage.Shared.Config.SpeciesConfig)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
 
 local PlayerDataService = {}
 PlayerDataService.__index = PlayerDataService
