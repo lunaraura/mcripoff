@@ -9,14 +9,11 @@ function BuildService:handleContextAction(player, payload)
 	payload = payload or {}
 	local action = payload.action or "context"
 	if action == "gather" or action == "context" then
-		-- TODO: Connect to NodeRuntime + BuildableConfig costs/harvestTime.
-		local granted = self.inventoryService:grant(player, { { key = "fiber", amount = 1 } })
-		self.worldService:pushEventLog(player, "Gathered fiber", "#d7fcb7")
-		return true, granted
+		-- TODO: Port full node-based gather/context interactions from JS into NodeRuntime/BuildService.
+		return false, "no gather target"
 	elseif action == "build" then
-		-- TODO: Place buildables in Workspace.World.Buildables with server validation.
-		self.worldService:pushEventLog(player, "Build action queued", "#bfe2ff")
-		return true, "build queued"
+		-- TODO: Port JS build placement/validation/harvest loop; disabled until full pass lands.
+		return false, "build disabled"
 	end
 	return false, "unknown context action"
 end

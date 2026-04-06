@@ -15,4 +15,20 @@ function InventoryService:grant(player, rewards)
 	return granted
 end
 
+function InventoryService:getCount(player, key)
+	local data = self.playerDataService:getOrCreate(player)
+	return data.materials[key] or 0
+end
+
+function InventoryService:tryConsume(player, key, amount)
+	local data = self.playerDataService:getOrCreate(player)
+	local needed = math.max(1, tonumber(amount) or 1)
+	local current = data.materials[key] or 0
+	if current < needed then
+		return false, "insufficient"
+	end
+	data.materials[key] = current - needed
+	return true, data.materials[key]
+end
+
 return InventoryService

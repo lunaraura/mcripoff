@@ -20,17 +20,20 @@ function ChunkSystem.generateChunk(cx, cz)
 		for ix = 0, cellsPerAxis - 1 do
 			local wx = cx * ChunkSystem.CHUNK_SIZE + ix * ChunkSystem.CELL_SIZE
 			local wz = cz * ChunkSystem.CHUNK_SIZE + iz * ChunkSystem.CELL_SIZE
-			local biome = BiomeSystem.sample(wx, wz)
-			local terrainClass = BiomeSystem.terrainClass(wx, wz)
+			local env = BiomeSystem.sampleEnvironment(wx, wz)
+			local biome = env.biomeKey
+			local terrainClass = env.terrainClass
 			local blocked = terrainClass == "rock"
 			local water = terrainClass == "water"
 			cells[iz * cellsPerAxis + ix + 1] = {
 				x = wx,
 				z = wz,
 				dominantBiome = biome,
+				climate = env.climate,
 				blocked = blocked,
 				water = water,
 				terrainClass = terrainClass,
+				heightNoise = env.heightNoise,
 				spawnable = (not blocked and not water),
 				nodeable = (not blocked),
 			}

@@ -83,14 +83,19 @@ function CreatureService:HydrateParty(player)
 	for slot = 1, 2 do
 		local ownedId = data.partySlots[slot]
 		local owned = ownedId and data.ownedCreatures[ownedId] or nil
-		if owned then
+		if owned and not owned.isDefeated then
 			local pos = root.Position + offsets[slot]
-			local pet = self:spawnRuntime(owned.speciesKey, 0, pos.X, pos.Z, { mode = "pet" })
+			local pet = self:spawnRuntime(owned.speciesKey, 0, pos.X, pos.Z, {
+				mode = "pet",
+				level = owned.level or 1,
+				morphPoints = owned.morphPoints or 0,
+			})
 			pet.ownerUserId = player.UserId
 			pet.ownedId = ownedId
 			pet.partySlot = slot
 			pet.familyKey = owned.familyKey or pet.familyKey
 			pet.compositeKey = owned.compositeKey or pet.compositeKey
+			pet.command = { type = "follow", issuedAt = self.worldService.time }
 			pet.moveset = table.clone(owned.moveset or pet.moveset)
 			pet.cooldowns = {}
 			for _, key in ipairs(pet.moveset) do

@@ -25,6 +25,23 @@ function WorldService:getCreatureById(id)
 	return self.creaturesById[id]
 end
 
+function WorldService:removeCreature(id)
+	local target = self.creaturesById[id]
+	if not target then return false end
+	self.creaturesById[id] = nil
+	local filtered = {}
+	for _, c in ipairs(self.creatures) do
+		if c.id ~= id then
+			table.insert(filtered, c)
+		end
+	end
+	self.creatures = filtered
+	if target.model then
+		target.model:Destroy()
+	end
+	return true
+end
+
 function WorldService:removeDead()
 	local filtered = {}
 	for _, c in ipairs(self.creatures) do
@@ -104,6 +121,16 @@ function WorldService:getPlayerPets(userId)
 		return (a.partySlot or 99) < (b.partySlot or 99)
 	end)
 	return out
+end
+
+function WorldService:getRuntimeCreatureForOwnedId(userId, ownedId)
+	if not ownedId then return nil end
+	for _, c in ipairs(self.creatures) do
+		if c.ownerUserId == userId and c.mode == "pet" and c.ownedId == ownedId then
+			return c
+		end
+	end
+	return nil
 end
 
 function WorldService:stepTime(dt)

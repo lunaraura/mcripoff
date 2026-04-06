@@ -111,24 +111,39 @@ function UIController:updatePetHud(payload)
 				label.Text = string.format("Slot %d: (empty)", i)
 			else
 				local hp = math.floor((pet.hp or 0) + 0.5)
-				local maxHp = math.floor((pet.maxHP or 1) + 0.5)
+				local maxHp = math.floor((pet.maxHP or 0) + 0.5)
 				local st = math.floor((pet.stamina or 0) + 0.5)
 				local en = math.floor((pet.energy or 0) + 0.5)
-				local cmd = pet.command or "auto"
+				local speciesName = tostring(pet.species or "?")
+				local displayName = tostring(pet.name or speciesName)
+				local state = tostring(pet.state or "alive")
 				local cooldownSummary = self:buildCooldownSummary(pet.cooldowns)
-				label.Text = string.format(
-					"Slot %d: %s (Lv %d)\nHP %d/%d  ST %d  EN %d\nCmd: %s  Target: %s\nCD: %s",
-					i,
-					tostring(pet.species),
-					tostring(pet.level or 1),
-					hp,
-					maxHp,
-					st,
-					en,
-					tostring(cmd),
-					tostring(pet.targetId or "-"),
-					cooldownSummary
-				)
+				if state == "alive" then
+					local cmd = pet.command or "auto"
+					label.Text = string.format(
+						"Slot %d: %s [%s] (Lv %d)\nHP %d/%d  ST %d  EN %d\nCmd: %s  Target: %s\nCD: %s",
+						i,
+						displayName,
+						speciesName,
+						tostring(pet.level or 1),
+						hp,
+						maxHp,
+						st,
+						en,
+						tostring(cmd),
+						tostring(pet.targetId or "-"),
+						cooldownSummary
+					)
+				else
+					label.Text = string.format(
+						"Slot %d: %s [%s] (Lv %d)\nHP 0/%d  ST 0  EN 0\nDEFEATED\nCD: --",
+						i,
+						displayName,
+						speciesName,
+						tostring(pet.level or 1),
+						math.max(maxHp, 0)
+					)
+				end
 			end
 		end
 	end
