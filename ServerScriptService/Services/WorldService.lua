@@ -69,10 +69,24 @@ function WorldService:findNearestEnemyOf(creature, maxRange)
 end
 
 function WorldService:updateChunksAroundPlayers()
+	local wanted = {}
 	for _, player in ipairs(Players:GetPlayers()) do
 		local root = player.Character and player.Character.PrimaryPart
 		if root then
-			ChunkSystem.ensureLoaded(self, root.Position.X, root.Position.Z)
+			local ccx, ccz = ChunkSystem.worldToChunk(root.Position.X, root.Position.Z)
+			local radius = math.max(ChunkSystem.LOAD_RADIUS, tonumber(player:GetAttribute("RadiusChunks")) or ChunkSystem.LOAD_RADIUS)
+			ChunkSystem.ensureLoaded(self, root.Position.X, root.Position.Z, radius)
+			for dz = -radius, radius do
+				for dx = -radius, radius do
+					wanted[ChunkSystem.key(ccx + dx, ccz + dz)] = true
+				end
+			end
+		end
+	end
+	for key, chunk in pairs(self.chunks) do
+		if not wanted[key] then
+			ChunkSystem.clearChunkTerrain(chunk)
+			self.chunks[key] = nil
 		end
 	end
 end

@@ -66,8 +66,12 @@ function BiomeSystem.sampleEnvironment(x, z)
 	local wet = climate.rainfall * (1 - climate.barrenness * 0.45)
 	local waterThreshold = 0.18 + (wet * 0.25) - (rugged * 0.14)
 	local rockThreshold = 0.82 - (rugged * 0.21) + (climate.barrenness * 0.05)
+	local baseHeight = 6 + (climate.lithosphere * 6) - (climate.barrenness * 2)
+	local ampHeight = 14 + (climate.lithosphere * 18) + ((1 - climate.softness) * 8)
+	local yGround = math.max(2, math.floor(baseHeight + ampHeight * heightNoise + 0.5))
+	local yWater = math.max(2, math.floor(10 + climate.rainfall * 4 - climate.barrenness * 2 + 0.5))
 	local terrainClass = "ground"
-	if heightNoise <= waterThreshold then
+	if yGround < yWater or heightNoise <= waterThreshold then
 		terrainClass = "water"
 	elseif heightNoise >= rockThreshold then
 		terrainClass = "rock"
@@ -77,6 +81,8 @@ function BiomeSystem.sampleEnvironment(x, z)
 		climate = climate,
 		terrainClass = terrainClass,
 		heightNoise = heightNoise,
+		yGround = yGround,
+		yWater = yWater,
 	}
 end
 
