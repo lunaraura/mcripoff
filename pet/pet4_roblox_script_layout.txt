@@ -1,0 +1,186 @@
+Pet4 -> Roblox Script Layout Proposal (efficient transposition)
+
+Goal
+- Keep pet4's gameplay style (party pets, wild tiers, composites/resistances, abilities, light AI, harvesting, buildables).
+- Use Roblox-native patterns: server-authoritative combat/AI, ModuleScripts for data/systems, RemoteEvents for input/UI.
+
+====================================================================
+1) High-level folder layout
+====================================================================
+ReplicatedStorage/
+  Shared/
+    Config/
+      SpeciesConfig.lua
+      AbilityConfig.lua
+      CompositeConfig.lua
+      FamilyConfig.lua
+      BiomeConfig.lua
+      BuildableConfig.lua
+      ItemConfig.lua
+    Util/
+      MathUtil.lua              -- clamp, distance2D, normalize2D, weighted pick
+      TableUtil.lua
+    Types/
+      CombatTypes.lua           -- optional typed shape docs
+
+ServerScriptService/
+  Bootstrap.server.lua         -- initializes world loop + services
+  Services/
+    WorldService.lua
+    CreatureService.lua
+    CombatService.lua
+    AIService.lua
+    SpawnService.lua
+    EffectService.lua
+    HarvestService.lua
+    InventoryService.lua
+    BuildService.lua
+    MorphService.lua
+  Systems/
+    ChunkSystem.lua
+    BiomeSystem.lua
+    SpatialIndex.lua           -- broad-phase queries (nearest enemies, nearby nodes)
+  Runtime/
+    CreatureRuntime.lua        -- runtime creature object/class-like module
+    BarrierRuntime.lua
+    NodeRuntime.lua
+
+StarterPlayer/
+  StarterPlayerScripts/
+    ClientBootstrap.client.lua
+    Controllers/
+      InputController.lua
+      PartyController.lua
+      CommandController.lua
+      BuildController.lua
+      UIController.lua
+    Remotes/
+      RemoteClientBindings.lua
+
+StarterGui/
+  HUD/
+    PartyHUD (ScreenGui)
+    CombatLogHUD (ScreenGui)
+    BuildHUD (ScreenGui)
+
+ReplicatedStorage/
+  Remotes/
+    RequestPetCommand (RemoteEvent)
+    RequestContextAction (RemoteEvent)
+    RequestManualCast (RemoteEvent)
+    WorldSnapshot (RemoteEvent)
+    FloatingTextEvent (RemoteEvent)
+
+Workspace/
+  World/
+    CreatureModels/
+    Buildables/
+    FX/
+
+====================================================================
+2) Transpose key pet4 systems to Roblox modules
+====================================================================
+A) Data Modules (configs only)
+- SpeciesConfig.lua
+  - mirrors species table: familyKey, role, baseStats, moveset, drops/harvestDrop, morphOptions.
+- AbilityConfig.lua
+  - ability defs including category, cooldown, range, flatDmg/dmgScale, damageProfile, fx/effects.
+- CompositeConfig.lua
+  - resistances.physical + resistances.energy + trait biases.
+- FamilyConfig.lua
+  - ai tendencies and stat multipliers (including herd).
+
+B) Creature runtime (server)
+- CreatureRuntime.new(speciesKey, team, pos, opts)
+- fields similar to pet4: stats, wildProfile, intent, cooldowns, castState, effectState.
+- methods:
+  - RebuildStats()
+  - TickResources(dt)
+  - TickMovement(dt)
+  - TickCasting(dt)
+  - SetWildProfile(tier, profile)
+
+C) CombatService (server authoritative)
+- ResolveResistance(map, damageTypes, fallback)
+- GetDamageParts(source, ability)
+- ApplyDamagePacket(source, target, ability)
+  - MUST read ability.damageProfile
+  - physical -> targetComposite.resistances.physical[subtype]
+  - energy   -> targetComposite.resistances.energy[subtype]
+  - mixed damage applies both channels
+- EvaluateAbilityUse(source, abilityKey, target)
+- ExecuteAbility(source, target, abilityKey)
+- HandleDefeat(target)
+
+D) AIService (server)
+- ThinkPet(creature, dt)
+- ThinkWild(creature, dt)
+- ThinkPassiveWild(creature, dt)
+  - wander near spawn anchor
+  - flee nearby players/pets
+  - never aggro/cast attacks
+- PickWildTarget(creature)
+- FightTarget(creature, target)
+
+E) Spawn/Biome/Chunk
+- BiomeSystem + ChunkSystem produce spawn points and node placement.
+- SpawnService rolls wildTier (small/normal/big), builds wildProfile hooks:
+  - aggroMult, pursuitRange, targetNearPlayerBias, statMult, sizeMult
+  - timidness, commitment for behavior identity
+
+F) Harvest/Build/Inventory
+- HarvestService checks cooldowns on passive creatures and nodes.
+- InventoryService grants drops to player inventory.
+- BuildService handles place/harvest interactions for buildables.
+
+====================================================================
+3) Roblox networking model
+====================================================================
+- Client sends intent only (move/attack/manual cast/context).
+- Server validates, simulates AI/combat, and replicates minimal snapshots.
+- UI reads replicated state + remote events (floating text, logs, cooldown updates).
+- Never trust client for damage, cooldown, or target validity.
+
+====================================================================
+4) Runtime update flow (server)
+====================================================================
+RunService.Heartbeat(dt):
+1. WorldService: update time, chunk loading/spawn windows.
+2. SpawnService: spawn/cleanup wilds.
+3. AIService: compute intents for pets/wilds.
+4. CombatService: process casts/projectiles/aoe and damage packets.
+5. CreatureRuntime tick: movement/resources/status effects.
+6. Harvest/Build systems tick.
+7. Publish compact world snapshot to clients.
+
+====================================================================
+5) Suggested script responsibilities (practical)
+====================================================================
+- Bootstrap.server.lua
+  - require all services and wire heartbeat.
+- WorldService.lua
+  - owns creature registry, lookups by id, team lists, broad query helpers.
+- CreatureService.lua
+  - create/despawn/hydrate creatures + model attachment.
+- CombatService.lua
+  - all damage math and ability execution.
+- AIService.lua
+  - all non-player decision logic.
+- Client controllers
+  - gather input, show targeting/cooldowns, send requests.
+
+====================================================================
+6) Data-driven patterns to keep maintenance easy
+====================================================================
+- Keep all species/ability/composite tuning in Config modules (no logic duplication).
+- Use small helper functions in services (mirrors pet4 readability style).
+- Keep AI roles as behavior flags (fighter/ranged/tank/passive) rather than deep class trees.
+- Keep wild tier as profile multipliers + a few behavior hooks instead of separate AI systems.
+
+====================================================================
+7) Optional optimization path (when scale increases)
+====================================================================
+- Replace naive nearest-target loops with SpatialIndex grid buckets.
+- Reduce network payload by only replicating creatures near each player.
+- Use object pools for combat FX + floating text events.
+
