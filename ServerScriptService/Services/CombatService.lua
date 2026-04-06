@@ -11,6 +11,15 @@ function CombatService.new(worldService)
 	return setmetatable({ worldService = worldService }, CombatService)
 end
 
+function CombatService:hasMoveEquipped(creature, abilityKey)
+	for _, key in ipairs(creature.moveset or {}) do
+		if key == abilityKey then
+			return true
+		end
+	end
+	return false
+end
+
 function CombatService:resolveResistance(map, damageTypes, fallback)
 	local keys = (damageTypes and #damageTypes > 0) and damageTypes or { fallback }
 	local total = 0
@@ -57,6 +66,7 @@ end
 function CombatService:evaluateAbility(source, abilityKey, target)
 	local ability = AbilityConfig[abilityKey]
 	if not ability then return false, "unknown" end
+	if not self:hasMoveEquipped(source, abilityKey) then return false, "not_learned" end
 	if (source.cooldowns[abilityKey] or 0) > 0 then return false, "cooldown" end
 	if (ability.resourceUse.stamina or 0) > source.currentStamina then return false, "stamina" end
 	if (ability.resourceUse.energy or 0) > source.currentEnergy then return false, "energy" end

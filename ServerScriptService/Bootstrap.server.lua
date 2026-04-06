@@ -24,6 +24,7 @@ local remotes = {
 	RequestContextAction = ensureRemote("RequestContextAction"),
 	RequestManualCast = ensureRemote("RequestManualCast"),
 	RequestStarterChoice = ensureRemote("RequestStarterChoice"),
+	UseBerry = ensureRemote("UseBerry"),
 	FloatingTextEvent = ensureRemote("FloatingTextEvent"),
 	EventLogEvent = ensureRemote("EventLogEvent"),
 	PetHudUpdate = ensureRemote("PetHudUpdate"),
@@ -40,6 +41,7 @@ local InventoryService = require(Services:WaitForChild("InventoryService"))
 local BuildService = require(Services:WaitForChild("BuildService"))
 local MorphService = require(Services:WaitForChild("MorphService"))
 local PlayerDataService = require(Services:WaitForChild("PlayerDataService"))
+local BerryService = require(Services:WaitForChild("BerryService"))
 
 local playerDataService = PlayerDataService.new()
 local worldService = WorldService.new(remotes)
@@ -52,6 +54,10 @@ local effectService = EffectService.new()
 local harvestService = HarvestService.new(worldService, inventoryService)
 local buildService = BuildService.new(worldService, inventoryService)
 local morphService = MorphService.new(playerDataService)
+local berryService = BerryService.new(worldService, inventoryService, creatureService, playerDataService)
+local hudTimer = 0
+local hudReplicationCache = {}
+local HUD_KEEPALIVE_SECONDS = 1.0
 
 Players.PlayerAdded:Connect(function(player)
 	playerDataService:getOrCreate(player)
@@ -59,6 +65,10 @@ Players.PlayerAdded:Connect(function(player)
 		task.wait(0.3)
 		creatureService:HydrateParty(player)
 	end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	hudReplicationCache[player.UserId] = nil
 end)
 
 remotes.RequestStarterChoice.OnServerEvent:Connect(function(player, payload)
@@ -98,8 +108,12 @@ end)
 
 remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
+	local requestedSlot = tonumber(payload.slot)
+	if requestedSlot ~= 1 and requestedSlot ~= 2 then
+		return
+	end
 	for _, c in ipairs(worldService.creatures) do
-		if c.ownerUserId == player.UserId and c.partySlot == payload.slot then
+		if c.ownerUserId == player.UserId and c.partySlot == requestedSlot then
 			c.intent.abilityKey = payload.abilityKey
 			c.intent.targetId = payload.targetId
 		end
@@ -119,7 +133,33 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 	end
 end)
 
-local hudTimer = 0
+remotes.UseBerry.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	berryService:tryUseBerry(player, payload.kind)
+end)
+
+local function summarizeHudPayloadForReplication(petPayload)
+	local tokens = {}
+	for i = 1, 2 do
+		local pet = petPayload[i]
+		if not pet then
+			tokens[i] = "empty"
+		else
+			tokens[i] = table.concat({
+				tostring(pet.state or "?"),
+				tostring(pet.name or pet.species or "?"),
+				tostring(math.floor((pet.hp or 0) + 0.5)),
+				tostring(math.floor((pet.maxHP or 0) + 0.5)),
+				tostring(math.floor((pet.stamina or 0) + 0.5)),
+				tostring(math.floor((pet.energy or 0) + 0.5)),
+				tostring(pet.command or "-"),
+				tostring(pet.targetId or "-"),
+			}, "|")
+		end
+	end
+	return table.concat(tokens, "||")
+end
+
 local function pushPetHud()
 	if not remotes.PetHudUpdate then return end
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -154,7 +194,14 @@ local function pushPetHud()
 				petPayload[i] = nil
 			end
 		end
-		remotes.PetHudUpdate:FireClient(player, { pets = petPayload, t = worldService.time })
+		local summary = summarizeHudPayloadForReplication(petPayload)
+		local cache = hudReplicationCache[player.UserId]
+		local sameAsLast = cache and cache.summary == summary
+		local sinceLast = cache and (worldService.time - cache.lastSentAt) or math.huge
+		if not sameAsLast or sinceLast >= HUD_KEEPALIVE_SECONDS then
+			remotes.PetHudUpdate:FireClient(player, { pets = petPayload, t = worldService.time })
+			hudReplicationCache[player.UserId] = { summary = summary, lastSentAt = worldService.time }
+		end
 	end
 end
 

@@ -14,6 +14,14 @@ function HarvestService:tryHarvestCreature(player, targetId)
 		return false, "cooldown"
 	end
 	local granted = self.inventoryService:grant(player, c.harvestDrop)
+	if c.speciesKey == "sheeplet" then
+		local berryKinds = { "red", "yellow", "blue" }
+		local berryKey = berryKinds[math.random(1, #berryKinds)]
+		local berryGrant = self.inventoryService:grant(player, { { key = berryKey, amount = 1 } })
+		for _, item in ipairs(berryGrant) do
+			table.insert(granted, item)
+		end
+	end
 	c.nextHarvestAt = self.worldService.time + (c.harvestCooldown or 0)
 	self.worldService:pushFloatingText(c.pos, "Harvested", "#d7fcb7")
 	self.worldService:pushEventLog(player, string.format("Harvested %s", c.speciesKey), "#d7fcb7")
