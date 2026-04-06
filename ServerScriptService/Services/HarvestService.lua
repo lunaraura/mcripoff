@@ -1,0 +1,22 @@
+local HarvestService = {}
+HarvestService.__index = HarvestService
+
+function HarvestService.new(worldService, inventoryService)
+	return setmetatable({ worldService = worldService, inventoryService = inventoryService }, HarvestService)
+end
+
+function HarvestService:tryHarvestCreature(player, targetId)
+	local c = self.worldService:getCreatureById(targetId)
+	if not c or not c.alive or c.role ~= "passive" then
+		return false, "invalid target"
+	end
+	if self.worldService.time < (c.nextHarvestAt or 0) then
+		return false, "cooldown"
+	end
+	local granted = self.inventoryService:grant(player, c.harvestDrop)
+	c.nextHarvestAt = self.worldService.time + (c.harvestCooldown or 0)
+	self.worldService:pushFloatingText(c.pos, "Harvested", "#d7fcb7")
+	return true, granted
+end
+
+return HarvestService
