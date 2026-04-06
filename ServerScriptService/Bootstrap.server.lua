@@ -60,11 +60,18 @@ end)
 
 remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
-	local data = playerDataService:getOrCreate(player)
+	local command = payload.command or {}
+	if command.type == "swapReserve" then
+		local ok = playerDataService:swapPartyWithReserve(player, payload.slot or 1, command.reserveIndex or 1)
+		if ok then
+			creatureService:respawnPartyFromOwned(player)
+		end
+		return
+	end
 	for _, c in ipairs(worldService.creatures) do
 		if c.ownerUserId == player.UserId and c.partySlot and c.partySlot <= 2 then
 			if payload.slot == nil or payload.slot == c.partySlot then
-				c.command = payload.command
+				c.command = command
 			end
 		end
 	end
@@ -82,9 +89,13 @@ end)
 
 remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
-	if payload.action == "harvestCreature" then
-		harvestService:tryHarvestCreature(player, payload.targetId)
-	else
+	local ok = false
+	if payload.action == "harvestCreature" and payload.targetId then
+		ok = harvestService:tryHarvestCreature(player, payload.targetId)
+	elseif payload.action == "context" or payload.action == "harvest" then
+		ok = harvestService:tryHarvestNearestPassive(player, payload.radius or 14)
+	end
+	if not ok then
 		buildService:handleContextAction(player, payload)
 	end
 end)

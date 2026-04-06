@@ -7,11 +7,12 @@ end
 
 function BuildService:handleContextAction(player, payload)
 	payload = payload or {}
-	if payload.action == "gather" then
+	local action = payload.action or "context"
+	if action == "gather" or action == "context" then
 		-- TODO: Connect to NodeRuntime + BuildableConfig costs/harvestTime.
 		local granted = self.inventoryService:grant(player, { { key = "fiber", amount = 1 } })
 		return true, granted
-	elseif payload.action == "build" then
+	elseif action == "build" then
 		-- TODO: Place buildables in Workspace.World.Buildables with server validation.
 		return true, "build queued"
 	end

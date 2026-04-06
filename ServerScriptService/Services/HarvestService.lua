@@ -19,4 +19,24 @@ function HarvestService:tryHarvestCreature(player, targetId)
 	return true, granted
 end
 
+function HarvestService:tryHarvestNearestPassive(player, radius)
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then
+		return false, "no character"
+	end
+	local best, bestD = nil, radius or 14
+	for _, c in ipairs(self.worldService.creatures) do
+		if c.alive and c.role == "passive" then
+			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(c.pos.X, 0, c.pos.Z)).Magnitude
+			if d < bestD then
+				best, bestD = c, d
+			end
+		end
+	end
+	if not best then
+		return false, "no passive nearby"
+	end
+	return self:tryHarvestCreature(player, best.id)
+end
+
 return HarvestService

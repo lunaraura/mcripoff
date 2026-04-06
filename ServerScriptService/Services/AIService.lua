@@ -1,4 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
@@ -22,6 +23,17 @@ function AIService:think(creature, dt)
 end
 
 function AIService:thinkPet(creature)
+	if creature.command and creature.command.type == "follow" then
+		local owner = Players:GetPlayerByUserId(creature.ownerUserId or -1)
+		local root = owner and owner.Character and owner.Character.PrimaryPart
+		if root then
+			local delta = root.Position - creature.pos
+			if delta.Magnitude > 10 then
+				creature.intent.move = Vector3.new(delta.X, 0, delta.Z)
+			end
+		end
+		return
+	end
 	if creature.command and creature.command.type == "hold" then
 		creature.intent.move = Vector3.zero
 		return
@@ -36,6 +48,13 @@ function AIService:thinkPet(creature)
 	if creature.command and creature.command.type == "attack" and creature.command.targetId then
 		local target = self.worldService:getCreatureById(creature.command.targetId)
 		if target and target.alive and target.team ~= creature.team then
+			self:fightTarget(creature, target)
+			return
+		end
+	end
+	if creature.command and creature.command.type == "attackNearest" then
+		local target = self.worldService:findNearestEnemyOf(creature, 100)
+		if target then
 			self:fightTarget(creature, target)
 			return
 		end

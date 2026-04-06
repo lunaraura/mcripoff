@@ -43,6 +43,7 @@ function CreatureService:spawnPartyPetsForPlayer(player)
 	local data = self.playerDataService:getOrCreate(player)
 	local root = player.Character and player.Character.PrimaryPart
 	if not root then return end
+	self:despawnPetsForPlayer(player)
 	local offsets = { Vector3.new(-6, 0, 8), Vector3.new(6, 0, 8) }
 	for slot = 1, 2 do
 		local ownedId = data.partySlots[slot]
@@ -53,8 +54,28 @@ function CreatureService:spawnPartyPetsForPlayer(player)
 			pet.ownerUserId = player.UserId
 			pet.ownedId = ownedId
 			pet.partySlot = slot
+			pet.familyKey = owned.familyKey or pet.familyKey
+			pet.compositeKey = owned.compositeKey or pet.compositeKey
+			pet.moveset = table.clone(owned.moveset or pet.moveset)
+			pet.cooldowns = {}
+			for _, key in ipairs(pet.moveset) do
+				pet.cooldowns[key] = 0
+			end
+			pet:RebuildStats()
 		end
 	end
+end
+
+function CreatureService:despawnPetsForPlayer(player)
+	for _, c in ipairs(self.worldService.creatures) do
+		if c.ownerUserId == player.UserId and c.mode == "pet" then
+			c.alive = false
+		end
+	end
+end
+
+function CreatureService:respawnPartyFromOwned(player)
+	self:spawnPartyPetsForPlayer(player)
 end
 
 return CreatureService
