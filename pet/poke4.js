@@ -29,18 +29,28 @@ function drawGauge(ctx, x, y, w, h, ratio, fill, back = "#222") {
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w * clamp(ratio, 0, 1), h);
 }
+const DEFAULT_RESISTANCES = {
+    physical: { pierce: 1, slash: 1, impact: 1, drill: 1 },
+    energy: { heat: 1, cold: 1, poison: 1, water: 1, electric: 1 },
+};
+function makeUniformResistances(physical = 1, energy = 1) {
+    return {
+        physical: { pierce: physical, slash: physical, impact: physical, drill: physical },
+        energy: { heat: energy, cold: energy, poison: energy, water: energy, electric: energy },
+    };
+}
 const seed = 1337
 /* =========================
    runtime registries (no legacy conceptBank paths)
 ========================= */
 const composites = {
-    animal: { effectiveness: { physical: 1, energy: 1 }, specialEffects: [], traits: { toughness: 0, conductivity: 0.25, heatRetention: 0.35, mobilityBias: 0.08, energyBias: 0.05, regenBias: 0.10 } },
-    water: { effectiveness: { physical: 0.75, energy: 1.25 }, specialEffects: ["waterAdd"], traits: { toughness: -0.05, conductivity: 0.90, heatRetention: -0.35, mobilityBias: 0.10, energyBias: 0.10, regenBias: 0.18 } },
-    voltage: { effectiveness: { physical: 1.5, energy: 0.75 }, specialEffects: ["waterVolt"], traits: { toughness: -0.10, conductivity: 1.00, heatRetention: 0.05, mobilityBias: 0.18, energyBias: 0.28, regenBias: 0.00 } },
-    fire: { effectiveness: { physical: 0.5, energy: 1.75 }, specialEffects: ["fireUp", "burnoff"], traits: { toughness: -0.08, conductivity: 0.10, heatRetention: 0.95, mobilityBias: 0.05, energyBias: 0.20, regenBias: -0.05 } },
-    rock: { effectiveness: { physical: 1, energy: 0.5 }, specialEffects: ["hardSurface"], traits: { toughness: 0.35, conductivity: 0.15, heatRetention: 0.65, mobilityBias: -0.12, energyBias: -0.05, regenBias: 0.00 } },
-    arcane: { effectiveness: { physical: 0.9, energy: 1.2 }, specialEffects: [], traits: { toughness: -0.04, conductivity: 0.60, heatRetention: 0.20, mobilityBias: 0.05, energyBias: 0.30, regenBias: 0.05 } },
-    frost: { effectiveness: { physical: 1.1, energy: 0.95 }, specialEffects: [], traits: { toughness: 0.08, conductivity: 0.35, heatRetention: -0.25, mobilityBias: -0.04, energyBias: 0.05, regenBias: 0.10 } },
+    animal: { resistances: makeUniformResistances(1, 1), specialEffects: [], traits: { toughness: 0, conductivity: 0.25, heatRetention: 0.35, mobilityBias: 0.08, energyBias: 0.05, regenBias: 0.10 } },
+    water: { resistances: makeUniformResistances(0.75, 1.25), specialEffects: ["waterAdd"], traits: { toughness: -0.05, conductivity: 0.90, heatRetention: -0.35, mobilityBias: 0.10, energyBias: 0.10, regenBias: 0.18 } },
+    voltage: { resistances: makeUniformResistances(1.5, 0.75), specialEffects: ["waterVolt"], traits: { toughness: -0.10, conductivity: 1.00, heatRetention: 0.05, mobilityBias: 0.18, energyBias: 0.28, regenBias: 0.00 } },
+    fire: { resistances: makeUniformResistances(0.5, 1.75), specialEffects: ["fireUp", "burnoff"], traits: { toughness: -0.08, conductivity: 0.10, heatRetention: 0.95, mobilityBias: 0.05, energyBias: 0.20, regenBias: -0.05 } },
+    rock: { resistances: makeUniformResistances(1, 0.5), specialEffects: ["hardSurface"], traits: { toughness: 0.35, conductivity: 0.15, heatRetention: 0.65, mobilityBias: -0.12, energyBias: -0.05, regenBias: 0.00 } },
+    arcane: { resistances: makeUniformResistances(0.9, 1.2), specialEffects: [], traits: { toughness: -0.04, conductivity: 0.60, heatRetention: 0.20, mobilityBias: 0.05, energyBias: 0.30, regenBias: 0.05 } },
+    frost: { resistances: makeUniformResistances(1.1, 0.95), specialEffects: [], traits: { toughness: 0.08, conductivity: 0.35, heatRetention: -0.25, mobilityBias: -0.04, energyBias: 0.05, regenBias: 0.10 } },
 };
 const familyDefs = {
     canine: {
@@ -106,6 +116,7 @@ const abilities = {
         resourceUse: { stamina: 5, energy: 0 },
         flatDmg: { p: 3, e: 0 },
         dmgScale: { p: 0.8, e: 0 },
+        damageProfile: { physical: ["impact"] },
         range: 24,
     },
     zap: {
@@ -115,6 +126,7 @@ const abilities = {
         resourceUse: { stamina: 0, energy: 10 },
         flatDmg: { p: 0, e: 2 },
         dmgScale: { p: 0, e: 0.3 },
+        damageProfile: { energy: ["electric"] },
         range: 80,
         soakAdd: { electric: 0.5 },
         effectsOnHit: [{ type: "shock", chance: 0.25, duration: 1.5, magnitude: 0.2 }],
@@ -127,6 +139,7 @@ const abilities = {
         resourceUse: { stamina: 6, energy: 2 },
         flatDmg: { p: 5, e: 3 },
         dmgScale: { p: 0.4, e: 0.2 },
+        damageProfile: { physical: ["slash"], energy: ["heat"] },
         range: 26,
         soakAdd: { heat: 1.0 },
         effectsOnHit: [{ type: "burn", chance: 0.5, duration: 3.2, magnitude: 3.5 }],
@@ -138,6 +151,7 @@ const abilities = {
         resourceUse: { stamina: 5, energy: 0 },
         flatDmg: { p: 4, e: 0 },
         dmgScale: { p: 0.2, e: 0 },
+        damageProfile: { physical: ["pierce"] },
         range: 150,
         projectile: { speed: 10 },
         fx: { lineColor: "#d0c9b0" },
@@ -149,6 +163,7 @@ const abilities = {
         resourceUse: { stamina: 0, energy: 15 },
         flatDmg: { p: 0, e: 10 },
         dmgScale: { p: 0, e: 0.3 },
+        damageProfile: { energy: ["electric"] },
         range: 90,
         area: { radius: 40 },
         soakAdd: { electric: 0.2 },
@@ -162,6 +177,7 @@ const abilities = {
         resourceUse: { stamina: 15, energy: 0 },
         flatDmg: { p: 10, e: 0 },
         dmgScale: { p: 0.9, e: 0 },
+        damageProfile: { physical: ["impact"] },
         range: 90,
         area: { radius: 60 },
         effectsOnHit: [{ type: "slow", duration: 1.5, magnitude: 0.35 }],
@@ -174,6 +190,7 @@ const abilities = {
         resourceUse: { stamina: 10, energy: 0 },
         flatDmg: { p: 15, e: 0 },
         dmgScale: { p: 0.65, e: 0 },
+        damageProfile: { physical: ["slash"] },
         range: 26,
         dash: { distance: 90, stopShort: 18 },
         effectsOnHit: [{ type: "slow", chance: 0.35, duration: 1.1, magnitude: 0.25 }],
@@ -207,6 +224,7 @@ const abilities = {
         resourceUse: { stamina: 10, energy: 0 },
         flatDmg: { p: 10, e: 0 },
         dmgScale: { p: 0, e: 0 },
+        damageProfile: { physical: ["impact"] },
         dash: { distance: 80, stopShort: 10 },
         range: 0,
     },
@@ -2990,6 +3008,15 @@ class CombatManager {
         this.player = world.player;
         this.barriers = []
     }
+    resolveResistance(resistanceMap, damageTypes, fallbackKey) {
+        const map = resistanceMap ?? {};
+        const keys = (damageTypes && damageTypes.length > 0)
+            ? damageTypes
+            : [fallbackKey];
+        let total = 0;
+        for (const key of keys) total += map[key] ?? 1;
+        return total / Math.max(1, keys.length);
+    }
     isCreatureEngaged(creature) {
         for (const other of this.world.creatures) {
             if (other.id === creature.id || other.lifecycle !== "alive" || other.team === creature.team) continue;
@@ -3178,10 +3205,12 @@ class CombatManager {
     applyDamagePacket(source, target, dmg, abilityDef) {
         const effBonus = EffectEngine.applyAbilityEffects(source, target, abilityDef);
         const composite = composites[target.compositeKey] ?? composites.animal;
-        const physicalMod = composite.effectiveness.physical ?? 1;
-        const energyMod = composite.effectiveness.energy ?? 1;
+        const resistances = composite.resistances ?? DEFAULT_RESISTANCES;
+        const profile = abilityDef?.damageProfile ?? {};
         const physicalPart = (abilityDef.flatDmg?.p ?? 0) + (abilityDef.dmgScale?.p ?? 0) * source.modifiedStats.pAtk;
         const energyPart = (abilityDef.flatDmg?.e ?? 0) + (abilityDef.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
+        const physicalMod = this.resolveResistance(resistances.physical, profile.physical, "impact");
+        const energyMod = this.resolveResistance(resistances.energy, profile.energy, "electric");
         const scaled = (physicalPart * physicalMod + energyPart * energyMod) * effBonus;
         // Keep a minimum 1 damage floor so very low scaling attacks still provide gameplay feedback.
         const atkScaled = (scaled || dmg) * (source.runtimeAtkMult ?? 1);
