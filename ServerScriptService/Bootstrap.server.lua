@@ -55,6 +55,7 @@ local harvestService = HarvestService.new(worldService, inventoryService)
 local buildService = BuildService.new(worldService, inventoryService)
 local morphService = MorphService.new(playerDataService)
 local berryService = BerryService.new(worldService, inventoryService, creatureService, playerDataService)
+harvestService:configure(playerDataService, creatureService, morphService)
 local hudTimer = 0
 local hudReplicationCache = {}
 local HUD_KEEPALIVE_SECONDS = 1.0
@@ -125,6 +126,8 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 	local ok = false
 	if payload.action == "harvestCreature" and payload.targetId then
 		ok = harvestService:tryHarvestCreature(player, payload.targetId)
+	elseif payload.action == "tameCreature" and payload.targetId then
+		ok = harvestService:tryTameDefeated(player, payload.targetId)
 	elseif payload.action == "context" or payload.action == "harvest" then
 		ok = harvestService:tryHarvestNearestPassive(player, payload.radius or 14)
 	end

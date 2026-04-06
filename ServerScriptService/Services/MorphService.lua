@@ -10,9 +10,14 @@ function MorphService.new(playerDataService)
 	return setmetatable({ playerDataService = playerDataService }, MorphService)
 end
 
-function MorphService:awardPoints(player, amount)
+function MorphService:awardPoints(player, ownedId, amount)
 	local data = self.playerDataService:getOrCreate(player)
-	data.morphPoints += math.max(0, amount)
+	local owned = data.ownedCreatures[ownedId]
+	if not owned then
+		return false, "owned creature not found"
+	end
+	owned.morphPoints = math.max(0, (owned.morphPoints or 0) + math.max(0, amount or 0))
+	return true, owned.morphPoints
 end
 
 function MorphService:tryMorph(player, ownedId, targetSpecies)
