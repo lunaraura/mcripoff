@@ -106,6 +106,16 @@ function WorldService:getPlayerPets(userId)
 	return out
 end
 
+function WorldService:getRuntimeCreatureForOwnedId(userId, ownedId)
+	if not ownedId then return nil end
+	for _, c in ipairs(self.creatures) do
+		if c.ownerUserId == userId and c.mode == "pet" and c.ownedId == ownedId then
+			return c
+		end
+	end
+	return nil
+end
+
 function WorldService:stepTime(dt)
 	self.time += dt
 end

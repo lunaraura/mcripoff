@@ -123,24 +123,31 @@ local hudTimer = 0
 local function pushPetHud()
 	if not remotes.PetHudUpdate then return end
 	for _, player in ipairs(Players:GetPlayers()) do
-		local pets = worldService:getPlayerPets(player.UserId)
+		local data = playerDataService:getOrCreate(player)
 		local petPayload = {}
 		for i = 1, 2 do
-			local pet = pets[i]
-			if pet then
+			local ownedId = data.partySlots[i]
+			local owned = ownedId and data.ownedCreatures[ownedId] or nil
+			if owned then
+				local pet = worldService:getRuntimeCreatureForOwnedId(player.UserId, ownedId)
+				local isAlive = pet and pet.alive
 				local cooldowns = {}
-				for _, moveKey in ipairs(pet.moveset or {}) do
-					cooldowns[moveKey] = math.max(0, pet.cooldowns[moveKey] or 0)
+				if isAlive then
+					for _, moveKey in ipairs(pet.moveset or {}) do
+						cooldowns[moveKey] = math.max(0, pet.cooldowns[moveKey] or 0)
+					end
 				end
 				petPayload[i] = {
-					species = pet.speciesKey,
-					hp = pet.currentHP,
-					maxHP = pet.modifiedStats.maxHP,
-					stamina = pet.currentStamina,
-					energy = pet.currentEnergy,
-					level = pet.level,
-					command = pet.command and pet.command.type or "auto",
-					targetId = pet.intent and pet.intent.targetId or nil,
+					species = owned.speciesKey,
+					name = owned.nickname,
+					level = pet and pet.level or owned.level,
+					state = isAlive and "alive" or "defeated",
+					hp = isAlive and pet.currentHP or 0,
+					maxHP = (isAlive and pet.modifiedStats.maxHP) or (pet and pet.modifiedStats and pet.modifiedStats.maxHP) or 0,
+					stamina = isAlive and pet.currentStamina or 0,
+					energy = isAlive and pet.currentEnergy or 0,
+					command = isAlive and (pet.command and pet.command.type or "auto") or nil,
+					targetId = isAlive and (pet.intent and pet.intent.targetId or nil) or nil,
 					cooldowns = cooldowns,
 				}
 			else
