@@ -30,27 +30,133 @@ function drawGauge(ctx, x, y, w, h, ratio, fill, back = "#222") {
     ctx.fillRect(x, y, w * clamp(ratio, 0, 1), h);
 }
 const DEFAULT_RESISTANCES = {
-    physical: { pierce: 1, slash: 1, impact: 1, drill: 1 },
-    energy: { heat: 1, cold: 1, poison: 1, water: 1, electric: 1 },
+  physical: { pierce: 1.0, slash: 1.0, impact: 1.0, drill: 1.0 },
+  energy: { heat: 1.0, cold: 1.0, poison: 1.0, water: 1.0, electric: 1.0 },
 };
-function makeUniformResistances(physical = 1, energy = 1) {
-    return {
-        physical: { pierce: physical, slash: physical, impact: physical, drill: physical },
-        energy: { heat: energy, cold: energy, poison: energy, water: energy, electric: energy },
-    };
+function makeResistances(overrides = {}) {
+  return {
+    physical: {
+      ...DEFAULT_RESISTANCES.physical,
+      ...(overrides.physical ?? {}),
+    },
+    energy: {
+      ...DEFAULT_RESISTANCES.energy,
+      ...(overrides.energy ?? {}),
+    },
+  };
 }
-const seed = 1337
-/* =========================
-   runtime registries (no legacy conceptBank paths)
-========================= */
 const composites = {
-    animal: { resistances: makeUniformResistances(1, 1), specialEffects: [], traits: { toughness: 0, conductivity: 0.25, heatRetention: 0.35, mobilityBias: 0.08, energyBias: 0.05, regenBias: 0.10 } },
-    water: { resistances: makeUniformResistances(0.75, 1.25), specialEffects: ["waterAdd"], traits: { toughness: -0.05, conductivity: 0.90, heatRetention: -0.35, mobilityBias: 0.10, energyBias: 0.10, regenBias: 0.18 } },
-    voltage: { resistances: makeUniformResistances(1.5, 0.75), specialEffects: ["waterVolt"], traits: { toughness: -0.10, conductivity: 1.00, heatRetention: 0.05, mobilityBias: 0.18, energyBias: 0.28, regenBias: 0.00 } },
-    fire: { resistances: makeUniformResistances(0.5, 1.75), specialEffects: ["fireUp", "burnoff"], traits: { toughness: -0.08, conductivity: 0.10, heatRetention: 0.95, mobilityBias: 0.05, energyBias: 0.20, regenBias: -0.05 } },
-    rock: { resistances: makeUniformResistances(1, 0.5), specialEffects: ["hardSurface"], traits: { toughness: 0.35, conductivity: 0.15, heatRetention: 0.65, mobilityBias: -0.12, energyBias: -0.05, regenBias: 0.00 } },
-    arcane: { resistances: makeUniformResistances(0.9, 1.2), specialEffects: [], traits: { toughness: -0.04, conductivity: 0.60, heatRetention: 0.20, mobilityBias: 0.05, energyBias: 0.30, regenBias: 0.05 } },
-    frost: { resistances: makeUniformResistances(1.1, 0.95), specialEffects: [], traits: { toughness: 0.08, conductivity: 0.35, heatRetention: -0.25, mobilityBias: -0.04, energyBias: 0.05, regenBias: 0.10 } },
+  animal: {
+    resistances: makeResistances({
+      physical: { pierce: 1.0, slash: 1.0, impact: 1.0, drill: 1.1 },
+      energy: { heat: 1.0, cold: 1.0, poison: 1.0, water: 0.8, electric: 1.4 },
+    }),
+    specialEffects: [],
+    traits: {
+      toughness: 0,
+      conductivity: 0.25,
+      heatRetention: 0.35,
+      mobilityBias: 0.08,
+      energyBias: 0.05,
+      regenBias: 0.10,
+    },
+  },
+
+  water: {
+    resistances: makeResistances({
+      physical: { pierce: 1.0, slash: 0.95, impact: 1.15, drill: 1.05 },
+      energy: { heat: 1.35, cold: 0.85, poison: 0.9, water: 0.6, electric: 1.6 },
+    }),
+    specialEffects: ["waterAdd"],
+    traits: {
+      toughness: -0.05,
+      conductivity: 0.90,
+      heatRetention: -0.35,
+      mobilityBias: 0.10,
+      energyBias: 0.10,
+      regenBias: 0.18,
+    },
+  },
+
+  voltage: {
+    resistances: makeResistances({
+      physical: { pierce: 1.05, slash: 1.0, impact: 1.1, drill: 1.0 },
+      energy: { heat: 1.1, cold: 1.0, poison: 1.0, water: 1.4, electric: 0.55 },
+    }),
+    specialEffects: ["waterVolt"],
+    traits: {
+      toughness: -0.10,
+      conductivity: 1.00,
+      heatRetention: 0.05,
+      mobilityBias: 0.18,
+      energyBias: 0.28,
+      regenBias: 0.00,
+    },
+  },
+
+  fire: {
+    resistances: makeResistances({
+      physical: { pierce: 1.0, slash: 0.95, impact: 1.1, drill: 1.0 },
+      energy: { heat: 0.55, cold: 1.45, poison: 0.9, water: 1.5, electric: 1.0 },
+    }),
+    specialEffects: ["fireUp", "burnoff"],
+    traits: {
+      toughness: -0.08,
+      conductivity: 0.10,
+      heatRetention: 0.95,
+      mobilityBias: 0.05,
+      energyBias: 0.20,
+      regenBias: -0.05,
+    },
+  },
+
+  rock: {
+    resistances: makeResistances({
+      physical: { pierce: 0.85, slash: 0.75, impact: 1.1, drill: 1.35 },
+      energy: { heat: 0.9, cold: 0.9, poison: 0.6, water: 0.95, electric: 0.8 },
+    }),
+    specialEffects: ["hardSurface"],
+    traits: {
+      toughness: 0.35,
+      conductivity: 0.15,
+      heatRetention: 0.65,
+      mobilityBias: -0.12,
+      energyBias: -0.05,
+      regenBias: 0.00,
+    },
+  },
+
+  arcane: {
+    resistances: makeResistances({
+      physical: { pierce: 1.0, slash: 1.0, impact: 1.05, drill: 1.0 },
+      energy: { heat: 0.95, cold: 0.95, poison: 1.2, water: 1.0, electric: 0.85 },
+    }),
+    specialEffects: [],
+    traits: {
+      toughness: -0.04,
+      conductivity: 0.60,
+      heatRetention: 0.20,
+      mobilityBias: 0.05,
+      energyBias: 0.30,
+      regenBias: 0.05,
+    },
+  },
+
+  frost: {
+    resistances: makeResistances({
+      physical: { pierce: 1.0, slash: 0.95, impact: 1.05, drill: 1.0 },
+      energy: { heat: 1.5, cold: 0.55, poison: 1.0, water: 0.85, electric: 1.1 },
+    }),
+    specialEffects: [],
+    traits: {
+      toughness: 0.08,
+      conductivity: 0.35,
+      heatRetention: -0.25,
+      mobilityBias: -0.04,
+      energyBias: 0.05,
+      regenBias: 0.10,
+    },
+  },
 };
 const familyDefs = {
     canine: {
