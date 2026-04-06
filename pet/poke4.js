@@ -183,6 +183,10 @@ const familyDefs = {
         aiTendency: { aggression: 0.40, formation: "swarm", engageRangeBias: 0.95 },
         statMult: { maxHP: 1.08, spd: 0.92, stamina: 0.92, energy: 1.10 },
     },
+    herd: {
+        aiTendency: { aggression: 0.18, formation: "anchor", engageRangeBias: 0.9 },
+        statMult: { maxHP: 1.0, spd: 1.0, stamina: 1.06, energy: 0.92 },
+    },
 };
 const compositeEffects = {
     waterVolt(ctx) {
@@ -447,7 +451,7 @@ const species = {
     },
     sheeplet: {
         name: "Sheeplet",
-        familyKey: "feline",
+        familyKey: "herd",
         outerCompositeKey: "animal",
         innerCompositeKey: "animal",
         compositeKey: "animal",
@@ -1061,12 +1065,12 @@ class Brain {
         creature.brain = this;
         this.role = species[creature.speciesKey]?.role ?? "fighter";
     }
-    think(world) {
+    think(world, dt = 1 / 60) {
         const h = this.host;
         if (!h || h.lifecycle !== "alive") return;
         h.intent = h.makeEmptyIntent();
         if (h.mode === "pet") this.thinkPet(world);
-        else this.thinkWild(world);
+        else this.thinkWild(world, dt);
     }
     thinkPet(world) {
         const h = this.host;
@@ -1195,10 +1199,10 @@ class Brain {
             h.intent.move = { x: n.x, z: n.z };
         }
     }
-    thinkWild(world) {
+    thinkWild(world, dt) {
         const h = this.host;
         if (this.role === "passive") {
-            this.thinkPassiveWild(world, h);
+            this.thinkPassiveWild(world, h, dt);
             return;
         }
         const aggroRange = this.getWildAggroRange(h);
@@ -1224,13 +1228,13 @@ class Brain {
         const timidness = h.wildProfile?.timidness ?? 1;
         return clamp(10 * timidness, 6, 18);
     }
-    thinkPassiveWild(world, h) {
+    thinkPassiveWild(world, h, dt) {
         const danger = this.findPassiveThreat(world, h);
         if (danger) {
             this.fleeFromThreat(h, danger);
             return;
         }
-        this.wanderNearAnchor(world, h);
+        this.wanderNearAnchor(world, h, dt);
     }
     findPassiveThreat(world, h) {
         const timidness = h.wildProfile?.timidness ?? 1;
@@ -1257,7 +1261,7 @@ class Brain {
         const flee = norm2D(away.x * 0.8 + anchorPull.x * 0.2, away.z * 0.8 + anchorPull.z * 0.2);
         h.intent.move = { x: flee.x, z: flee.z };
     }
-    wanderNearAnchor(world, h) {
+    wanderNearAnchor(world, h, dt) {
         const anchor = h.spawnAnchor ?? h.pos;
         const timidness = h.wildProfile?.timidness ?? 1;
         if (h.nextHarvestAt > 0 && h.nextHarvestAt > world.time) {
@@ -1270,7 +1274,7 @@ class Brain {
             this.moveTowardAnchor(h, anchor, 5);
             return;
         }
-        this.passiveWanderTimer -= 1 / 60;
+        this.passiveWanderTimer -= Math.max(0, dt ?? 0);
         if (this.passiveWanderTimer <= 0) {
             this.passiveWanderTimer = 0.6 + Math.random() * 1.3;
             this.passiveWanderAngle += (Math.random() - 0.5) * 1.8;
@@ -2230,6 +2234,7 @@ class World {
         this.width = 1600;
         this.height = 1100;
         this.time = 0;
+        this.lastDt = 1 / 60;
         this.camera = new Camera();
         this.chunks = new Map();
         this.player = new PlayerEntity(this.width / 2, this.height / 2);
@@ -2496,12 +2501,13 @@ class World {
     }
     update(dt, input) {
         this.time += dt;
+        this.lastDt = dt;
         this.player.update(dt, input, this);
         this.normalizeReserveSelection();
         ChunkSystem.updateLoadedChunks(this);
         this.spawnField.update(dt, this);
         for (const node of this.nodes) node.update(dt);
-        for (const c of this.creatures) if (c.brain) c.brain.think(this);
+        for (const c of this.creatures) if (c.brain) c.brain.think(this, dt);
         for (const c of this.creatures) c.tick(dt, this);
         this.resolveSimpleSeparation();
         this.BS.update(dt, input);
