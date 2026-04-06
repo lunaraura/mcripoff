@@ -59,6 +59,7 @@ function BerryService:applyBerryEffect(player, kind)
 		return true
 	elseif kind == "blue" then
 		if self:hasAnyDefeatedSlot(player) then
+			self.playerDataService:revivePartySlots(player)
 			self.creatureService:respawnPartyFromOwned(player)
 			self.worldService:pushEventLog(player, "Used Blue Berry (party revived)", "#9fd3ff")
 			return true

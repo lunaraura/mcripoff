@@ -60,6 +60,7 @@ function CombatService:applyDamagePacket(source, target, ability)
 	self.worldService:pushFloatingText(target.pos, tostring(math.floor(final + 0.5)), "#ffd7d7")
 	if target.currentHP <= 0 then
 		target.alive = false
+		target.lifecycle = "defeated"
 	end
 end
 

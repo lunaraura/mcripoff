@@ -28,6 +28,7 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.baseStats = table.clone(def.baseStats)
 	self.modifiedStats = table.clone(def.baseStats)
 	self.level = opts.level or 1
+	self.morphPoints = opts.morphPoints or 0
 	self.moveset = table.clone(def.moveset or {})
 	self.cooldowns = {}
 	for _, k in ipairs(self.moveset) do self.cooldowns[k] = 0 end
@@ -42,6 +43,8 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.runtimeAtkMult = 1
 	self.runtimeDmgReduction = 0
 	self.alive = true
+	self.lifecycle = "alive"
+	self.command = { type = "follow", issuedAt = 0, targetId = nil, point = nil }
 	self.model = nil
 	self.wildProfile = {
 		aggroMult = 1,

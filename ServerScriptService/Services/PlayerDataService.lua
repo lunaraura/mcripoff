@@ -45,6 +45,7 @@ function PlayerDataService:createOwnedCreature(speciesKey)
 		level = 1,
 		xp = 0,
 		morphPoints = 0,
+		isDefeated = false,
 		moveset = table.clone(def.moveset),
 		familyKey = def.familyKey,
 		compositeKey = def.compositeKey,
@@ -113,6 +114,49 @@ function PlayerDataService:getReserveList(player)
 		end
 	end
 	return out
+end
+
+function PlayerDataService:getFirstOpenPartySlot(player)
+	local data = self:getOrCreate(player)
+	for slot = 1, 2 do
+		if data.partySlots[slot] == nil then
+			return slot
+		end
+	end
+	return nil
+end
+
+function PlayerDataService:addOwnedCreature(player, speciesKey)
+	local data = self:getOrCreate(player)
+	local owned = self:createOwnedCreature(speciesKey)
+	data.ownedCreatures[owned.ownedId] = owned
+	local openSlot = self:getFirstOpenPartySlot(player)
+	if openSlot then
+		data.partySlots[openSlot] = owned.ownedId
+		return owned, "party", openSlot
+	end
+	table.insert(data.reserve, owned.ownedId)
+	return owned, "reserve", #data.reserve
+end
+
+function PlayerDataService:setOwnedDefeated(player, ownedId, isDefeated)
+	local data = self:getOrCreate(player)
+	local owned = data.ownedCreatures[ownedId]
+	if not owned then return false end
+	owned.isDefeated = isDefeated and true or false
+	return true
+end
+
+function PlayerDataService:revivePartySlots(player)
+	local data = self:getOrCreate(player)
+	for slot = 1, 2 do
+		local ownedId = data.partySlots[slot]
+		local owned = ownedId and data.ownedCreatures[ownedId] or nil
+		if owned then
+			owned.isDefeated = false
+		end
+	end
+	return true
 end
 
 return PlayerDataService

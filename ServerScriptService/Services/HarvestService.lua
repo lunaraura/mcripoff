@@ -7,7 +7,20 @@ end
 
 function HarvestService:tryHarvestCreature(player, targetId)
 	local c = self.worldService:getCreatureById(targetId)
-	if not c or not c.alive or c.role ~= "passive" then
+	if not c then
+		return false, "invalid target"
+	end
+	if not c.alive then
+		local rewards = c.drop or {}
+		if #rewards <= 0 then
+			return false, "nothing to harvest"
+		end
+		local granted = self.inventoryService:grant(player, rewards)
+		self.worldService:pushEventLog(player, string.format("Harvested defeated %s", c.speciesKey), "#ffd9a8")
+		self.worldService.creaturesById[c.id] = nil
+		return true, granted
+	end
+	if c.role ~= "passive" then
 		return false, "invalid target"
 	end
 	if self.worldService.time < (c.nextHarvestAt or 0) then

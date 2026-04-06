@@ -170,7 +170,7 @@ local function pushPetHud()
 			local owned = ownedId and data.ownedCreatures[ownedId] or nil
 			if owned then
 				local pet = worldService:getRuntimeCreatureForOwnedId(player.UserId, ownedId)
-				local isAlive = pet and pet.alive
+				local isAlive = pet and pet.alive and not owned.isDefeated
 				local cooldowns = {}
 				if isAlive then
 					for _, moveKey in ipairs(pet.moveset or {}) do
@@ -216,6 +216,14 @@ RunService.Heartbeat:Connect(function(dt)
 			combatService:tryUseAbility(creature)
 			creature:Tick(dt)
 			creatureService:updateModel(creature)
+		end
+	end
+	for _, creature in ipairs(worldService.creatures) do
+		if (not creature.alive) and creature.mode == "pet" and creature.ownerUserId and creature.ownedId then
+			local owner = Players:GetPlayerByUserId(creature.ownerUserId)
+			if owner then
+				playerDataService:setOwnedDefeated(owner, creature.ownedId, true)
+			end
 		end
 	end
 	worldService:removeDead()
