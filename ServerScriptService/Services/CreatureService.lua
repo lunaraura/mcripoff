@@ -1,5 +1,4 @@
 local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CreatureRuntime = require(script.Parent.Parent.Runtime.CreatureRuntime)
 
 local CreatureService = {}
@@ -72,6 +71,10 @@ function CreatureService:updateModel(creature)
 end
 
 function CreatureService:spawnPartyPetsForPlayer(player)
+	self:HydrateParty(player)
+end
+
+function CreatureService:HydrateParty(player)
 	local data = self.playerDataService:getOrCreate(player)
 	local root = player.Character and player.Character.PrimaryPart
 	if not root then return end
@@ -99,15 +102,24 @@ function CreatureService:spawnPartyPetsForPlayer(player)
 end
 
 function CreatureService:despawnPetsForPlayer(player)
+	local remaining = {}
 	for _, c in ipairs(self.worldService.creatures) do
 		if c.ownerUserId == player.UserId and c.mode == "pet" then
 			c.alive = false
+			if c.model then
+				c.model:Destroy()
+				c.model = nil
+			end
+			self.worldService.creaturesById[c.id] = nil
+		else
+			table.insert(remaining, c)
 		end
 	end
+	self.worldService.creatures = remaining
 end
 
 function CreatureService:respawnPartyFromOwned(player)
-	self:spawnPartyPetsForPlayer(player)
+	self:HydrateParty(player)
 end
 
 function CreatureService:getOrCreateCreatureModelsFolder()
