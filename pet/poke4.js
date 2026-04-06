@@ -736,6 +736,7 @@ class Creature {
         this.currentStamina = this.permanentStats.stamina;
         this.currentEnergy = this.permanentStats.energy;
         this.level = 1;
+        this.aggroRange = this.modifiedStats.range * (this.level * 0.08 + 1) * this.aiTendency.engageRangeBias;
         this.xp = 0;
         this.nextXP = xpNeededForLevel(this.level);
         this.moveset = [...def.moveset];
@@ -1008,7 +1009,8 @@ class Brain {
     }
     thinkWild(world) {
         const h = this.host;
-        const target = world.findNearestEnemyOf(h, 140);
+        const aggroRange = h.aggroRange ?? 140;
+        const target = world.findNearestEnemyOf(h, aggroRange);
         if (!target) return;
         this.fightTarget(world, h, target, null);
     }
