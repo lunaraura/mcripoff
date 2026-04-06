@@ -321,6 +321,20 @@ const species = {
         signatureMoveConcept: "Gel Flux (team sustain pulse)",
         morphOptions: [],
     },
+    sheeplet: {
+        name: "Sheeplet",
+        familyKey: "feline",
+        outerCompositeKey: "animal",
+        innerCompositeKey: "animal",
+        compositeKey: "animal",
+        role: "passive",
+        baseStats: { pAtk: 3, eAtk: 0, range: 20, maxHP: 76, spd: 56, castSpd: 1.0, size: 9, stamina: 14, energy: 8, recoverStamina: 1.8, recoverEnergy: 1.0 },
+        moveset: [],
+        harvestDrop: [{ key: "fiber", amount: 2 }],
+        harvestCooldown: 20,
+        drop: [{ key: "meat", amount: 1 }],
+        morphOptions: [],
+    },
 };
 const biomeDefs = {
     plains: {
@@ -334,7 +348,7 @@ const biomeDefs = {
             softness: 0.28,
             bias: 1.0,
         },
-        spawns: [{ key: "dog", weight: 4 }, { key: "pebblit", weight: 2 }, { key: "warden_hound", weight: 1 }],
+        spawns: [{ key: "dog", weight: 4 }, { key: "sheeplet", weight: 3 }, { key: "pebblit", weight: 2 }, { key: "warden_hound", weight: 1 }],
         nodes: [{ key: "berry_bush_red", weight: 12 }, { key: "energy_crystal", weight: 2 }, {key: "revive_berry_bush", weight: 1}, {key: "replenish_berry_bush", weight: 1}],
     },
     ocean: {
@@ -748,6 +762,10 @@ class Creature {
         this.xp = 0;
         this.nextXP = xpNeededForLevel(this.level);
         this.moveset = [...def.moveset];
+        this.drop = Array.isArray(def.drop) ? def.drop.map(d => ({ ...d })) : [];
+        this.harvestDrop = Array.isArray(def.harvestDrop) ? def.harvestDrop.map(d => ({ ...d })) : [];
+        this.harvestCooldown = def.harvestCooldown ?? 0;
+        this.nextHarvestAt = 0;
         this.cooldowns = Object.fromEntries(this.moveset.map(k => [k, 0]));
         this.combatContributors = new Map();
         this.runtimeSpeedMult = 1;
@@ -1049,6 +1067,7 @@ class Brain {
     }
     thinkWild(world) {
         const h = this.host;
+        if (this.role === "passive") return;
         const aggroRange = h.aggroRange ?? 140;
         const target = this.pickWildTarget(world, h, aggroRange);
         if (!target) return;
@@ -2410,6 +2429,21 @@ class World {
     pushFloatingText(x, z, text, color = "#fff") {
         this.floatingTexts.push({ x, z, text, color, ttl: 0.9 });
     }
+    grantInventoryRewards(rewards = [], opts = {}) {
+        const out = [];
+        const x = opts.x ?? null;
+        const z = opts.z ?? null;
+        const color = opts.color ?? "#ffffff";
+        for (const r of rewards) {
+            const chance = r.chance ?? 1;
+            if (Math.random() > chance) continue;
+            if (!r?.key || !r?.amount) continue;
+            this.player.inventory[r.key] = (this.player.inventory[r.key] ?? 0) + r.amount;
+            out.push({ key: r.key, amount: r.amount });
+            if (x != null && z != null) this.pushFloatingText(x, z - 10, `+${r.amount} ${r.key}`, color);
+        }
+        return out;
+    }
     updateFx(dt) {
         for (const fx of this.floatingTexts) {
             fx.ttl -= dt;
@@ -2858,6 +2892,7 @@ class PlayerInteractionSystem {
         return true;
     }
     tryInteractNearestNode() {
+        if (this.tryHarvestNearestCreature()) return true;
         let best = null;
         let bestD = Infinity;
         for (const n of this.world.nodes) {
@@ -2881,6 +2916,39 @@ class PlayerInteractionSystem {
         best.cooldown = def.cooldown;
         this.player.lastLog = `Gathered ${def.reward.key} x${def.reward.amount}`;
         this.world.pushFloatingText(best.pos.x, best.pos.z - 10, `+${def.reward.key}`, "#ffffff");
+        return true;
+    }
+    tryHarvestNearestCreature() {
+        let best = null;
+        let bestD = Infinity;
+        for (const c of this.world.creatures) {
+            if (c.lifecycle !== "alive" || c.mode !== "wild") continue;
+            if (!Array.isArray(c.harvestDrop) || c.harvestDrop.length <= 0) continue;
+            const d = dist(this.player.pos.x, this.player.pos.z, c.pos.x, c.pos.z);
+            if (d < bestD && d <= 34) {
+                bestD = d;
+                best = c;
+            }
+        }
+        if (!best) return false;
+        if (this.world.time < (best.nextHarvestAt ?? 0)) {
+            const wait = Math.max(0, (best.nextHarvestAt ?? 0) - this.world.time);
+            this.player.lastLog = `${best.speciesKey} can be harvested in ${wait.toFixed(1)}s`;
+            return true;
+        }
+        const rewards = species[best.speciesKey]?.harvestDrop ?? best.harvestDrop ?? [];
+        const granted = this.world.grantInventoryRewards(rewards, {
+            x: best.pos.x,
+            z: best.pos.z,
+            color: "#d7fcb7",
+        });
+        if (granted.length <= 0) {
+            this.player.lastLog = `${best.speciesKey} had nothing to harvest`;
+            return true;
+        }
+        best.nextHarvestAt = this.world.time + Math.max(0, best.harvestCooldown ?? 0);
+        const rewardText = granted.map(r => `${r.key} x${r.amount}`).join(", ");
+        this.player.lastLog = `Harvested ${best.speciesKey}: ${rewardText}`;
         return true;
     }
     commandPets(petIds, command){
@@ -3124,6 +3192,16 @@ class CombatManager {
     }
     handleCreatureDefeat(dead) {
         if (dead.team === 0) return;
+        const defeatDrop = species[dead.speciesKey]?.drop ?? dead.drop ?? [];
+        const grantedDrop = this.world.grantInventoryRewards(defeatDrop, {
+            x: dead.pos.x,
+            z: dead.pos.z,
+            color: "#ffe8b3",
+        });
+        if (grantedDrop.length > 0) {
+            const dropText = grantedDrop.map(d => `${d.key} x${d.amount}`).join(", ");
+            this.player.lastLog = `Looted ${dropText}`;
+        }
         const contributors = [];
         for (const [id, t] of dead.combatContributors.entries()) {
             if (this.world.time - t > 14) continue;
