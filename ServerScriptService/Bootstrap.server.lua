@@ -1,0 +1,174 @@
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SSS = game:GetService("ServerScriptService")
+local Services = SSS:WaitForChild("Services")
+local Systems = SSS:WaitForChild("Systems")
+local Runtime = SSS:WaitForChild("Runtime")
+
+local function ensureRemote(name)
+	local folder = ReplicatedStorage:FindFirstChild("Remotes") or Instance.new("Folder")
+	folder.Name = "Remotes"
+	folder.Parent = ReplicatedStorage
+	local evt = folder:FindFirstChild(name)
+	if not evt then
+		evt = Instance.new("RemoteEvent")
+		evt.Name = name
+		evt.Parent = folder
+	end
+	return evt
+end
+
+local remotes = {
+	RequestPetCommand = ensureRemote("RequestPetCommand"),
+	RequestContextAction = ensureRemote("RequestContextAction"),
+	RequestManualCast = ensureRemote("RequestManualCast"),
+	RequestStarterChoice = ensureRemote("RequestStarterChoice"),
+	FloatingTextEvent = ensureRemote("FloatingTextEvent"),
+	EventLogEvent = ensureRemote("EventLogEvent"),
+	PetHudUpdate = ensureRemote("PetHudUpdate"),
+}
+
+local WorldService = require(Services:WaitForChild("WorldService"))
+local CreatureService = require(Services:WaitForChild("CreatureService"))
+local CombatService = require(Services:WaitForChild("CombatService"))
+local AIService = require(Services:WaitForChild("AIService"))
+local SpawnService = require(Services:WaitForChild("SpawnService"))
+local EffectService = require(Services:WaitForChild("EffectService"))
+local HarvestService = require(Services:WaitForChild("HarvestService"))
+local InventoryService = require(Services:WaitForChild("InventoryService"))
+local BuildService = require(Services:WaitForChild("BuildService"))
+local MorphService = require(Services:WaitForChild("MorphService"))
+local PlayerDataService = require(Services:WaitForChild("PlayerDataService"))
+
+local playerDataService = PlayerDataService.new()
+local worldService = WorldService.new(remotes)
+local inventoryService = InventoryService.new(playerDataService)
+local creatureService = CreatureService.new(worldService, playerDataService)
+local combatService = CombatService.new(worldService)
+local aiService = AIService.new(worldService)
+local spawnService = SpawnService.new(worldService, creatureService)
+local effectService = EffectService.new()
+local harvestService = HarvestService.new(worldService, inventoryService)
+local buildService = BuildService.new(worldService, inventoryService)
+local morphService = MorphService.new(playerDataService)
+
+Players.PlayerAdded:Connect(function(player)
+	playerDataService:getOrCreate(player)
+	player.CharacterAdded:Connect(function()
+		task.wait(0.3)
+		creatureService:HydrateParty(player)
+	end)
+end)
+
+remotes.RequestStarterChoice.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	local speciesKey = payload.speciesKey
+	local ok = playerDataService:chooseStarter(player, speciesKey)
+	if not ok then return end
+	creatureService:HydrateParty(player)
+	local root = player.Character and player.Character.PrimaryPart
+	if root then
+		worldService:pushFloatingText(root.Position, "Starter: " .. tostring(speciesKey), "#a8ffd7")
+	end
+	worldService:pushEventLog(player, "Starter chosen: " .. tostring(speciesKey), "#a8ffd7")
+end)
+
+remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	local command = payload.command or {}
+	if command.type == "swapReserve" then
+		local ok = playerDataService:swapPartyWithReserve(player, payload.slot or 1, command.reserveIndex or 1)
+		if ok then
+			creatureService:respawnPartyFromOwned(player)
+			worldService:pushEventLog(player, "Reserve swapped into slot " .. tostring(payload.slot or 1), "#bfe2ff")
+		else
+			worldService:pushEventLog(player, "Reserve swap failed", "#ffb3b3")
+		end
+		return
+	end
+	for _, c in ipairs(worldService.creatures) do
+		if c.ownerUserId == player.UserId and c.partySlot and c.partySlot <= 2 then
+			if payload.slot == nil or payload.slot == c.partySlot then
+				c.command = command
+			end
+		end
+	end
+end)
+
+remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	for _, c in ipairs(worldService.creatures) do
+		if c.ownerUserId == player.UserId and c.partySlot == payload.slot then
+			c.intent.abilityKey = payload.abilityKey
+			c.intent.targetId = payload.targetId
+		end
+	end
+end)
+
+remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	local ok = false
+	if payload.action == "harvestCreature" and payload.targetId then
+		ok = harvestService:tryHarvestCreature(player, payload.targetId)
+	elseif payload.action == "context" or payload.action == "harvest" then
+		ok = harvestService:tryHarvestNearestPassive(player, payload.radius or 14)
+	end
+	if not ok then
+		buildService:handleContextAction(player, payload)
+	end
+end)
+
+local hudTimer = 0
+local function pushPetHud()
+	if not remotes.PetHudUpdate then return end
+	for _, player in ipairs(Players:GetPlayers()) do
+		local pets = worldService:getPlayerPets(player.UserId)
+		local petPayload = {}
+		for i = 1, 2 do
+			local pet = pets[i]
+			if pet then
+				local cooldowns = {}
+				for _, moveKey in ipairs(pet.moveset or {}) do
+					cooldowns[moveKey] = math.max(0, pet.cooldowns[moveKey] or 0)
+				end
+				petPayload[i] = {
+					species = pet.speciesKey,
+					hp = pet.currentHP,
+					maxHP = pet.modifiedStats.maxHP,
+					stamina = pet.currentStamina,
+					energy = pet.currentEnergy,
+					level = pet.level,
+					command = pet.command and pet.command.type or "auto",
+					targetId = pet.intent and pet.intent.targetId or nil,
+					cooldowns = cooldowns,
+				}
+			else
+				petPayload[i] = nil
+			end
+		end
+		remotes.PetHudUpdate:FireClient(player, { pets = petPayload, t = worldService.time })
+	end
+end
+
+RunService.Heartbeat:Connect(function(dt)
+	worldService:stepTime(dt)
+	worldService:updateChunksAroundPlayers()
+	spawnService:update(dt)
+	for _, creature in ipairs(worldService.creatures) do
+		if creature.alive then
+			effectService:tickCreature(creature, dt)
+			aiService:think(creature, dt)
+			combatService:tryUseAbility(creature)
+			creature:Tick(dt)
+			creatureService:updateModel(creature)
+		end
+	end
+	worldService:removeDead()
+	hudTimer += dt
+	if hudTimer >= 0.25 then
+		hudTimer = 0
+		pushPetHud()
+	end
+	-- TODO: Add nearby-only UI/state replication stream for cooldowns/hp bars.
+end)

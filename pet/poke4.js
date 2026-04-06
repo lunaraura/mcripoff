@@ -183,6 +183,10 @@ const familyDefs = {
         aiTendency: { aggression: 0.40, formation: "swarm", engageRangeBias: 0.95 },
         statMult: { maxHP: 1.08, spd: 0.92, stamina: 0.92, energy: 1.10 },
     },
+    herd: {
+        aiTendency: { aggression: 0.18, formation: "anchor", engageRangeBias: 0.9 },
+        statMult: { maxHP: 1.0, spd: 1.0, stamina: 1.06, energy: 0.92 },
+    },
 };
 const compositeEffects = {
     waterVolt(ctx) {
@@ -447,7 +451,7 @@ const species = {
     },
     sheeplet: {
         name: "Sheeplet",
-        familyKey: "feline",
+        familyKey: "herd",
         outerCompositeKey: "animal",
         innerCompositeKey: "animal",
         compositeKey: "animal",
@@ -881,6 +885,8 @@ class Creature {
             targetNearPlayerBias: 0,
             statMult: null,
             sizeMult: 1,
+            timidness: 1,
+            commitment: 1,
         };
         this.aggroRange = 140;
         this.xp = 0;
@@ -946,6 +952,8 @@ class Creature {
             targetNearPlayerBias: profile?.targetNearPlayerBias ?? 0,
             statMult: profile?.statMult ?? null,
             sizeMult: profile?.sizeMult ?? 1,
+            timidness: profile?.timidness ?? 1,
+            commitment: profile?.commitment ?? 1,
         };
         this.rebuildStats();
     }
@@ -1049,18 +1057,20 @@ class Brain {
     constructor() {
         this.host = null;
         this.role = "fighter";
+        this.passiveWanderAngle = Math.random() * Math.PI * 2;
+        this.passiveWanderTimer = 0;
     }
     attach(creature) {
         this.host = creature;
         creature.brain = this;
         this.role = species[creature.speciesKey]?.role ?? "fighter";
     }
-    think(world) {
+    think(world, dt = 1 / 60) {
         const h = this.host;
         if (!h || h.lifecycle !== "alive") return;
         h.intent = h.makeEmptyIntent();
         if (h.mode === "pet") this.thinkPet(world);
-        else this.thinkWild(world);
+        else this.thinkWild(world, dt);
     }
     thinkPet(world) {
         const h = this.host;
@@ -1189,13 +1199,87 @@ class Brain {
             h.intent.move = { x: n.x, z: n.z };
         }
     }
-    thinkWild(world) {
+    thinkWild(world, dt) {
         const h = this.host;
-        if (this.role === "passive") return;
-        const aggroRange = h.aggroRange ?? 140;
+        if (this.role === "passive") {
+            this.thinkPassiveWild(world, h, dt);
+            return;
+        }
+        const aggroRange = this.getWildAggroRange(h);
         const target = this.pickWildTarget(world, h, aggroRange);
-        if (!target) return;
-        this.fightTarget(world, h, target, h.wildProfile?.pursuitRange ?? null);
+        if (!target) {
+            this.moveTowardAnchor(h, h.spawnAnchor ?? h.pos, this.getWildAnchorTolerance(h));
+            return;
+        }
+        this.fightTarget(world, h, target, this.getWildPursuitRange(h));
+    }
+    getWildAggroRange(h) {
+        const base = h.aggroRange ?? 140;
+        const commitment = h.wildProfile?.commitment ?? 1;
+        return base * commitment;
+    }
+    getWildPursuitRange(h) {
+        const base = h.wildProfile?.pursuitRange ?? null;
+        if (base == null) return null;
+        const commitment = h.wildProfile?.commitment ?? 1;
+        return base * commitment;
+    }
+    getWildAnchorTolerance(h) {
+        const timidness = h.wildProfile?.timidness ?? 1;
+        return clamp(10 * timidness, 6, 18);
+    }
+    thinkPassiveWild(world, h, dt) {
+        const danger = this.findPassiveThreat(world, h);
+        if (danger) {
+            this.fleeFromThreat(h, danger);
+            return;
+        }
+        this.wanderNearAnchor(world, h, dt);
+    }
+    findPassiveThreat(world, h) {
+        const timidness = h.wildProfile?.timidness ?? 1;
+        const detectionRadius = 75 + 22 * timidness;
+        let best = null;
+        let bestDist = detectionRadius;
+        const candidates = [world.player, ...world.creatures];
+        for (const other of candidates) {
+            if (!other || other.id === h.id) continue;
+            if (other.lifecycle && other.lifecycle !== "alive") continue;
+            if (other.team != null && other.team === h.team) continue;
+            const d = dist(h.pos.x, h.pos.z, other.pos.x, other.pos.z);
+            if (d < bestDist) {
+                best = other;
+                bestDist = d;
+            }
+        }
+        return best;
+    }
+    fleeFromThreat(h, threat) {
+        const away = norm2D(h.pos.x - threat.pos.x, h.pos.z - threat.pos.z);
+        const anchor = h.spawnAnchor ?? h.pos;
+        const anchorPull = norm2D(anchor.x - h.pos.x, anchor.z - h.pos.z);
+        const flee = norm2D(away.x * 0.8 + anchorPull.x * 0.2, away.z * 0.8 + anchorPull.z * 0.2);
+        h.intent.move = { x: flee.x, z: flee.z };
+    }
+    wanderNearAnchor(world, h, dt) {
+        const anchor = h.spawnAnchor ?? h.pos;
+        const timidness = h.wildProfile?.timidness ?? 1;
+        if (h.nextHarvestAt > 0 && h.nextHarvestAt > world.time) {
+            this.moveTowardAnchor(h, anchor, 7);
+            return;
+        }
+        const roamRadius = 24 + timidness * 22;
+        const dFromAnchor = dist(h.pos.x, h.pos.z, anchor.x, anchor.z);
+        if (dFromAnchor > roamRadius) {
+            this.moveTowardAnchor(h, anchor, 5);
+            return;
+        }
+        this.passiveWanderTimer -= Math.max(0, dt ?? 0);
+        if (this.passiveWanderTimer <= 0) {
+            this.passiveWanderTimer = 0.6 + Math.random() * 1.3;
+            this.passiveWanderAngle += (Math.random() - 0.5) * 1.8;
+        }
+        h.intent.move = { x: Math.cos(this.passiveWanderAngle), z: Math.sin(this.passiveWanderAngle) };
     }
     pickWildTarget(world, h, aggroRange) {
         const nearPlayerBias = h.wildProfile?.targetNearPlayerBias ?? 0;
@@ -1840,6 +1924,8 @@ class SpawnField {
                 targetNearPlayerBias: 0.55,
                 statMult: { maxHP: 0.86, pAtk: 0.9, eAtk: 0.9, spd: 1.05 },
                 sizeMult: 0.85,
+                timidness: 1.35,
+                commitment: 0.75,
                 nearbyRadius: 34,
             };
         }
@@ -1853,6 +1939,8 @@ class SpawnField {
                 targetNearPlayerBias: 0,
                 statMult: { maxHP: 1.35, pAtk: 1.22, eAtk: 1.22, spd: 0.94 },
                 sizeMult: 1.26,
+                timidness: 0.82,
+                commitment: 1.28,
                 nearbyRadius: 90,
             };
         }
@@ -1865,6 +1953,8 @@ class SpawnField {
             targetNearPlayerBias: 0,
             statMult: null,
             sizeMult: 1,
+            timidness: 1,
+            commitment: 1,
             nearbyRadius: 40,
         };
     }
@@ -1917,6 +2007,8 @@ class SpawnField {
                     targetNearPlayerBias: cfg.targetNearPlayerBias,
                     statMult: cfg.statMult,
                     sizeMult: cfg.sizeMult,
+                    timidness: cfg.timidness,
+                    commitment: cfg.commitment,
                 },
                 spawnAnchor: { x: sp.x, z: sp.z },
             });
@@ -2142,6 +2234,7 @@ class World {
         this.width = 1600;
         this.height = 1100;
         this.time = 0;
+        this.lastDt = 1 / 60;
         this.camera = new Camera();
         this.chunks = new Map();
         this.player = new PlayerEntity(this.width / 2, this.height / 2);
@@ -2408,12 +2501,13 @@ class World {
     }
     update(dt, input) {
         this.time += dt;
+        this.lastDt = dt;
         this.player.update(dt, input, this);
         this.normalizeReserveSelection();
         ChunkSystem.updateLoadedChunks(this);
         this.spawnField.update(dt, this);
         for (const node of this.nodes) node.update(dt);
-        for (const c of this.creatures) if (c.brain) c.brain.think(this);
+        for (const c of this.creatures) if (c.brain) c.brain.think(this, dt);
         for (const c of this.creatures) c.tick(dt, this);
         this.resolveSimpleSeparation();
         this.BS.update(dt, input);
@@ -3123,6 +3217,24 @@ class CombatManager {
         for (const key of keys) total += map[key] ?? 1;
         return total / Math.max(1, keys.length);
     }
+    pickDamageProfileTypes(profileTypes, fallbackKey) {
+        if (Array.isArray(profileTypes) && profileTypes.length > 0) return profileTypes;
+        return [fallbackKey];
+    }
+    getDamageParts(source, abilityDef) {
+        return {
+            physical: (abilityDef?.flatDmg?.p ?? 0) + (abilityDef?.dmgScale?.p ?? 0) * source.modifiedStats.pAtk,
+            energy: (abilityDef?.flatDmg?.e ?? 0) + (abilityDef?.dmgScale?.e ?? 0) * source.modifiedStats.eAtk,
+        };
+    }
+    getDamageTypeFallbacks(damageParts) {
+        const hasPhysical = damageParts.physical > 0;
+        const hasEnergy = damageParts.energy > 0;
+        return {
+            physical: hasPhysical ? "impact" : "pierce",
+            energy: hasEnergy ? "electric" : "heat",
+        };
+    }
     isCreatureEngaged(creature) {
         for (const other of this.world.creatures) {
             if (other.id === creature.id || other.lifecycle !== "alive" || other.team === creature.team) continue;
@@ -3313,10 +3425,14 @@ class CombatManager {
         const composite = composites[target.compositeKey] ?? composites.animal;
         const resistances = composite.resistances ?? DEFAULT_RESISTANCES;
         const profile = abilityDef?.damageProfile ?? {};
-        const physicalPart = (abilityDef.flatDmg?.p ?? 0) + (abilityDef.dmgScale?.p ?? 0) * source.modifiedStats.pAtk;
-        const energyPart = (abilityDef.flatDmg?.e ?? 0) + (abilityDef.dmgScale?.e ?? 0) * source.modifiedStats.eAtk;
-        const physicalMod = this.resolveResistance(resistances.physical, profile.physical, "impact");
-        const energyMod = this.resolveResistance(resistances.energy, profile.energy, "electric");
+        const damageParts = this.getDamageParts(source, abilityDef);
+        const fallback = this.getDamageTypeFallbacks(damageParts);
+        const physicalTypes = this.pickDamageProfileTypes(profile.physical, fallback.physical);
+        const energyTypes = this.pickDamageProfileTypes(profile.energy, fallback.energy);
+        const physicalMod = this.resolveResistance(resistances.physical, physicalTypes, fallback.physical);
+        const energyMod = this.resolveResistance(resistances.energy, energyTypes, fallback.energy);
+        const physicalPart = damageParts.physical;
+        const energyPart = damageParts.energy;
         const scaled = (physicalPart * physicalMod + energyPart * energyMod) * effBonus;
         // Keep a minimum 1 damage floor so very low scaling attacks still provide gameplay feedback.
         const atkScaled = (scaled || dmg) * (source.runtimeAtkMult ?? 1);
