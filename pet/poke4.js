@@ -1979,18 +1979,18 @@ class PlayerEntity {
         if (input.consumePress("KeyS")) world.CM.queueManualCast(1);
         if (input.consumePress("KeyD")) world.CM.queueManualCast(2);
         if (input.consumePress("KeyF")) world.CM.queueManualCast(3);
-        if (input.consumePress("KeyG")) world.PIS.tryInteractNearestNode();
+        const contextWorldPos = world.camera.screenToWorld(input.mouse.x, input.mouse.y);
+        if (input.consumePress("KeyG")) world.PIS.tryContextAction(contextWorldPos, { allowBuildAtCursor: true });
         if (input.consumePress("KeyY")) world.BS.cycleSelectedTool(1);
         if (input.consumePress("KeyR")) world.BS.cycleToolMode(1);
         if (input.consumePress("KeyB")) world.BS.cycleBuildType(1);
-        if (input.consumePress("KeyH")) world.BS.tryHarvestNearestFarm();
         if (input.consumePress("KeyJ")) world.cycleActiveMorphOption(-1);
         if (input.consumePress("KeyK")) world.cycleActiveMorphOption(1);
         if (input.consumePress("KeyP")) world.tryMorphActivePetSelectedOption();
         if (input.consumePress("BracketLeft")) this.selectedReserveIndex = Math.max(0, this.selectedReserveIndex - 1);
         if (input.consumePress("BracketRight")) this.selectedReserveIndex += 1;
         if (input.consumePress("KeyT")) world.PIS.swapActiveWithReserve(this.selectedReserveIndex);
-        const worldPos = world.camera.screenToWorld(input.mouse.x, input.mouse.y);
+        const worldPos = contextWorldPos;
         if (input.consumeMouseLeftPress()) {
             const target = world.findNearestEnemyToPoint(worldPos.x, worldPos.z, 32);
             if (target) {
@@ -2000,12 +2000,8 @@ class PlayerEntity {
             }
         }
         if (input.consumeMouseRightPress()) {
-            if (this.selectedToolKey === "hammer" && this.toolMode === "build") {
-                world.BS.tryPlaceSelectedAt(worldPos.x, worldPos.z);
-            } else if (this.selectedToolKey === "hammer" && this.toolMode === "destroy") {
-                world.BS.tryStartDestroyNearest();
-            } else if (this.selectedToolKey === "gather_tool") {
-                world.BS.tryStartGatherNearestObstacle();
+            if (this.selectedToolKey === "hammer" || this.selectedToolKey === "gather_tool") {
+                world.PIS.tryContextAction(worldPos, { allowBuildAtCursor: true });
             } else {
                 world.PIS.commandPets(this.targetPetIds, { type: "move", point: worldPos, issuedAt: world.time });
                 this.commandTargetId = null;
@@ -2878,6 +2874,23 @@ class PlayerInteractionSystem {
         this.world.awardMorphPointsToOwned(owned.ownedId, 2, "capture");
         return true;
     }
+    tryContextAction(worldPos = null, opts = {}) {
+        const allowBuildAtCursor = opts.allowBuildAtCursor ?? false;
+        const cursor = worldPos ?? this.player.pos;
+        if (this.tryHarvestNearestCreature()) return true;
+        if (this.tryInteractNearestNode(false, true)) return true;
+        if (this.world.BS.tryStartGatherNearestObstacle(true)) return true;
+        if (this.world.BS.tryHarvestNearestFarm(true)) return true;
+        if (this.player.selectedToolKey === "hammer") {
+            if (this.player.toolMode === "destroy") {
+                if (this.world.BS.tryStartDestroyNearest(true)) return true;
+            } else if (this.player.toolMode === "build" && allowBuildAtCursor) {
+                if (this.world.BS.tryPlaceSelectedAt(cursor.x, cursor.z, true)) return true;
+            }
+        }
+        this.player.lastLog = "No context action available";
+        return false;
+    }
     swapActiveWithReserve(reserveIndex) {
         const reserveOwnedId = this.player.reserveOwnedIds[reserveIndex];
         if (reserveOwnedId == null) return false;
@@ -2891,8 +2904,8 @@ class PlayerInteractionSystem {
         this.player.lastLog = `Swapped in ${reserveData?.speciesKey ?? "pet"}`;
         return true;
     }
-    tryInteractNearestNode() {
-        if (this.tryHarvestNearestCreature()) return true;
+    tryInteractNearestNode(includeCreatureHarvest = true, silent = false) {
+        if (includeCreatureHarvest && this.tryHarvestNearestCreature()) return true;
         let best = null;
         let bestD = Infinity;
         for (const n of this.world.nodes) {
@@ -2904,7 +2917,7 @@ class PlayerInteractionSystem {
             }
         }
         if (!best) {
-            this.player.lastLog = "No node nearby";
+            if (!silent) this.player.lastLog = "No node nearby";
             return false;
         }
         const def = nodeDefs[best.type];
@@ -3446,17 +3459,17 @@ class BuildSystem {
         }
         return { ok: true, reason: "ok" };
     }
-    tryPlaceSelectedAt(x, z) {
+    tryPlaceSelectedAt(x, z, silent = false) {
         if (!this.isHammerActionAllowed("build")) return false;
         const buildKey = this.world.player.selectedBuildKey;
         const check = this.canPlaceAt(buildKey, x, z);
         if (!check.ok) {
-            this.world.player.lastLog = `Cannot place: ${check.reason}`;
+            if (!silent) this.world.player.lastLog = `Cannot place: ${check.reason}`;
             return false;
         }
         const def = this.getBuildDef(buildKey);
         if (!this.consumeBuildCost(def.buildCost ?? [])) {
-            this.world.player.lastLog = "Cannot place: Missing materials";
+            if (!silent) this.world.player.lastLog = "Cannot place: Missing materials";
             return false;
         }
         const record = this.createBuildRecord(buildKey, x, z);
@@ -3476,12 +3489,12 @@ class BuildSystem {
         }
         return best;
     }
-    tryStartDestroyNearest() {
+    tryStartDestroyNearest(silent = false) {
         if (!this.isHammerActionAllowed("destroy")) return false;
         const player = this.world.player;
         const nearest = this.findNearestBuildableInRange(player.pos.x, player.pos.z, this.getToolRange());
         if (!nearest) {
-            player.lastLog = "No buildable in range";
+            if (!silent) player.lastLog = "No buildable in range";
             return false;
         }
         this.destroyAction = { targetId: nearest.id, progress: 0 };
@@ -3536,13 +3549,13 @@ class BuildSystem {
         }
         return best;
     }
-    tryStartGatherNearestObstacle() {
+    tryStartGatherNearestObstacle(silent = false) {
         const player = this.world.player;
         const tool = toolDefs[player.selectedToolKey];
         if (!tool?.canGather) return false;
         const target = this.findNearestObstacleInRange(player.pos.x, player.pos.z, this.getToolRange());
         if (!target) {
-            player.lastLog = "No obstacle to gather";
+            if (!silent) player.lastLog = "No obstacle to gather";
             return false;
         }
         this.gatherAction = { chunkKey: target.chunkKey, obstacleId: target.id, progress: 0 };
@@ -3587,7 +3600,7 @@ class BuildSystem {
         player.lastLog = `Gathered ${obstacle.type}`;
         this.gatherAction = null;
     }
-    tryHarvestNearestFarm() {
+    tryHarvestNearestFarm(silent = false) {
         const player = this.world.player;
         const nearest = this.findNearestBuildableInRange(
             player.pos.x,
@@ -3596,7 +3609,7 @@ class BuildSystem {
             (b) => b.kind === "farm" && b.farmState === "mature"
         );
         if (!nearest) {
-            player.lastLog = "No mature farm in range";
+            if (!silent) player.lastLog = "No mature farm in range";
             return false;
         }
         this.harvestAction = { targetId: nearest.id, progress: 0 };
