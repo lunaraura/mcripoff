@@ -6,6 +6,13 @@ local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
 local PlayerDataService = {}
 PlayerDataService.__index = PlayerDataService
 
+local ALLOWED_STARTERS = {
+	dog = true,
+	sparkit = true,
+	cinderpup = true,
+	pebblit = true,
+}
+
 function PlayerDataService.new()
 	return setmetatable({ dataByUserId = {} }, PlayerDataService)
 end
@@ -20,18 +27,8 @@ function PlayerDataService:getOrCreate(player)
 		materials = { fiber = 0, stone = 0, meat = 0, battery_seed = 0 },
 		morphPoints = 0,
 		selectedPetSlot = 1,
+		starterChosen = false,
 	}
-	local starterA = self:createOwnedCreature("dog")
-	local starterB = self:createOwnedCreature("sparko")
-	local reserveA = self:createOwnedCreature("boarox")
-	local reserveB = self:createOwnedCreature("sheeplet")
-	data.ownedCreatures[starterA.ownedId] = starterA
-	data.ownedCreatures[starterB.ownedId] = starterB
-	data.ownedCreatures[reserveA.ownedId] = reserveA
-	data.ownedCreatures[reserveB.ownedId] = reserveB
-	data.partySlots[1] = starterA.ownedId
-	data.partySlots[2] = starterB.ownedId
-	data.reserve = { reserveA.ownedId, reserveB.ownedId }
 	self.dataByUserId[player.UserId] = data
 	return data
 end
@@ -59,6 +56,36 @@ function PlayerDataService:getPartyOwned(player, slot)
 	local ownedId = data.partySlots[slot]
 	if not ownedId then return nil end
 	return data.ownedCreatures[ownedId]
+end
+
+function PlayerDataService:hasAnyOwned(player)
+	local data = self:getOrCreate(player)
+	for _, owned in pairs(data.ownedCreatures) do
+		if owned then return true end
+	end
+	return false
+end
+
+function PlayerDataService:canChooseStarter(player)
+	local data = self:getOrCreate(player)
+	if data.starterChosen then return false, "starter already chosen" end
+	if self:hasAnyOwned(player) then return false, "owned creatures already exist" end
+	return true, "ok"
+end
+
+function PlayerDataService:chooseStarter(player, speciesKey)
+	local ok, reason = self:canChooseStarter(player)
+	if not ok then return false, reason end
+	if not ALLOWED_STARTERS[speciesKey] then
+		return false, "invalid starter choice"
+	end
+	local data = self:getOrCreate(player)
+	local starter = self:createOwnedCreature(speciesKey)
+	data.ownedCreatures[starter.ownedId] = starter
+	data.partySlots[1] = starter.ownedId
+	data.partySlots[2] = nil
+	data.starterChosen = true
+	return true, starter
 end
 
 function PlayerDataService:swapPartyWithReserve(player, partySlot, reserveIndex)

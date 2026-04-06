@@ -32,4 +32,14 @@ function CommandController:cast(abilityKey, targetId)
 	})
 end
 
+function CommandController:getTargetIdUnderMouse()
+	local target = self.mouse and self.mouse.Target
+	if not target then return nil end
+	local model = target:FindFirstAncestorOfClass("Model")
+	if not model then return nil end
+	local id = string.match(model.Name, "^C_(%d+)_")
+	if not id then return nil end
+	return tonumber(id)
+end
+
 return CommandController

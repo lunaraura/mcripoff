@@ -23,6 +23,7 @@ local remotes = {
 	RequestPetCommand = ensureRemote("RequestPetCommand"),
 	RequestContextAction = ensureRemote("RequestContextAction"),
 	RequestManualCast = ensureRemote("RequestManualCast"),
+	RequestStarterChoice = ensureRemote("RequestStarterChoice"),
 	FloatingTextEvent = ensureRemote("FloatingTextEvent"),
 }
 
@@ -54,8 +55,16 @@ Players.PlayerAdded:Connect(function(player)
 	playerDataService:getOrCreate(player)
 	player.CharacterAdded:Connect(function()
 		task.wait(0.3)
-		creatureService:spawnPartyPetsForPlayer(player)
+		creatureService:HydrateParty(player)
 	end)
+end)
+
+remotes.RequestStarterChoice.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	local speciesKey = payload.speciesKey
+	local ok = playerDataService:chooseStarter(player, speciesKey)
+	if not ok then return end
+	creatureService:HydrateParty(player)
 end)
 
 remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
