@@ -107,9 +107,13 @@ end
 local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount)
 	if not part then return end
 	part:SetAttribute("NodeType", nodeType)
+	part:SetAttribute("CollisionCategory", "node")
 	part:SetAttribute("Durability", durability or 3)
+	part:SetAttribute("MaxDurability", durability or 3)
 	part:SetAttribute("DropKey", dropKey or "stone")
 	part:SetAttribute("DropAmount", dropAmount or 1)
+	part:SetAttribute("NodeVisualPart", true)
+	part:SetAttribute("RestoreCanCollide", part.CanCollide and true or false)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Gather"
 	prompt.ObjectText = nodeType
@@ -126,6 +130,8 @@ local function build_pine(x, yTop, z, r)
 	local trunk = mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(90, 70, 50), nodesFolder)
 	local leaves = mkBall(x, yTop + h * 0.8, z, r:NextNumber(3.5, 4.8), Color3.fromRGB(40, 100, 60), nil, trunk)
 	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
 	return { trunk }
 end
 
@@ -135,6 +141,8 @@ local function build_oak(x, yTop, z, r)
 	local trunk = mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(110, 85, 60), nodesFolder)
 	local leaves = mkBall(x, yTop + h, z, r:NextNumber(4.8, 6.2), Color3.fromRGB(70, 120, 60), nil, trunk)
 	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
 	return { trunk }
 end
 
@@ -144,6 +152,8 @@ local function build_birch(x, yTop, z, r)
 	trunk.Material = Enum.Material.Sand
 	local leaves = mkBall(x, yTop + h, z, r:NextNumber(4.2, 5.4), Color3.fromRGB(90, 160, 90), nil, trunk)
 	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
 	return { trunk }
 end
 
@@ -152,6 +162,8 @@ local function build_palm(x, yTop, z, r)
 	local trunk = mkTrunk(x, yTop, z, h, 0.7, Color3.fromRGB(140, 110, 80), nodesFolder)
 	local leaves = mkBall(x, yTop + h, z, r:NextNumber(3.8, 5.0), Color3.fromRGB(60, 110, 80), nil, trunk)
 	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
 	return { trunk }
 end
 
@@ -160,6 +172,8 @@ local function build_cypress(x, yTop, z, r)
 	local trunk = mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(70, 60, 50), nodesFolder)
 	local leaves = mkBall(x, yTop + h * 0.9, z, r:NextNumber(3.8, 4.8), Color3.fromRGB(50, 90, 60), nil, trunk)
 	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
 	return { trunk }
 end
 
@@ -176,14 +190,14 @@ local BUILDERS = {
 }
 
 local BIOME_OBSTACLES = {
-	plains = { rocks = 6, ore = 1, crystal = 0 },
-	forest = { rocks = 5, ore = 1, crystal = 1 },
-	ocean = { rocks = 3, ore = 0, crystal = 2 },
-	desert = { rocks = 7, ore = 2, crystal = 0 },
-	stormfield = { rocks = 6, ore = 2, crystal = 2 },
-	volcanic = { rocks = 8, ore = 4, crystal = 1 },
-	tundra = { rocks = 6, ore = 1, crystal = 2 },
-	polar = { rocks = 5, ore = 1, crystal = 3 },
+	plains = { rocks = 6, ore = 1, crystal = 0, density = 1.0, regenMult = 1.0 },
+	forest = { rocks = 5, ore = 1, crystal = 1, density = 1.1, regenMult = 0.9 },
+	ocean = { rocks = 3, ore = 0, crystal = 2, density = 0.8, regenMult = 1.0 },
+	desert = { rocks = 7, ore = 2, crystal = 0, density = 0.95, regenMult = 1.15 },
+	stormfield = { rocks = 6, ore = 2, crystal = 2, density = 1.0, regenMult = 1.0 },
+	volcanic = { rocks = 8, ore = 4, crystal = 1, density = 1.15, regenMult = 1.2 },
+	tundra = { rocks = 6, ore = 1, crystal = 2, density = 0.9, regenMult = 1.05 },
+	polar = { rocks = 5, ore = 1, crystal = 3, density = 0.85, regenMult = 1.1 },
 }
 
 function FloraSystem.scatterChunk(chunk)
@@ -196,6 +210,8 @@ function FloraSystem.scatterChunk(chunk)
 	local shrubs = math.floor(spec.base * 1.2)
 	local bushes = math.max(1, math.floor(spec.base * 0.35))
 	local obstacleSpec = BIOME_OBSTACLES[dominant] or BIOME_OBSTACLES.plains
+	local density = obstacleSpec.density or 1
+	local regenMult = obstacleSpec.regenMult or 1
 	local placed = {}
 	local function farEnough(x, z, min2)
 		for _, p in ipairs(placed) do
@@ -218,51 +234,59 @@ function FloraSystem.scatterChunk(chunk)
 							if inst.Name == "Part" and inst.Material == Enum.Material.Wood then
 								inst.Name = "TreeNode"
 								attachHarvestNode(inst, "Tree", 4, "wood", 2)
-							end
+								inst:SetAttribute("NodeRegenSeconds", math.floor(22 * regenMult + 0.5))
+								end
 						end
 					table.insert(placed, { x = x, z = z })
 				end
 			end
 		end
 	end
-	for _ = 1, obstacleSpec.rocks do
+	local rockCount = math.max(1, math.floor((obstacleSpec.rocks or 0) * density + 0.5))
+	local oreCount = math.max(0, math.floor((obstacleSpec.ore or 0) * density + 0.5))
+	local crystalCount = math.max(0, math.floor((obstacleSpec.crystal or 0) * density + 0.5))
+
+	for _ = 1, rockCount do
 		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
 		if cell and (not cell.water) then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 6 * 6) then
-				local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock, nodesFolder)
-				rock.Name = "RockObstacle"
-				attachHarvestNode(rock, "Rock", 3, "stone", 2)
-				addRef(chunk.key, rock)
+					local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock, nodesFolder)
+					rock.Name = "RockObstacle"
+					attachHarvestNode(rock, "Rock", 3, "stone", 2)
+					rock:SetAttribute("NodeRegenSeconds", math.floor(28 * regenMult + 0.5))
+					addRef(chunk.key, rock)
 				table.insert(placed, { x = x, z = z })
 			end
 		end
 	end
-	for _ = 1, obstacleSpec.ore do
+	for _ = 1, oreCount do
 		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
 		if cell and (not cell.water) then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 7 * 7) then
-				local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate, nodesFolder)
-				ore.Name = "OreNode"
-				attachHarvestNode(ore, "Ore", 4, "stone", 3)
-				addRef(chunk.key, ore)
+					local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate, nodesFolder)
+					ore.Name = "OreNode"
+					attachHarvestNode(ore, "Ore", 4, "stone", 3)
+					ore:SetAttribute("NodeRegenSeconds", math.floor(34 * regenMult + 0.5))
+					addRef(chunk.key, ore)
 				table.insert(placed, { x = x, z = z })
 			end
 		end
 	end
-	for _ = 1, obstacleSpec.crystal do
+	for _ = 1, crystalCount do
 		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
 		if cell and (not cell.water) then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 8 * 8) then
-				local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass, nodesFolder)
-				crystal.Name = "CrystalNode"
-				attachHarvestNode(crystal, "Crystal", 5, "battery_seed", 2)
-				addRef(chunk.key, crystal)
+					local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass, nodesFolder)
+					crystal.Name = "CrystalNode"
+					attachHarvestNode(crystal, "Crystal", 5, "battery_seed", 2)
+					crystal:SetAttribute("NodeRegenSeconds", math.floor(42 * regenMult + 0.5))
+					addRef(chunk.key, crystal)
 				table.insert(placed, { x = x, z = z })
 			end
 		end

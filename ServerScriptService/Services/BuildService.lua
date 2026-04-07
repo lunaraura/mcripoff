@@ -1,4 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local BuildableConfig = require(Config:WaitForChild("BuildableConfig"))
@@ -52,9 +53,36 @@ function BuildService:createBuildModel(build)
 		part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad(build.rotationY or 0), 0)
 	end
 	part.Name = string.format("Build_%s_%d", build.key, build.id)
+	part:SetAttribute("CollisionCategory", "buildable")
+	part:SetAttribute("BuildableKey", build.key)
+	part:SetAttribute("BuildableId", build.id)
 	part.Parent = parentFolder
 	build.model = part
 	return part
+end
+
+function BuildService:getFootprintCFrame(pos, rotationY)
+	return CFrame.new(pos) * CFrame.Angles(0, math.rad(rotationY or 0), 0)
+end
+
+function BuildService:getBlockingPartsAt(cframe, size)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local parts = Workspace:GetPartBoundsInBox(cframe, size, params)
+	local blocking = {}
+	for _, part in ipairs(parts) do
+		if part and part.Parent and part.CanCollide then
+			local category = part:GetAttribute("CollisionCategory")
+			local inNodes = part:FindFirstAncestor("Nodes") ~= nil
+			local inCreatureModels = part:FindFirstAncestor("CreatureModels") ~= nil
+			local inBuildables = part:FindFirstAncestor("Buildables") ~= nil
+			local isHarmlessVisual = (part:GetAttribute("NodeVisualPart") and (not part.CanCollide)) or (part.Transparency >= 0.95)
+			if (not isHarmlessVisual) and (category == "buildable" or category == "node" or category == "obstacle" or inNodes or inCreatureModels or inBuildables) then
+				table.insert(blocking, part)
+			end
+		end
+	end
+	return blocking
 end
 
 function BuildService:getBuildFootprintSize(buildKey)
@@ -115,7 +143,7 @@ function BuildService:isTerrainAllowed(buildKey, pos)
 	return false, "invalid terrain class"
 end
 
-function BuildService:isValidBuildPlacement(player, buildKey, pos)
+function BuildService:isValidBuildPlacement(player, buildKey, pos, rotationY)
 	local rules = self:getPlacementRules(buildKey)
 	local root = player.Character and player.Character.PrimaryPart
 	if not root then return false, "no character" end
@@ -128,15 +156,20 @@ function BuildService:isValidBuildPlacement(player, buildKey, pos)
 		return false, terrainReason
 	end
 	local size = self:getBuildFootprintSize(buildKey)
-	local overlapBuild = false
-	for _, b in pairs(self.buildables) do
-		local d = (Vector3.new(b.pos.X, 0, b.pos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
-		if d < math.max(rules.collisionRadius, math.max(size.X, size.Z) * 0.5) then
-			overlapBuild = true
-			break
+	local cframe = self:getFootprintCFrame(pos, rotationY)
+	local blocking = self:getBlockingPartsAt(cframe, size)
+	for _, part in ipairs(blocking) do
+		local category = part:GetAttribute("CollisionCategory")
+		if category == "buildable" or part:FindFirstAncestor("Buildables") then
+			return false, "overlaps existing build"
+		end
+		if category == "node" or category == "obstacle" or part:FindFirstAncestor("Nodes") then
+			return false, "overlaps obstacle/node"
+		end
+		if part:FindFirstAncestor("CreatureModels") then
+			return false, "overlaps creature"
 		end
 	end
-	if overlapBuild then return false, "overlaps existing build" end
 	for _, c in ipairs(self.worldService.creatures) do
 		if c.alive then
 			local d = (Vector3.new(c.pos.X, 0, c.pos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
@@ -206,7 +239,7 @@ function BuildService:tryBuild(player, payload)
 			math.floor(desiredPos.Z / 4 + 0.5) * 4
 		)
 	end
-	local okPlacement, placementReason = self:isValidBuildPlacement(player, buildKey, placementPos)
+	local okPlacement, placementReason = self:isValidBuildPlacement(player, buildKey, placementPos, rotationY)
 	if not okPlacement then
 		return false, placementReason
 	end

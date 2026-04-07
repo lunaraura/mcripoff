@@ -89,6 +89,9 @@ end
 
 function HarvestService:tryHarvestNodeInstance(player, node)
 	if not node or not node.Parent then return false, "missing node" end
+	if node:GetAttribute("Depleted") then
+		return false, "depleted node"
+	end
 	local durability = math.max(0, tonumber(node:GetAttribute("Durability")) or 1)
 	if durability <= 0 then return false, "depleted node" end
 	durability -= 1
@@ -101,7 +104,7 @@ function HarvestService:tryHarvestNodeInstance(player, node)
 	local dropAmount = math.max(1, math.floor(tonumber(node:GetAttribute("DropAmount")) or 1))
 	local granted = self.inventoryService:grant(player, { { key = dropKey, amount = dropAmount } })
 	self.worldService:pushEventLog(player, string.format("Harvested %s node", tostring(node:GetAttribute("NodeType") or "resource")), "#d7fcb7")
-	node:Destroy()
+	self:depleteNode(node)
 	return true, granted
 end
 
@@ -150,8 +153,55 @@ function HarvestService:tryUseDemolishHarvestTool(player, payload)
 	local dropAmount = math.max(1, math.floor(tonumber(best:GetAttribute("DropAmount")) or 1))
 	local granted = self.inventoryService:grant(player, { { key = dropKey, amount = dropAmount } })
 	self.worldService:pushEventLog(player, string.format("Tool harvested %s", tostring(best:GetAttribute("NodeType") or "node")), "#d7fcb7")
-	best:Destroy()
+	self:depleteNode(best)
 	return true, granted
+end
+
+function HarvestService:setNodeVisualActive(node, active)
+	local list = { node }
+	for _, d in ipairs(node:GetDescendants()) do
+		if d:IsA("BasePart") then
+			table.insert(list, d)
+		end
+	end
+	for _, p in ipairs(list) do
+		if p:IsA("BasePart") and p:GetAttribute("NodeVisualPart") then
+			p.Transparency = active and 0 or 1
+			local restoreCanCollide = p:GetAttribute("RestoreCanCollide")
+			if active then
+				p.CanCollide = restoreCanCollide == true
+			else
+				p.CanCollide = false
+			end
+		end
+	end
+	local prompt = node:FindFirstChildOfClass("ProximityPrompt")
+	if prompt then
+		prompt.Enabled = active
+	end
+end
+
+function HarvestService:depleteNode(node)
+	local regen = math.max(3, math.floor(tonumber(node:GetAttribute("NodeRegenSeconds")) or 20))
+	node:SetAttribute("Depleted", true)
+	node:SetAttribute("DepletedUntil", self.worldService.time + regen)
+	node:SetAttribute("Durability", 0)
+	self:setNodeVisualActive(node, false)
+end
+
+function HarvestService:tickNodeRegrowth()
+	for _, node in ipairs(CollectionService:GetTagged("HarvestNode")) do
+		if node:IsA("BasePart") and node.Parent and node:GetAttribute("Depleted") then
+			local untilT = tonumber(node:GetAttribute("DepletedUntil")) or 0
+			if self.worldService.time >= untilT then
+				local maxDur = math.max(1, math.floor(tonumber(node:GetAttribute("MaxDurability")) or 1))
+				node:SetAttribute("Depleted", false)
+				node:SetAttribute("Durability", maxDur)
+				node:SetAttribute("DepletedUntil", 0)
+				self:setNodeVisualActive(node, true)
+			end
+		end
+	end
 end
 
 function HarvestService:tryUseBerryPlanterTool(player, payload)
