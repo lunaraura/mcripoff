@@ -26,6 +26,9 @@ function UIController.new(buildController, itemController)
 			PetHoldDefenseRange = 30,
 		},
 		maxLogLines = 6,
+		activeSlot = 1,
+		controlMode = "AUTO",
+		stance = "FOLLOW",
 	}, UIController)
 end
 
@@ -41,6 +44,10 @@ function UIController:bind()
 		self:appendLog(payload.text, payload.color)
 	end)
 	self.petHudUpdate.OnClientEvent:Connect(function(payload)
+		local meta = payload and payload.meta or {}
+		self.activeSlot = tonumber(meta.activeSlot) or self.activeSlot
+		self.controlMode = tostring(meta.controlMode or self.controlMode)
+		self.stance = tostring(meta.stance or self.stance)
 		self:updatePetHud(payload)
 	end)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -77,6 +84,7 @@ function UIController:buildUi()
 	title.Size = UDim2.new(1, -12, 0, 24)
 	title.Position = UDim2.fromOffset(8, 4)
 	title.Parent = root
+	self.titleLabel = title
 
 	for i = 1, 2 do
 		local petCard = Instance.new("TextLabel")
@@ -422,9 +430,17 @@ end
 
 function UIController:updatePetHud(payload)
 	local pets = payload and payload.pets or {}
+	if self.titleLabel then
+		self.titleLabel.Text = string.format("Pet HUD (Debug)  Active:%d  Mode:%s  Stance:%s", self.activeSlot or 1, self.controlMode or "AUTO", self.stance or "FOLLOW")
+	end
 	for i = 1, 2 do
 		local label = self.hudLabels[i]
 		if label then
+			if i == (self.activeSlot or 1) then
+				label.BackgroundColor3 = Color3.fromRGB(52, 62, 90)
+			else
+				label.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+			end
 			local pet = pets[i]
 			if not pet then
 				label.Text = string.format("Slot %d: (empty)", i)

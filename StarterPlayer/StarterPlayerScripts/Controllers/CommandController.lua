@@ -24,6 +24,20 @@ function CommandController:sendCommand(command)
 	})
 end
 
+function CommandController:setActiveSlot(slot)
+	self.requestPetCommand:FireServer({
+		slot = slot,
+		command = { type = "setActive" },
+	})
+end
+
+function CommandController:setControlMode(mode)
+	self.requestPetCommand:FireServer({
+		slot = self.partyController.selectedSlot,
+		command = { type = "setControlMode", mode = mode },
+	})
+end
+
 function CommandController:cast(abilityKey, targetId)
 	self.requestManualCast:FireServer({
 		slot = self.partyController.selectedSlot,

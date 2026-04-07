@@ -67,6 +67,9 @@ Players.PlayerAdded:Connect(function(player)
 	player:SetAttribute("RadiusChunks", 2)
 	player:SetAttribute("PetLeashDistance", 90)
 	player:SetAttribute("PetHoldDefenseRange", 30)
+	player:SetAttribute("ActivePetSlot", 1)
+	player:SetAttribute("PetControlMode", "AUTO")
+	player:SetAttribute("PetStance", "FOLLOW")
 	player.CharacterAdded:Connect(function()
 		task.wait(0.3)
 		creatureService:HydrateParty(player)
@@ -99,6 +102,12 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 		if t == "follow" or t == "hold" or t == "attackNearest" then
 			return { type = t, issuedAt = worldService.time }
 		end
+		if t == "setActive" then
+			return { type = "setActive" }
+		end
+		if t == "setControlMode" and (input.mode == "AUTO" or input.mode == "MANUAL") then
+			return { type = "setControlMode", mode = input.mode }
+		end
 		if t == "move" and typeof(input.point) == "Vector3" then
 			return { type = "move", point = input.point, issuedAt = worldService.time }
 		end
@@ -124,10 +133,30 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 		end
 		return
 	end
+	if command.type == "setActive" then
+		local slot = tonumber(payload.slot)
+		if slot == 1 or slot == 2 then
+			player:SetAttribute("ActivePetSlot", slot)
+		end
+		return
+	end
+	if command.type == "setControlMode" then
+		player:SetAttribute("PetControlMode", command.mode)
+		worldService:pushEventLog(player, "Control mode: " .. tostring(command.mode), "#bfe2ff")
+		return
+	end
 	for _, c in ipairs(worldService.creatures) do
 		if c.ownerUserId == player.UserId and c.partySlot and c.partySlot <= 2 then
 			if payload.slot == nil or payload.slot == c.partySlot then
 				c.command = command
+				if c.partySlot == (tonumber(payload.slot) or c.partySlot) then
+					player:SetAttribute("ActivePetSlot", c.partySlot)
+				end
+				if command.type == "follow" then
+					player:SetAttribute("PetStance", "FOLLOW")
+				elseif command.type == "hold" then
+					player:SetAttribute("PetStance", "HOLD")
+				end
 			end
 		end
 	end
@@ -265,7 +294,15 @@ local function pushPetHud()
 		local sameAsLast = cache and cache.summary == summary
 		local sinceLast = cache and (worldService.time - cache.lastSentAt) or math.huge
 		if not sameAsLast or sinceLast >= HUD_KEEPALIVE_SECONDS then
-			remotes.PetHudUpdate:FireClient(player, { pets = petPayload, t = worldService.time })
+			remotes.PetHudUpdate:FireClient(player, {
+				pets = petPayload,
+				meta = {
+					activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1,
+					controlMode = tostring(player:GetAttribute("PetControlMode") or "AUTO"),
+					stance = tostring(player:GetAttribute("PetStance") or "FOLLOW"),
+				},
+				t = worldService.time,
+			})
 			hudReplicationCache[player.UserId] = { summary = summary, lastSentAt = worldService.time }
 		end
 	end

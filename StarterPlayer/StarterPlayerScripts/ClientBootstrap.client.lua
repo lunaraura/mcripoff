@@ -25,6 +25,8 @@ items:bind()
 command:bind(mouse)
 ui:bind()
 input:bind()
+command:setActiveSlot(party.selectedSlot)
+command:setControlMode(party.controlMode)
 
 -- Minimal starter UX for the vertical slice: attempt a default starter once.
 -- Server validates allowed list and one-time choice constraints.

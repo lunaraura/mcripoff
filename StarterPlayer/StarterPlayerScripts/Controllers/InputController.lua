@@ -16,12 +16,19 @@ function InputController:bind()
 		if gp then return end
 		if input.KeyCode == Enum.KeyCode.One then
 			self.party:selectSlot(1)
+			self.command:setActiveSlot(1)
 		elseif input.KeyCode == Enum.KeyCode.Two then
 			self.party:selectSlot(2)
+			self.command:setActiveSlot(2)
 		elseif input.KeyCode == Enum.KeyCode.F then
+			self.party:setStance("FOLLOW")
 			self.command:sendCommand({ type = "follow" })
 		elseif input.KeyCode == Enum.KeyCode.H then
+			self.party:setStance("HOLD")
 			self.command:sendCommand({ type = "hold" })
+		elseif input.KeyCode == Enum.KeyCode.M then
+			local mode = self.party:toggleControlMode()
+			self.command:setControlMode(mode)
 		elseif input.KeyCode == Enum.KeyCode.G then
 			self.command:sendCommand({ type = "attackNearest" })
 		elseif input.KeyCode == Enum.KeyCode.Q then

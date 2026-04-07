@@ -25,6 +25,7 @@ end
 function AIService:thinkPet(creature)
 	local owner = Players:GetPlayerByUserId(creature.ownerUserId or -1)
 	local root = owner and owner.Character and owner.Character.PrimaryPart
+	local controlMode = owner and tostring(owner:GetAttribute("PetControlMode") or "AUTO") or "AUTO"
 	local leashDistance = owner and tonumber(owner:GetAttribute("PetLeashDistance")) or 90
 	leashDistance = math.clamp(leashDistance or 90, 35, 160)
 	local holdDefenseRange = owner and tonumber(owner:GetAttribute("PetHoldDefenseRange")) or 30
@@ -78,6 +79,9 @@ function AIService:thinkPet(creature)
 			self:fightTarget(creature, target)
 			return
 		end
+	end
+	if controlMode == "MANUAL" then
+		return
 	end
 	local target, d = self.worldService:findNearestEnemyOf(creature, 85)
 	if not target then return end
