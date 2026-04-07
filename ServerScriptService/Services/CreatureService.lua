@@ -15,6 +15,16 @@ function CreatureService:spawnRuntime(speciesKey, team, x, z, opts)
 	return creature
 end
 
+
+function CreatureService:spawnFromSpawnPayload(speciesKey, spawnPayload)
+	spawnPayload = spawnPayload or {}
+	local team = spawnPayload.team or 1
+	local x = spawnPayload.x or 0
+	local z = spawnPayload.z or 0
+	local opts = spawnPayload.opts or {}
+	return self:spawnRuntime(speciesKey, team, x, z, opts)
+end
+
 function CreatureService:attachModel(creature)
 	local modelsFolder = self:getOrCreateCreatureModelsFolder()
 	if not modelsFolder then return end

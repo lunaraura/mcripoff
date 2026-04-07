@@ -3,6 +3,8 @@ FloraSystem.__index = FloraSystem
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BiomeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("BiomeConfig"))
+local Ecology = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Ecology")
+local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
 
 local floraFolder = workspace:FindFirstChild("Flora") or Instance.new("Folder")
 floraFolder.Name = "Flora"
@@ -108,6 +110,7 @@ local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount
 	if not part then return end
 	part:SetAttribute("NodeType", nodeType)
 	part:SetAttribute("CollisionCategory", "node")
+	part:SetAttribute("NodeCategory", EcologyRules.getNodeCategory(nodeType))
 	part:SetAttribute("Durability", durability or 3)
 	part:SetAttribute("MaxDurability", durability or 3)
 	part:SetAttribute("DropKey", dropKey or "stone")
@@ -222,7 +225,8 @@ function FloraSystem.scatterChunk(chunk)
 	end
 	for _ = 1, trees do
 		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
-		if cell and (not cell.water) and (not cell.blocked) then
+		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
+		if cell and (not cell.water) and (not cell.blocked) and canNode then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 9 * 9) then
@@ -234,6 +238,7 @@ function FloraSystem.scatterChunk(chunk)
 							if inst.Name == "Part" and inst.Material == Enum.Material.Wood then
 								inst.Name = "TreeNode"
 								attachHarvestNode(inst, "Tree", 4, "wood", 2)
+						inst:SetAttribute("EcologyId", string.format("%s:tree:%d:%d", chunk.key, math.floor(x+0.5), math.floor(z+0.5)))
 								inst:SetAttribute("NodeRegenSeconds", math.floor(22 * regenMult + 0.5))
 								end
 						end
@@ -248,13 +253,15 @@ function FloraSystem.scatterChunk(chunk)
 
 	for _ = 1, rockCount do
 		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
-		if cell and (not cell.water) then
+		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
+		if cell and (not cell.water) and canNode then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 6 * 6) then
 					local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock, nodesFolder)
 					rock.Name = "RockObstacle"
 					attachHarvestNode(rock, "Rock", 3, "stone", 2)
+					rock:SetAttribute("EcologyId", string.format("%s:rock:%d:%d", chunk.key, math.floor(x+0.5), math.floor(z+0.5)))
 					rock:SetAttribute("NodeRegenSeconds", math.floor(28 * regenMult + 0.5))
 					addRef(chunk.key, rock)
 				table.insert(placed, { x = x, z = z })
@@ -263,13 +270,15 @@ function FloraSystem.scatterChunk(chunk)
 	end
 	for _ = 1, oreCount do
 		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
-		if cell and (not cell.water) then
+		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
+		if cell and (not cell.water) and canNode then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 7 * 7) then
 					local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate, nodesFolder)
 					ore.Name = "OreNode"
 					attachHarvestNode(ore, "Ore", 4, "stone", 3)
+					ore:SetAttribute("EcologyId", string.format("%s:ore:%d:%d", chunk.key, math.floor(x+0.5), math.floor(z+0.5)))
 					ore:SetAttribute("NodeRegenSeconds", math.floor(34 * regenMult + 0.5))
 					addRef(chunk.key, ore)
 				table.insert(placed, { x = x, z = z })
@@ -278,13 +287,15 @@ function FloraSystem.scatterChunk(chunk)
 	end
 	for _ = 1, crystalCount do
 		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
-		if cell and (not cell.water) then
+		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
+		if cell and (not cell.water) and canNode then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 8 * 8) then
 					local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass, nodesFolder)
 					crystal.Name = "CrystalNode"
 					attachHarvestNode(crystal, "Crystal", 5, "battery_seed", 2)
+					crystal:SetAttribute("EcologyId", string.format("%s:crystal:%d:%d", chunk.key, math.floor(x+0.5), math.floor(z+0.5)))
 					crystal:SetAttribute("NodeRegenSeconds", math.floor(42 * regenMult + 0.5))
 					addRef(chunk.key, crystal)
 				table.insert(placed, { x = x, z = z })

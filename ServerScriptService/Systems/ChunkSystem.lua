@@ -5,6 +5,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local FloraSystem = require(script.Parent.FloraSystem)
 local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
+local Ecology = Shared:WaitForChild("Ecology")
+local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
 
 local ChunkSystem = {}
 ChunkSystem.CHUNK_SIZE = 64
@@ -55,7 +57,7 @@ function ChunkSystem.generateChunk(cx, cz)
 			for biomeKey, weight in pairs(biomeMix) do
 				biomeMixTotals[biomeKey] = (biomeMixTotals[biomeKey] or 0) + weight
 			end
-				cells[iz * cellsPerAxis + ix + 1] = {
+				local cell = {
 					x = wx,
 					z = wz,
 					dominantBiome = biome,
@@ -64,7 +66,11 @@ function ChunkSystem.generateChunk(cx, cz)
 					blocked = blocked,
 					water = water,
 					terrainClass = terrainClass,
+					tags = (BiomeConfig[biome] and BiomeConfig[biome].tags) or {},
+					reasonCode = EcologyRules.Reason.SPAWN_TERRAIN,
 					heightNoise = env.heightNoise,
+					yGround = env.yGround,
+					yWater = env.yWater,
 					yG = env.yGround,
 					yW = env.yWater,
 					slope = 0,
@@ -72,7 +78,9 @@ function ChunkSystem.generateChunk(cx, cz)
 					spawnable = (not blocked and not water),
 					nodeable = (not blocked),
 				}
-				if (not blocked) and (not water) then
+				cells[iz * cellsPerAxis + ix + 1] = EcologyRules.normalizeCell(cell)
+				local canSpawn = EcologyRules.canHostSpawn(cells[iz * cellsPerAxis + ix + 1])
+				if canSpawn then
 					local biomeKey = BiomeConfig[biome] and biome or "plains"
 					local elevation = env.yGround or 0
 					local levelBias = math.clamp((elevation - 8) / 18, -0.55, 0.9)
@@ -100,6 +108,8 @@ function ChunkSystem.generateChunk(cx, cz)
 						spawnWeights = spawnWeights,
 						levelBias = levelBias,
 						terrainClass = terrainClass,
+					tags = (BiomeConfig[biome] and BiomeConfig[biome].tags) or {},
+					reasonCode = EcologyRules.Reason.SPAWN_TERRAIN,
 					})
 				end
 			end
@@ -191,15 +201,15 @@ end
 function ChunkSystem.writeChunkTerrain(chunk)
 	for _, cell in ipairs(chunk.cells) do
 		local matDef = BIOME_MATS[cell.dominantBiome] or BIOME_MATS.plains
-		local y = math.max(2, cell.yG or 4)
+		local y = math.max(2, cell.yGround or cell.yG or 4)
 		local mat = y > 18 and matDef.high or matDef.ground
 		Terrain:FillBlock(
 			CFrame.new(cell.x, y * 0.5, cell.z),
 			Vector3.new(ChunkSystem.CELL_SIZE, y, ChunkSystem.CELL_SIZE),
 			mat
 		)
-		if (cell.yW or 0) > y then
-			local hW = math.max(2, (cell.yW or 0) - y)
+		if (cell.yWater or cell.yW or 0) > y then
+			local hW = math.max(2, (cell.yWater or cell.yW or 0) - y)
 			Terrain:FillBlock(
 				CFrame.new(cell.x, y + hW * 0.5, cell.z),
 				Vector3.new(ChunkSystem.CELL_SIZE, hW, ChunkSystem.CELL_SIZE),
