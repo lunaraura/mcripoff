@@ -38,7 +38,7 @@ function BuildService:createBuildModel(build)
 		part.Color = Color3.fromRGB(156, 126, 98)
 		part.Anchored = true
 		part.CanCollide = true
-		part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad(180), 0)
+		part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad((build.rotationY or 180)), 0)
 	else
 		part = Instance.new("Part")
 		part.Size = Vector3.new(4, 4, 4)
@@ -47,12 +47,47 @@ function BuildService:createBuildModel(build)
 		part.Color = Color3.fromRGB(120, 95, 72)
 		part.Anchored = true
 		part.CanCollide = true
-		part.CFrame = CFrame.new(build.pos)
+		part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad(build.rotationY or 0), 0)
 	end
 	part.Name = string.format("Build_%s_%d", build.key, build.id)
 	part.Parent = parentFolder
 	build.model = part
 	return part
+end
+
+function BuildService:getBuildFootprintSize(buildKey)
+	if buildKey == "tent" then
+		return Vector3.new(8, 5, 8)
+	end
+	return Vector3.new(4, 4, 4)
+end
+
+function BuildService:isValidBuildPlacement(player, buildKey, pos)
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then return false, "no character" end
+	local dist = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
+	if dist > 18 then
+		return false, "too far"
+	end
+	local size = self:getBuildFootprintSize(buildKey)
+	local overlap = false
+	for _, b in pairs(self.buildables) do
+		local d = (Vector3.new(b.pos.X, 0, b.pos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
+		if d < math.max(size.X, size.Z) * 0.9 then
+			overlap = true
+			break
+		end
+	end
+	if overlap then return false, "overlap buildable" end
+	for _, c in ipairs(self.worldService.creatures) do
+		if c.alive then
+			local d = (Vector3.new(c.pos.X, 0, c.pos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
+			if d < 6 then
+				return false, "overlap creature"
+			end
+		end
+	end
+	return true
 end
 
 function BuildService:nearestCell(root)
@@ -102,6 +137,20 @@ function BuildService:tryBuild(player, payload)
 	if not def then return false, "unknown build key" end
 	local root = player.Character and player.Character.PrimaryPart
 	if not root then return false, "no character" end
+	local desiredPos = payload.position
+	local placementPos = root.Position + root.CFrame.LookVector * 8
+	local rotationY = tonumber(payload.rotationY) or 0
+	if typeof(desiredPos) == "Vector3" then
+		placementPos = Vector3.new(
+			math.floor(desiredPos.X / 4 + 0.5) * 4,
+			desiredPos.Y,
+			math.floor(desiredPos.Z / 4 + 0.5) * 4
+		)
+	end
+	local okPlacement, placementReason = self:isValidBuildPlacement(player, buildKey, placementPos)
+	if not okPlacement then
+		return false, placementReason
+	end
 	local ok, missing = self:canAfford(player, def.cost)
 	if not ok then return false, "missing " .. tostring(missing) end
 	for matKey, amount in pairs(def.cost or {}) do
@@ -113,7 +162,8 @@ function BuildService:tryBuild(player, payload)
 		id = id,
 		key = buildKey,
 		ownerUserId = player.UserId,
-		pos = root.Position + root.CFrame.LookVector * 8,
+		pos = placementPos,
+		rotationY = rotationY,
 		nextHarvestAt = self.worldService.time + (def.harvestTime or 1),
 	}
 	self:createBuildModel(self.buildables[id])

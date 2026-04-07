@@ -18,6 +18,7 @@ local ui = UIController.new(build)
 local input = InputController.new(party, command, build)
 
 local mouse = localPlayer:GetMouse()
+build:bind(mouse)
 command:bind(mouse)
 ui:bind()
 input:bind()

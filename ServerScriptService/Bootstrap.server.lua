@@ -223,6 +223,9 @@ local function pushPetHud()
 	if not remotes.PetHudUpdate then return end
 	for _, player in ipairs(Players:GetPlayers()) do
 		local data = playerDataService:getOrCreate(player)
+		for matKey, amount in pairs(data.materials or {}) do
+			player:SetAttribute("Mat_" .. tostring(matKey), tonumber(amount) or 0)
+		end
 		local petPayload = {}
 		for i = 1, 2 do
 			local ownedId = data.partySlots[i]
