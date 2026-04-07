@@ -134,6 +134,11 @@ function HarvestService:tryTameDefeated(player, targetId)
 	if not c or c.alive or c.mode ~= "wild" then
 		return false, "invalid tame target"
 	end
+	local hasBait = self.inventoryService:getCount(player, "lure_meat") > 0
+	if not hasBait then
+		return false, "need lure_meat"
+	end
+	self.inventoryService:tryConsume(player, "lure_meat", 1)
 	local owned, destination = self.playerDataService:addOwnedCreature(player, c.speciesKey)
 	if not owned then
 		return false, "failed to add owned creature"

@@ -93,7 +93,11 @@ function BuildService:tryHarvestBuild(player, payload)
 	end
 	local rewards = {}
 	for key, amount in pairs(def.provides or {}) do
-		table.insert(rewards, { key = key, amount = amount })
+		local mappedKey = key
+		if key == "bait" then
+			mappedKey = "lure_meat"
+		end
+		table.insert(rewards, { key = mappedKey, amount = amount })
 	end
 	local granted = self.inventoryService:grant(player, rewards)
 	best.nextHarvestAt = self.worldService.time + (def.harvestTime or 1)

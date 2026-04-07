@@ -29,6 +29,7 @@ function PlayerDataService:getOrCreate(player)
 			red = 0, yellow = 0, blue = 0,
 			berry_red = 0, berry_yellow = 0, berry_blue = 0,
 			revive_berry = 0, replenish_berry = 0,
+			lure_meat = 0,
 		},
 		morphPoints = 0,
 		selectedPetSlot = 1,
