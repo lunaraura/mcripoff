@@ -161,6 +161,9 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 	elseif payload.action == "context" or payload.action == "harvest" then
 		ok = harvestService:tryHarvestNearbyBerryBush(player, payload.radius or 14)
 		if not ok then
+			ok = harvestService:tryHarvestNearbyNode(player, payload.radius or 14)
+		end
+		if not ok then
 			ok = harvestService:tryHarvestNearestPassive(player, payload.radius or 14)
 		end
 	end

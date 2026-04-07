@@ -11,6 +11,7 @@ function HarvestService:configure(playerDataService, creatureService, morphServi
 	self.creatureService = creatureService
 	self.morphService = morphService
 	self:bindBerryBushPrompts()
+	self:bindHarvestNodePrompts()
 end
 
 function HarvestService:bindBerryBushPrompts()
@@ -64,6 +65,59 @@ function HarvestService:tryHarvestNearbyBerryBush(player, radius)
 	end
 	if not best then return false, "no berry bush nearby" end
 	return self:tryHarvestBerryBushInstance(player, best)
+end
+
+function HarvestService:bindHarvestNodePrompts()
+	if self._nodePromptBound then return end
+	self._nodePromptBound = true
+	local function hookNode(node)
+		if not node or not node:IsA("BasePart") then return end
+		local prompt = node:FindFirstChildOfClass("ProximityPrompt")
+		if not prompt then return end
+		if prompt:GetAttribute("BoundNodeHarvest") then return end
+		prompt:SetAttribute("BoundNodeHarvest", true)
+		prompt.Triggered:Connect(function(player)
+			self:tryHarvestNodeInstance(player, node)
+		end)
+	end
+	for _, node in ipairs(CollectionService:GetTagged("HarvestNode")) do
+		hookNode(node)
+	end
+	CollectionService:GetInstanceAddedSignal("HarvestNode"):Connect(hookNode)
+end
+
+function HarvestService:tryHarvestNodeInstance(player, node)
+	if not node or not node.Parent then return false, "missing node" end
+	local durability = math.max(0, tonumber(node:GetAttribute("Durability")) or 1)
+	if durability <= 0 then return false, "depleted node" end
+	durability -= 1
+	node:SetAttribute("Durability", durability)
+	self.worldService:pushFloatingText(node.Position, tostring(math.max(0, durability)), "#d7fcb7")
+	if durability > 0 then
+		return true, { progress = true, durability = durability }
+	end
+	local dropKey = tostring(node:GetAttribute("DropKey") or "stone")
+	local dropAmount = math.max(1, math.floor(tonumber(node:GetAttribute("DropAmount")) or 1))
+	local granted = self.inventoryService:grant(player, { { key = dropKey, amount = dropAmount } })
+	self.worldService:pushEventLog(player, string.format("Harvested %s node", tostring(node:GetAttribute("NodeType") or "resource")), "#d7fcb7")
+	node:Destroy()
+	return true, granted
+end
+
+function HarvestService:tryHarvestNearbyNode(player, radius)
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then return false, "no character" end
+	local best, bestD = nil, radius or 14
+	for _, node in ipairs(CollectionService:GetTagged("HarvestNode")) do
+		if node:IsA("BasePart") and node.Parent then
+			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(node.Position.X, 0, node.Position.Z)).Magnitude
+			if d < bestD then
+				best, bestD = node, d
+			end
+		end
+	end
+	if not best then return false, "no node nearby" end
+	return self:tryHarvestNodeInstance(player, best)
 end
 
 function HarvestService:tryHarvestCreature(player, targetId)

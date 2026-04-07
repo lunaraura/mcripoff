@@ -7,6 +7,9 @@ local BiomeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChil
 local floraFolder = workspace:FindFirstChild("Flora") or Instance.new("Folder")
 floraFolder.Name = "Flora"
 floraFolder.Parent = workspace
+local nodesFolder = workspace:FindFirstChild("Nodes") or Instance.new("Folder")
+nodesFolder.Name = "Nodes"
+nodesFolder.Parent = workspace
 
 local instancesByChunk = {}
 
@@ -43,18 +46,18 @@ local function addRef(chunkKey, inst)
 	table.insert(instancesByChunk[chunkKey], inst)
 end
 
-local function mkTrunk(x, y, z, h, rad, color)
+local function mkTrunk(x, y, z, h, rad, color, parentFolder)
 	local p = Instance.new("Part")
 	p.Anchored, p.CanCollide = true, true
 	p.Material = Enum.Material.Wood
 	p.Color = color
 	p.Size = Vector3.new(rad * 2, h, rad * 2)
 	p.CFrame = CFrame.new(x, y + h * 0.5, z)
-	p.Parent = floraFolder
+	p.Parent = parentFolder or floraFolder
 	return p
 end
 
-local function mkBall(x, y, z, r, color, mat)
+local function mkBall(x, y, z, r, color, mat, parentFolder)
 	local p = Instance.new("Part")
 	p.Shape = Enum.PartType.Ball
 	p.Anchored, p.CanCollide = true, true
@@ -62,7 +65,7 @@ local function mkBall(x, y, z, r, color, mat)
 	p.Color = color
 	p.Size = Vector3.new(r * 2, r * 2, r * 2)
 	p.CFrame = CFrame.new(x, y + r, z)
-	p.Parent = floraFolder
+	p.Parent = parentFolder or floraFolder
 	return p
 end
 
@@ -89,7 +92,7 @@ local function mkBerryBush(x, yTop, z, itemKey)
 	return bush
 end
 
-local function mkCylinder(x, yTop, z, radius, height, color, material)
+local function mkCylinder(x, yTop, z, radius, height, color, material, parentFolder)
 	local p = Instance.new("Part")
 	p.Shape = Enum.PartType.Cylinder
 	p.Anchored, p.CanCollide = true, true
@@ -97,37 +100,53 @@ local function mkCylinder(x, yTop, z, radius, height, color, material)
 	p.Color = color
 	p.Size = Vector3.new(radius * 2, height, radius * 2)
 	p.CFrame = CFrame.new(x, yTop + radius, z) * CFrame.Angles(0, 0, math.rad(90))
-	p.Parent = floraFolder
+	p.Parent = parentFolder or floraFolder
 	return p
+end
+
+local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount)
+	if not part then return end
+	part:SetAttribute("NodeType", nodeType)
+	part:SetAttribute("Durability", durability or 3)
+	part:SetAttribute("DropKey", dropKey or "stone")
+	part:SetAttribute("DropAmount", dropAmount or 1)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Gather"
+	prompt.ObjectText = nodeType
+	prompt.HoldDuration = 0.35
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = part
+	CollectionService:AddTag(part, "HarvestNode")
 end
 
 local function build_pine(x, yTop, z, r)
 	local h = r:NextNumber(14, 22)
 	local tr = r:NextNumber(0.6, 1.0)
-	return { mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(90, 70, 50)), mkBall(x, yTop + h * 0.8, z, r:NextNumber(3.5, 4.8), Color3.fromRGB(40, 100, 60)) }
+	return { mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(90, 70, 50), nodesFolder), mkBall(x, yTop + h * 0.8, z, r:NextNumber(3.5, 4.8), Color3.fromRGB(40, 100, 60), nil, nodesFolder) }
 end
 
 local function build_oak(x, yTop, z, r)
 	local h = r:NextNumber(10, 16)
 	local tr = r:NextNumber(0.9, 1.4)
-	return { mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(110, 85, 60)), mkBall(x, yTop + h, z, r:NextNumber(4.8, 6.2), Color3.fromRGB(70, 120, 60)) }
+	return { mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(110, 85, 60), nodesFolder), mkBall(x, yTop + h, z, r:NextNumber(4.8, 6.2), Color3.fromRGB(70, 120, 60), nil, nodesFolder) }
 end
 
 local function build_birch(x, yTop, z, r)
 	local h = r:NextNumber(10, 14)
-	local trunk = mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(235, 235, 235))
+	local trunk = mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(235, 235, 235), nodesFolder)
 	trunk.Material = Enum.Material.Sand
-	return { trunk, mkBall(x, yTop + h, z, r:NextNumber(4.2, 5.4), Color3.fromRGB(90, 160, 90)) }
+	return { trunk, mkBall(x, yTop + h, z, r:NextNumber(4.2, 5.4), Color3.fromRGB(90, 160, 90), nil, nodesFolder) }
 end
 
 local function build_palm(x, yTop, z, r)
 	local h = r:NextNumber(9, 13)
-	return { mkTrunk(x, yTop, z, h, 0.7, Color3.fromRGB(140, 110, 80)), mkBall(x, yTop + h, z, r:NextNumber(3.8, 5.0), Color3.fromRGB(60, 110, 80)) }
+	return { mkTrunk(x, yTop, z, h, 0.7, Color3.fromRGB(140, 110, 80), nodesFolder), mkBall(x, yTop + h, z, r:NextNumber(3.8, 5.0), Color3.fromRGB(60, 110, 80), nil, nodesFolder) }
 end
 
 local function build_cypress(x, yTop, z, r)
 	local h = r:NextNumber(12, 18)
-	return { mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(70, 60, 50)), mkBall(x, yTop + h * 0.9, z, r:NextNumber(3.8, 4.8), Color3.fromRGB(50, 90, 60)) }
+	return { mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(70, 60, 50), nodesFolder), mkBall(x, yTop + h * 0.9, z, r:NextNumber(3.8, 4.8), Color3.fromRGB(50, 90, 60), nil, nodesFolder) }
 end
 
 local BUILDERS = {
@@ -182,6 +201,10 @@ function FloraSystem.scatterChunk(chunk)
 				if builder then
 					for _, inst in ipairs(builder(x, cell.yG, z, r)) do
 						addRef(chunk.key, inst)
+						if inst.Name == "Part" and inst.Material == Enum.Material.Wood then
+							inst.Name = "TreeNode"
+							attachHarvestNode(inst, "Tree", 4, "fiber", 2)
+						end
 					end
 					table.insert(placed, { x = x, z = z })
 				end
@@ -194,8 +217,9 @@ function FloraSystem.scatterChunk(chunk)
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 6 * 6) then
-				local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock)
+				local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock, nodesFolder)
 				rock.Name = "RockObstacle"
+				attachHarvestNode(rock, "Rock", 3, "stone", 2)
 				addRef(chunk.key, rock)
 				table.insert(placed, { x = x, z = z })
 			end
@@ -207,8 +231,9 @@ function FloraSystem.scatterChunk(chunk)
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 7 * 7) then
-				local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate)
+				local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate, nodesFolder)
 				ore.Name = "OreNode"
+				attachHarvestNode(ore, "Ore", 4, "stone", 3)
 				addRef(chunk.key, ore)
 				table.insert(placed, { x = x, z = z })
 			end
@@ -220,8 +245,9 @@ function FloraSystem.scatterChunk(chunk)
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 8 * 8) then
-				local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass)
+				local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass, nodesFolder)
 				crystal.Name = "CrystalNode"
+				attachHarvestNode(crystal, "Crystal", 5, "battery_seed", 2)
 				addRef(chunk.key, crystal)
 				table.insert(placed, { x = x, z = z })
 			end
