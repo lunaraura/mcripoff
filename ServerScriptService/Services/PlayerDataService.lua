@@ -164,4 +164,27 @@ function PlayerDataService:revivePartySlots(player)
 	return true
 end
 
+function PlayerDataService:addOwnedXP(player, ownedId, amount)
+	local data = self:getOrCreate(player)
+	local owned = data.ownedCreatures[ownedId]
+	if not owned then
+		return false, "owned creature not found"
+	end
+	local gained = math.max(0, math.floor(amount or 0))
+	if gained <= 0 then
+		return true, { gained = 0, levelUps = 0, level = owned.level }
+	end
+	owned.xp = (owned.xp or 0) + gained
+	owned.level = owned.level or 1
+	local levelUps = 0
+	while true do
+		local needed = math.max(15, owned.level * 25)
+		if owned.xp < needed then break end
+		owned.xp -= needed
+		owned.level += 1
+		levelUps += 1
+	end
+	return true, { gained = gained, levelUps = levelUps, level = owned.level, xp = owned.xp }
+end
+
 return PlayerDataService

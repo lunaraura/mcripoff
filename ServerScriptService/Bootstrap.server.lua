@@ -56,6 +56,7 @@ local buildService = BuildService.new(worldService, inventoryService)
 local morphService = MorphService.new(playerDataService, creatureService)
 local berryService = BerryService.new(worldService, inventoryService, creatureService, playerDataService)
 harvestService:configure(playerDataService, creatureService, morphService)
+combatService:configureProgression(playerDataService, morphService)
 local hudTimer = 0
 local hudReplicationCache = {}
 local HUD_KEEPALIVE_SECONDS = 1.0

@@ -8,7 +8,12 @@ local CombatService = {}
 CombatService.__index = CombatService
 
 function CombatService.new(worldService)
-	return setmetatable({ worldService = worldService }, CombatService)
+	return setmetatable({ worldService = worldService, playerDataService = nil, morphService = nil }, CombatService)
+end
+
+function CombatService:configureProgression(playerDataService, morphService)
+	self.playerDataService = playerDataService
+	self.morphService = morphService
 end
 
 function CombatService:hasMoveEquipped(creature, abilityKey)
@@ -61,6 +66,22 @@ function CombatService:applyDamagePacket(source, target, ability)
 	if target.currentHP <= 0 then
 		target.alive = false
 		target.lifecycle = "defeated"
+		if self.playerDataService and source and source.ownerUserId and source.ownedId then
+			local player = game:GetService("Players"):GetPlayerByUserId(source.ownerUserId)
+			if player then
+				local xpGain = math.max(5, math.floor((target.level or 1) * 6))
+				local ok, gain = self.playerDataService:addOwnedXP(player, source.ownedId, xpGain)
+				if ok and self.morphService then
+					self.morphService:awardPoints(player, source.ownedId, 1)
+				end
+				local lvlUp = gain and gain.levelUps or 0
+				if lvlUp > 0 then
+					self.worldService:pushEventLog(player, string.format("+%d XP  Level up x%d", xpGain, lvlUp), "#a8ffd7")
+				else
+					self.worldService:pushEventLog(player, string.format("+%d XP", xpGain), "#d7fcb7")
+				end
+			end
+		end
 	end
 end
 
