@@ -111,7 +111,20 @@ function CreatureRuntime:Tick(dt)
 end
 
 function CreatureRuntime:GetCompositeResistances()
-	return (CompositeConfig[self.compositeKey] and CompositeConfig[self.compositeKey].resistances) or CompositeConfig.defaults
+	local outer = (CompositeConfig[self.outerCompositeKey or self.compositeKey] and CompositeConfig[self.outerCompositeKey or self.compositeKey].resistances) or CompositeConfig.defaults
+	local inner = (CompositeConfig[self.innerCompositeKey or self.compositeKey] and CompositeConfig[self.innerCompositeKey or self.compositeKey].resistances) or CompositeConfig.defaults
+	local out = { physical = {}, energy = {} }
+	for k, v in pairs(CompositeConfig.defaults.physical) do
+		local ov = (outer.physical and outer.physical[k]) or v
+		local iv = (inner.physical and inner.physical[k]) or v
+		out.physical[k] = (ov + iv) * 0.5
+	end
+	for k, v in pairs(CompositeConfig.defaults.energy) do
+		local ov = (outer.energy and outer.energy[k]) or v
+		local iv = (inner.energy and inner.energy[k]) or v
+		out.energy[k] = (ov + iv) * 0.5
+	end
+	return out
 end
 
 return CreatureRuntime

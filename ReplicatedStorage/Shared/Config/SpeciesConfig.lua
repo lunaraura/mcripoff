@@ -2,7 +2,7 @@ local SpeciesConfig = {
 	dog = {
 		name = "Dog", familyKey = "canine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "fighter",
 		baseStats = { pAtk = 12, eAtk = 2, range = 24, maxHP = 110, spd = 28, castSpd = 1, size = 4, stamina = 25, energy = 10, recoverStamina = 2, recoverEnergy = 1 },
-		moveset = { "ram", "dashBite", "rallyHowl", "stomp" }, drop = { { key = "meat", amount = 1 } },
+		moveset = { "ram", "dashBite", "rallyHowl", "guardianLeap" }, drop = { { key = "meat", amount = 1 } },
 		morphOptions = { { option = "warden_hound", pointsNeeded = 3 }, { option = "storm_hound", pointsNeeded = 3 }, { option = "cinderpup", pointsNeeded = 3 } },
 	},
 	sparko = {
@@ -13,7 +13,7 @@ local SpeciesConfig = {
 	sparkit = {
 		name = "Sparkit", familyKey = "feline", compositeKey = "voltage", outerCompositeKey = "animal", innerCompositeKey = "voltage", role = "ranged",
 		baseStats = { pAtk = 4, eAtk = 10, range = 88, maxHP = 80, spd = 30, castSpd = 1.1, size = 3, stamina = 16, energy = 22, recoverStamina = 1.1, recoverEnergy = 2 },
-		moveset = { "zap", "staticBurst", "staticBarrier" }, drop = { { key = "battery_seed", amount = 1 } }, morphOptions = { { option = "sparko", pointsNeeded = 2 } },
+		moveset = { "zap", "staticBurst", "staticBarrier", "energize" }, drop = { { key = "battery_seed", amount = 1 } }, morphOptions = { { option = "sparko", pointsNeeded = 2 } },
 	},
 	cinderpup = {
 		name = "Cinderpup", familyKey = "ursine", compositeKey = "fire", outerCompositeKey = "fire", innerCompositeKey = "animal", role = "fighter",
@@ -38,7 +38,7 @@ local SpeciesConfig = {
 	storm_hound = {
 		name = "Storm Hound", familyKey = "canine", compositeKey = "voltage", outerCompositeKey = "animal", innerCompositeKey = "voltage", role = "skirmisher",
 		baseStats = { pAtk = 9, eAtk = 10, range = 90, maxHP = 96, spd = 32, castSpd = 1.1, size = 4, stamina = 24, energy = 20, recoverStamina = 2.0, recoverEnergy = 2.1 },
-		moveset = { "dashBite", "zap", "staticBurst", "disengage" }, drop = { { key = "battery_seed", amount = 2 } }, morphOptions = {},
+		moveset = { "dashBite", "blinkStrike", "staticBurst", "disengage" }, drop = { { key = "battery_seed", amount = 2 } }, morphOptions = {},
 	},
 	magma_ursa = {
 		name = "Magma Ursa", familyKey = "ursine", compositeKey = "rock", outerCompositeKey = "rock", innerCompositeKey = "fire", role = "tank",
@@ -53,7 +53,7 @@ local SpeciesConfig = {
 	miregel = {
 		name = "Miregel", familyKey = "slime", compositeKey = "water", outerCompositeKey = "water", innerCompositeKey = "arcane", role = "utility",
 		baseStats = { pAtk = 6, eAtk = 9, range = 70, maxHP = 112, spd = 24, castSpd = 1.0, size = 5, stamina = 18, energy = 22, recoverStamina = 1.0, recoverEnergy = 2.1 },
-		moveset = { "ram", "rallyHowl", "staticBarrier" }, drop = { { key = "water_glob", amount = 1 } }, morphOptions = {},
+		moveset = { "ram", "mendPulse", "staticBarrier", "energize" }, drop = { { key = "water_glob", amount = 1 } }, morphOptions = {},
 	},
 	sheeplet = {
 		name = "Sheeplet", familyKey = "herd", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",

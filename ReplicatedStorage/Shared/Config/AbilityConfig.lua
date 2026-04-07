@@ -69,6 +69,38 @@ local AbilityConfig = {
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 90,
 		barrier = { kind = "wall", duration = 4.0, length = 60, thickness = 8, blockMovement = true, damageReduction = 0.15 },
 	},
+
+	mendPulse = {
+		name = "Mend Pulse", category = "utility", cooldown = 8.5,
+		resourceUse = { stamina = 0, energy = 16 },
+		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 80,
+		targeting = "ally",
+		heal = { flat = 12, scale = 0.35, maxPercent = 0.28 },
+		statusOnTarget = { { key = "guard", chance = 1, params = { duration = 2.5, reduction = 0.2 } } },
+	},
+	energize = {
+		name = "Energize", category = "utility", cooldown = 7.0,
+		resourceUse = { stamina = 0, energy = 10 },
+		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 70,
+		targeting = "ally",
+		restore = { energy = 10, stamina = 6 },
+		statusOnTarget = { { key = "haste", chance = 1, params = { duration = 2.2, mult = 1.18 } } },
+	},
+	guardianLeap = {
+		name = "Guardian Leap", category = "utility_dash", cooldown = 6.8,
+		resourceUse = { stamina = 8, energy = 6 },
+		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 95,
+		targeting = "ally", dash = { distance = 70, stopShort = 6 },
+		statusOnTarget = { { key = "guard", chance = 1, params = { duration = 3.0, reduction = 0.28 } } },
+	},
+	blinkStrike = {
+		name = "Blink Strike", category = "blink", cooldown = 6.2,
+		resourceUse = { stamina = 4, energy = 14 },
+		flatDmg = { p = 5, e = 8 }, dmgScale = { p = 0.2, e = 0.4 },
+		damageProfile = { physical = { "pierce" }, energy = { "electric" } },
+		range = 120, blink = { behind = 10 },
+		statusOnHit = { { key = "slow", chance = 0.5, params = { duration = 1.4, mult = 0.7 } } },
+	},
 	rallyHowl = {
 		name = "Rally Howl", category = "utility", cooldown = 6.2,
 		resourceUse = { stamina = 0, energy = 10 },

@@ -159,6 +159,52 @@ function CombatService:spawnAoe(source, target, ability)
 	end
 end
 
+
+function CombatService:resolveUtilityTarget(source, ability, requestedTarget)
+	local mode = ability.targeting or "self"
+	if mode == "self" then return source end
+	if mode == "ally" then
+		if requestedTarget and requestedTarget.alive and requestedTarget.team == source.team then
+			return requestedTarget
+		end
+		local best, bestScore = source, -math.huge
+		for _, c in ipairs(self.worldService.creatures) do
+			if c.alive and c.team == source.team then
+				local d = (c.pos - source.pos).Magnitude
+				if d <= (ability.range or 80) then
+					local hpRatio = (c.currentHP / math.max(1, c.modifiedStats.maxHP))
+					local score = (1 - hpRatio) * 2 - d * 0.01
+					if score > bestScore then best, bestScore = c, score end
+				end
+			end
+		end
+		return best
+	end
+	return source
+end
+
+function CombatService:applyUtilityAbility(source, target, ability)
+	target = target or source
+	if ability.heal then
+		local raw = (ability.heal.flat or 0) + (ability.heal.scale or 0) * source.modifiedStats.eAtk
+		local cap = (ability.heal.maxPercent or 1) * target.modifiedStats.maxHP
+		local amount = math.clamp(raw, 0, cap)
+		target.currentHP = math.min(target.modifiedStats.maxHP, target.currentHP + amount)
+	end
+	if ability.restore then
+		target.currentEnergy = math.min(target.modifiedStats.energy, target.currentEnergy + (ability.restore.energy or 0))
+		target.currentStamina = math.min(target.modifiedStats.stamina, target.currentStamina + (ability.restore.stamina or 0))
+	end
+	if self.effectService then
+		for _, spec in ipairs(ability.statusOnTarget or {}) do
+			if self.effectService:rollProc(spec.chance) then
+				self.effectService:applyStatus(target, spec.key, source, spec.params)
+			end
+		end
+	end
+	self:tryApplyStatuses(source, source, ability)
+end
+
 function CombatService:evaluateAbility(source, abilityKey, target)
 	local ability = AbilityConfig[abilityKey]
 	if not ability then return false, "unknown" end
@@ -166,7 +212,7 @@ function CombatService:evaluateAbility(source, abilityKey, target)
 	if (source.cooldowns[abilityKey] or 0) > 0 then return false, "cooldown" end
 	if (ability.resourceUse.stamina or 0) > source.currentStamina then return false, "stamina" end
 	if (ability.resourceUse.energy or 0) > source.currentEnergy then return false, "energy" end
-	if ability.category == "utility" or ability.category == "barrier" then return true, ability end
+	if ability.category == "utility" or ability.category == "utility_dash" or ability.category == "barrier" then return true, ability end
 	if not target or not target.alive or target.team == source.team then return false, "target" end
 	local d = (Vector3.new(source.pos.X, 0, source.pos.Z) - Vector3.new(target.pos.X, 0, target.pos.Z)).Magnitude
 	if d > (ability.range or 20) then return false, "range" end
@@ -197,7 +243,18 @@ function CombatService:tryUseAbility(source)
 	source.currentEnergy -= (ability.resourceUse.energy or 0)
 	source.cooldowns[key] = ability.cooldown or 1
 	if ability.category == "utility" then
-		self:tryApplyStatuses(source, source, ability)
+		local utilTarget = self:resolveUtilityTarget(source, ability, target)
+		self:applyUtilityAbility(source, utilTarget, ability)
+		return
+	elseif ability.category == "utility_dash" then
+		local utilTarget = self:resolveUtilityTarget(source, ability, target)
+		if utilTarget then
+			local dir = (utilTarget.pos - source.pos)
+			local mag = math.max(0.01, dir.Magnitude)
+			local dashDist = math.min((ability.dash and ability.dash.distance) or 60, math.max(0, mag - ((ability.dash and ability.dash.stopShort) or 6)))
+			source.pos += Vector3.new(dir.X / mag, 0, dir.Z / mag) * dashDist
+			self:applyUtilityAbility(source, utilTarget, ability)
+		end
 		return
 	elseif ability.category == "barrier" then
 		self:spawnBarrier(source, ability)
@@ -208,6 +265,11 @@ function CombatService:tryUseAbility(source)
 	elseif ability.category == "aoe" and target then
 		self:spawnAoe(source, target, ability)
 		return
+	elseif ability.category == "blink" and target then
+		local dir = (target.pos - source.pos)
+		local mag = math.max(0.01, dir.Magnitude)
+		local behind = (ability.blink and ability.blink.behind) or 8
+		source.pos = target.pos - Vector3.new(dir.X / mag, 0, dir.Z / mag) * behind
 	elseif (ability.category == "dash" or ability.category == "retreat") and target then
 		self:performMobility(source, target, ability)
 	end
