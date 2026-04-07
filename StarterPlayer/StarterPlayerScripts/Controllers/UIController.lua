@@ -403,7 +403,8 @@ function UIController:buildItemBar(gui)
 		local key = selected and selected.key or "?"
 		local label = selected and selected.label or key
 		local count = self.items:getCount(key)
-		info.Text = string.format("%s x%d", label, count)
+		local status = self.items.lastUseResult and self.items.lastUseResult.reasonCode or ""
+		info.Text = string.format("%s x%d [%s]", label, count, status)
 	end
 	prevBtn.MouseButton1Click:Connect(function()
 		if self.items then self.items:cycle(-1) end

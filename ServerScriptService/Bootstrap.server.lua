@@ -29,6 +29,7 @@ local remotes = {
 	FloatingTextEvent = ensureRemote("FloatingTextEvent"),
 	EventLogEvent = ensureRemote("EventLogEvent"),
 	PetHudUpdate = ensureRemote("PetHudUpdate"),
+	ItemUseResult = ensureRemote("ItemUseResult"),
 }
 
 local WorldService = require(Services:WaitForChild("WorldService"))
