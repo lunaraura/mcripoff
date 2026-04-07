@@ -123,30 +123,44 @@ end
 local function build_pine(x, yTop, z, r)
 	local h = r:NextNumber(14, 22)
 	local tr = r:NextNumber(0.6, 1.0)
-	return { mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(90, 70, 50), nodesFolder), mkBall(x, yTop + h * 0.8, z, r:NextNumber(3.5, 4.8), Color3.fromRGB(40, 100, 60), nil, nodesFolder) }
+	local trunk = mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(90, 70, 50), nodesFolder)
+	local leaves = mkBall(x, yTop + h * 0.8, z, r:NextNumber(3.5, 4.8), Color3.fromRGB(40, 100, 60), nil, trunk)
+	leaves.CanCollide = false
+	return { trunk }
 end
 
 local function build_oak(x, yTop, z, r)
 	local h = r:NextNumber(10, 16)
 	local tr = r:NextNumber(0.9, 1.4)
-	return { mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(110, 85, 60), nodesFolder), mkBall(x, yTop + h, z, r:NextNumber(4.8, 6.2), Color3.fromRGB(70, 120, 60), nil, nodesFolder) }
+	local trunk = mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(110, 85, 60), nodesFolder)
+	local leaves = mkBall(x, yTop + h, z, r:NextNumber(4.8, 6.2), Color3.fromRGB(70, 120, 60), nil, trunk)
+	leaves.CanCollide = false
+	return { trunk }
 end
 
 local function build_birch(x, yTop, z, r)
 	local h = r:NextNumber(10, 14)
 	local trunk = mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(235, 235, 235), nodesFolder)
 	trunk.Material = Enum.Material.Sand
-	return { trunk, mkBall(x, yTop + h, z, r:NextNumber(4.2, 5.4), Color3.fromRGB(90, 160, 90), nil, nodesFolder) }
+	local leaves = mkBall(x, yTop + h, z, r:NextNumber(4.2, 5.4), Color3.fromRGB(90, 160, 90), nil, trunk)
+	leaves.CanCollide = false
+	return { trunk }
 end
 
 local function build_palm(x, yTop, z, r)
 	local h = r:NextNumber(9, 13)
-	return { mkTrunk(x, yTop, z, h, 0.7, Color3.fromRGB(140, 110, 80), nodesFolder), mkBall(x, yTop + h, z, r:NextNumber(3.8, 5.0), Color3.fromRGB(60, 110, 80), nil, nodesFolder) }
+	local trunk = mkTrunk(x, yTop, z, h, 0.7, Color3.fromRGB(140, 110, 80), nodesFolder)
+	local leaves = mkBall(x, yTop + h, z, r:NextNumber(3.8, 5.0), Color3.fromRGB(60, 110, 80), nil, trunk)
+	leaves.CanCollide = false
+	return { trunk }
 end
 
 local function build_cypress(x, yTop, z, r)
 	local h = r:NextNumber(12, 18)
-	return { mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(70, 60, 50), nodesFolder), mkBall(x, yTop + h * 0.9, z, r:NextNumber(3.8, 4.8), Color3.fromRGB(50, 90, 60), nil, nodesFolder) }
+	local trunk = mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(70, 60, 50), nodesFolder)
+	local leaves = mkBall(x, yTop + h * 0.9, z, r:NextNumber(3.8, 4.8), Color3.fromRGB(50, 90, 60), nil, trunk)
+	leaves.CanCollide = false
+	return { trunk }
 end
 
 local BUILDERS = {
@@ -201,11 +215,11 @@ function FloraSystem.scatterChunk(chunk)
 				if builder then
 					for _, inst in ipairs(builder(x, cell.yG, z, r)) do
 						addRef(chunk.key, inst)
-						if inst.Name == "Part" and inst.Material == Enum.Material.Wood then
-							inst.Name = "TreeNode"
-							attachHarvestNode(inst, "Tree", 4, "fiber", 2)
+							if inst.Name == "Part" and inst.Material == Enum.Material.Wood then
+								inst.Name = "TreeNode"
+								attachHarvestNode(inst, "Tree", 4, "wood", 2)
+							end
 						end
-					end
 					table.insert(placed, { x = x, z = z })
 				end
 			end

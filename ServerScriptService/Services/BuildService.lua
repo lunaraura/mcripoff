@@ -10,6 +10,51 @@ function BuildService.new(worldService, inventoryService)
 	return setmetatable({ worldService = worldService, inventoryService = inventoryService, nextBuildId = 1, buildables = {} }, BuildService)
 end
 
+function BuildService:getOrCreateBuildFolder()
+	local world = workspace:FindFirstChild("World")
+	if not world then
+		world = Instance.new("Folder")
+		world.Name = "World"
+		world.Parent = workspace
+	end
+	local builds = world:FindFirstChild("Buildables")
+	if not builds then
+		builds = Instance.new("Folder")
+		builds.Name = "Buildables"
+		builds.Parent = world
+	end
+	return builds
+end
+
+function BuildService:createBuildModel(build)
+	local def = BuildableConfig[build.key]
+	if not def then return nil end
+	local parentFolder = self:getOrCreateBuildFolder()
+	local part
+	if build.key == "tent" then
+		part = Instance.new("WedgePart")
+		part.Size = Vector3.new(8, 5, 8)
+		part.Material = Enum.Material.Fabric
+		part.Color = Color3.fromRGB(156, 126, 98)
+		part.Anchored = true
+		part.CanCollide = true
+		part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad(180), 0)
+	else
+		part = Instance.new("Part")
+		part.Size = Vector3.new(4, 4, 4)
+		part.Shape = Enum.PartType.Block
+		part.Material = Enum.Material.Wood
+		part.Color = Color3.fromRGB(120, 95, 72)
+		part.Anchored = true
+		part.CanCollide = true
+		part.CFrame = CFrame.new(build.pos)
+	end
+	part.Name = string.format("Build_%s_%d", build.key, build.id)
+	part.Parent = parentFolder
+	build.model = part
+	return part
+end
+
 function BuildService:nearestCell(root)
 	local best, bestD = nil, math.huge
 	for _, chunk in pairs(self.worldService.chunks) do
@@ -71,6 +116,7 @@ function BuildService:tryBuild(player, payload)
 		pos = root.Position + root.CFrame.LookVector * 8,
 		nextHarvestAt = self.worldService.time + (def.harvestTime or 1),
 	}
+	self:createBuildModel(self.buildables[id])
 	self.worldService:pushEventLog(player, string.format("Built %s", def.name or buildKey), "#bfe2ff")
 	return true, self.buildables[id]
 end

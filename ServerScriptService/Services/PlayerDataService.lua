@@ -25,7 +25,7 @@ function PlayerDataService:getOrCreate(player)
 		partySlots = { nil, nil }, -- 2 active pets
 		reserve = {},
 		materials = {
-			fiber = 0, stone = 0, meat = 0, battery_seed = 0,
+			fiber = 0, wood = 0, stone = 0, meat = 0, battery_seed = 0,
 			red = 0, yellow = 0, blue = 0,
 			berry_red = 0, berry_yellow = 0, berry_blue = 0,
 			revive_berry = 0, replenish_berry = 0,
