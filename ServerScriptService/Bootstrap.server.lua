@@ -183,7 +183,8 @@ end)
 
 remotes.UseBerry.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
-	berryService:tryUseBerry(player, payload.kind)
+	local targetSlot = tonumber(payload.targetSlot)
+	berryService:tryUseBerry(player, payload.kind, targetSlot)
 end)
 
 remotes.RequestClientOption.OnServerEvent:Connect(function(player, payload)

@@ -165,6 +165,16 @@ function PlayerDataService:revivePartySlots(player)
 	return true
 end
 
+function PlayerDataService:revivePartySlot(player, slot)
+	local data = self:getOrCreate(player)
+	if slot < 1 or slot > 2 then return false end
+	local ownedId = data.partySlots[slot]
+	local owned = ownedId and data.ownedCreatures[ownedId] or nil
+	if not owned then return false end
+	owned.isDefeated = false
+	return true
+end
+
 function PlayerDataService:addOwnedXP(player, ownedId, amount)
 	local data = self:getOrCreate(player)
 	local owned = data.ownedCreatures[ownedId]

@@ -8,7 +8,7 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local UIController = {}
 UIController.__index = UIController
 
-function UIController.new(buildController)
+function UIController.new(buildController, itemController)
 	return setmetatable({
 		floatingTextEvent = remotes:WaitForChild("FloatingTextEvent"),
 		eventLogEvent = remotes:WaitForChild("EventLogEvent"),
@@ -16,6 +16,7 @@ function UIController.new(buildController)
 		requestClientOption = remotes:WaitForChild("RequestClientOption"),
 		requestContextAction = remotes:WaitForChild("RequestContextAction"),
 		build = buildController,
+		items = itemController,
 		hudLabels = {},
 		logLabels = {},
 		optionRows = {},
@@ -120,6 +121,7 @@ function UIController:buildUi()
 	end
 	self:buildOptionsMenu(gui)
 	self:buildBuildAndToolMenu(gui)
+	self:buildItemBar(gui)
 end
 
 function UIController:buildOptionsMenu(gui)
@@ -332,6 +334,88 @@ function UIController:buildBuildAndToolMenu(gui)
 		while panel.Parent do
 			refresh()
 			task.wait(0.1)
+		end
+	end)
+end
+
+function UIController:buildItemBar(gui)
+	local panel = Instance.new("Frame")
+	panel.Name = "ItemBar"
+	panel.Size = UDim2.fromOffset(300, 72)
+	panel.Position = UDim2.new(0.5, -150, 1, -88)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+	panel.BackgroundTransparency = 0.2
+	panel.Parent = gui
+
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, -12, 0, 18)
+	title.Position = UDim2.fromOffset(8, 4)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 13
+	title.TextColor3 = Color3.fromRGB(235, 245, 255)
+	title.Text = "Items  [ / ] cycle   B use"
+	title.Parent = panel
+
+	local prevBtn = Instance.new("TextButton")
+	prevBtn.Size = UDim2.fromOffset(28, 28)
+	prevBtn.Position = UDim2.fromOffset(8, 30)
+	prevBtn.Text = "<"
+	prevBtn.Parent = panel
+
+	local useBtn = Instance.new("TextButton")
+	useBtn.Size = UDim2.fromOffset(90, 28)
+	useBtn.Position = UDim2.fromOffset(106, 30)
+	useBtn.Text = "Use Item"
+	useBtn.Parent = panel
+
+	local nextBtn = Instance.new("TextButton")
+	nextBtn.Size = UDim2.fromOffset(28, 28)
+	nextBtn.Position = UDim2.fromOffset(264, 30)
+	nextBtn.Text = ">"
+	nextBtn.Parent = panel
+
+	local info = Instance.new("TextLabel")
+	info.BackgroundTransparency = 1
+	info.Size = UDim2.fromOffset(150, 28)
+	info.Position = UDim2.fromOffset(44, 30)
+	info.TextXAlignment = Enum.TextXAlignment.Left
+	info.Font = Enum.Font.Code
+	info.TextSize = 13
+	info.TextColor3 = Color3.fromRGB(220, 235, 255)
+	info.Parent = panel
+
+	local function refresh()
+		if not self.items then
+			info.Text = "No item controller"
+			return
+		end
+		local selected = self.items:getSelectedItem()
+		local key = selected and selected.key or "?"
+		local label = selected and selected.label or key
+		local count = self.items:getCount(key)
+		info.Text = string.format("%s x%d", label, count)
+	end
+	prevBtn.MouseButton1Click:Connect(function()
+		if self.items then self.items:cycle(-1) end
+		refresh()
+	end)
+	nextBtn.MouseButton1Click:Connect(function()
+		if self.items then self.items:cycle(1) end
+		refresh()
+	end)
+	useBtn.MouseButton1Click:Connect(function()
+		if self.items then self.items:useSelected() end
+	end)
+	if self.items then
+		self.items:setChangedCallback(refresh)
+	end
+	refresh()
+	task.spawn(function()
+		while panel.Parent do
+			refresh()
+			task.wait(0.2)
 		end
 	end)
 end
