@@ -150,7 +150,10 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 	elseif payload.action == "tameCreature" and payload.targetId then
 		ok = harvestService:tryTameDefeated(player, payload.targetId)
 	elseif payload.action == "context" or payload.action == "harvest" then
-		ok = harvestService:tryHarvestNearestPassive(player, payload.radius or 14)
+		ok = harvestService:tryHarvestNearbyBerryBush(player, payload.radius or 14)
+		if not ok then
+			ok = harvestService:tryHarvestNearestPassive(player, payload.radius or 14)
+		end
 	end
 	if not ok then
 		buildService:handleContextAction(player, payload)

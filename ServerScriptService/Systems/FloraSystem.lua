@@ -1,5 +1,8 @@
 local FloraSystem = {}
 FloraSystem.__index = FloraSystem
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local BiomeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("BiomeConfig"))
 
 local floraFolder = workspace:FindFirstChild("Flora") or Instance.new("Folder")
 floraFolder.Name = "Flora"
@@ -16,6 +19,22 @@ local BIOME_TREES = {
 	volcanic = { base = 4, styles = { "cypress" } },
 	tundra = { base = 7, styles = { "pine", "fir" } },
 	polar = { base = 5, styles = { "pine", "fir" } },
+}
+
+local BERRY_COLORS = {
+	berry_red = Color3.fromRGB(200, 40, 40),
+	berry_yellow = Color3.fromRGB(240, 200, 60),
+	berry_blue = Color3.fromRGB(60, 140, 230),
+	revive_berry = Color3.fromRGB(123, 62, 29),
+	replenish_berry = Color3.fromRGB(70, 190, 235),
+}
+
+local BERRY_NODE_TO_ITEM = {
+	berry_bush_red = "berry_red",
+	berry_bush_yellow = "berry_yellow",
+	berry_bush_blue = "berry_blue",
+	revive_berry_bush = "revive_berry",
+	replenish_berry_bush = "replenish_berry",
 }
 
 local function addRef(chunkKey, inst)
@@ -45,6 +64,29 @@ local function mkBall(x, y, z, r, color, mat)
 	p.CFrame = CFrame.new(x, y + r, z)
 	p.Parent = floraFolder
 	return p
+end
+
+local function mkBerryBush(x, yTop, z, itemKey)
+	local bush = Instance.new("Part")
+	bush.Name = "BerryBush_" .. tostring(itemKey)
+	bush.Shape = Enum.PartType.Ball
+	bush.Anchored, bush.CanCollide = true, false
+	bush.Material = Enum.Material.Grass
+	bush.Color = BERRY_COLORS[itemKey] or Color3.fromRGB(180, 80, 80)
+	bush.Size = Vector3.new(5, 5, 5)
+	bush.CFrame = CFrame.new(x, yTop + 2.5, z)
+	bush.Parent = floraFolder
+	bush:SetAttribute("BerryKind", itemKey)
+	bush:SetAttribute("Uses", 3)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Pick Berry"
+	prompt.ObjectText = "Berry Bush"
+	prompt.HoldDuration = 0.2
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = bush
+	CollectionService:AddTag(bush, "BerryBush")
+	return bush
 end
 
 local function build_pine(x, yTop, z, r)
@@ -96,6 +138,7 @@ function FloraSystem.scatterChunk(chunk)
 	local spec = BIOME_TREES[dominant] or BIOME_TREES.plains
 	local trees = spec.base
 	local shrubs = math.floor(spec.base * 1.2)
+	local bushes = math.max(1, math.floor(spec.base * 0.35))
 	local placed = {}
 	local function farEnough(x, z, min2)
 		for _, p in ipairs(placed) do
@@ -128,6 +171,35 @@ function FloraSystem.scatterChunk(chunk)
 			local z = cell.z + r:NextNumber(-3, 3)
 			if farEnough(x, z, 5 * 5) then
 				addRef(chunk.key, mkBall(x, cell.yG, z, r:NextNumber(0.8, 1.6), Color3.fromRGB(70, 140, 80)))
+			end
+		end
+	end
+	local berryNodePool = {}
+	for _, cell in ipairs(chunk.cells) do
+		local biomeDef = cell and cell.dominantBiome and BiomeConfig[cell.dominantBiome] or nil
+		local nodeDefs = biomeDef and biomeDef.nodes or nil
+		if nodeDefs then
+			for _, n in ipairs(nodeDefs) do
+				local itemKey = BERRY_NODE_TO_ITEM[n.key]
+				if itemKey then
+					for _ = 1, math.max(1, n.weight or 1) do
+						table.insert(berryNodePool, itemKey)
+					end
+				end
+			end
+		end
+	end
+	if #berryNodePool <= 0 then
+		berryNodePool = { "berry_red", "berry_yellow", "berry_blue" }
+	end
+	for _ = 1, bushes do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		if cell and (not cell.water) and (not cell.blocked) then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 5 * 5) then
+				local itemKey = berryNodePool[r:NextInteger(1, #berryNodePool)]
+				addRef(chunk.key, mkBerryBush(x, cell.yG, z, itemKey))
 			end
 		end
 	end
