@@ -174,7 +174,10 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 		end
 	end
 	if not ok then
-		buildService:handleContextAction(player, payload)
+		local buildOk, buildResult = buildService:handleContextAction(player, payload)
+		if not buildOk and payload.action == "build" then
+			worldService:pushEventLog(player, string.format("Build failed: %s", tostring(buildResult or "invalid placement")), "#ffb3b3")
+		end
 	end
 end)
 

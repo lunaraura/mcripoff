@@ -282,8 +282,9 @@ function UIController:buildBuildAndToolMenu(gui)
 		local buildMode = self.build and self.build.buildMode
 		local tool = self.build and self.build.selectedTool or "-"
 		local buildKey = self.build and self.build.selectedBuildKey or "-"
+		local placementReason = self.build and self.build.placement and self.build.placement.reason or "-"
 		buildToggle.Text = buildMode and "Build Mode: ON" or "Build Mode: OFF"
-		selectedLabel.Text = string.format("Selected tool=%s  build=%s", tostring(tool), tostring(buildKey))
+		selectedLabel.Text = string.format("tool=%s  build=%s  %s", tostring(tool), tostring(buildKey), tostring(placementReason))
 	end
 
 	buildToggle.MouseButton1Click:Connect(function()
@@ -327,6 +328,12 @@ function UIController:buildBuildAndToolMenu(gui)
 	end)
 
 	refresh()
+	task.spawn(function()
+		while panel.Parent do
+			refresh()
+			task.wait(0.1)
+		end
+	end)
 end
 
 function UIController:updatePetHud(payload)

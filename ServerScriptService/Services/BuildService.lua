@@ -29,11 +29,13 @@ end
 function BuildService:createBuildModel(build)
 	local def = BuildableConfig[build.key]
 	if not def then return nil end
+	local placement = def.placement or {}
+	local preview = placement.previewSize or { x = 4, y = 4, z = 4 }
 	local parentFolder = self:getOrCreateBuildFolder()
 	local part
-	if build.key == "tent" then
+	if (placement.previewShape or "block") == "wedge" then
 		part = Instance.new("WedgePart")
-		part.Size = Vector3.new(8, 5, 8)
+		part.Size = Vector3.new(preview.x or 8, preview.y or 5, preview.z or 8)
 		part.Material = Enum.Material.Fabric
 		part.Color = Color3.fromRGB(156, 126, 98)
 		part.Anchored = true
@@ -41,7 +43,7 @@ function BuildService:createBuildModel(build)
 		part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad((build.rotationY or 180)), 0)
 	else
 		part = Instance.new("Part")
-		part.Size = Vector3.new(4, 4, 4)
+		part.Size = Vector3.new(preview.x or 4, preview.y or 4, preview.z or 4)
 		part.Shape = Enum.PartType.Block
 		part.Material = Enum.Material.Wood
 		part.Color = Color3.fromRGB(120, 95, 72)
@@ -56,34 +58,90 @@ function BuildService:createBuildModel(build)
 end
 
 function BuildService:getBuildFootprintSize(buildKey)
-	if buildKey == "tent" then
-		return Vector3.new(8, 5, 8)
+	local def = BuildableConfig[buildKey]
+	local p = def and def.placement or nil
+	local fp = p and p.footprintSize or nil
+	if fp then
+		return Vector3.new(fp.x or 4, fp.y or 4, fp.z or 4)
+	end
+	local pv = p and p.previewSize or nil
+	if pv then
+		return Vector3.new(pv.x or 4, pv.y or 4, pv.z or 4)
 	end
 	return Vector3.new(4, 4, 4)
 end
 
+function BuildService:getPlacementRules(buildKey)
+	local def = BuildableConfig[buildKey]
+	local p = def and def.placement or {}
+	return {
+		placementRange = p.placementRange or 18,
+		collisionRadius = p.collisionRadius or 4,
+		allowedTerrain = p.allowedTerrain or { "ground" },
+		allowRotation = p.allowRotation ~= false,
+	}
+end
+
+function BuildService:getCellAtPosition(pos)
+	local cx, cz = math.floor(pos.X / 64), math.floor(pos.Z / 64)
+	local key = string.format("%d:%d", cx, cz)
+	local chunk = self.worldService.chunks[key]
+	if not chunk then return nil end
+	local best, bestD = nil, math.huge
+	for _, cell in ipairs(chunk.cells or {}) do
+		local d = (Vector3.new(cell.x, 0, cell.z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
+		if d < bestD then
+			best, bestD = cell, d
+		end
+	end
+	return best
+end
+
+function BuildService:isTerrainAllowed(buildKey, pos)
+	local rules = self:getPlacementRules(buildKey)
+	local cell = self:getCellAtPosition(pos)
+	if not cell then
+		return false, "missing chunk/cell"
+	end
+	if cell.blocked or cell.water then
+		return false, "blocked terrain"
+	end
+	local terrainClass = cell.terrainClass or "ground"
+	for _, allowed in ipairs(rules.allowedTerrain) do
+		if allowed == terrainClass then
+			return true
+		end
+	end
+	return false, "invalid terrain class"
+end
+
 function BuildService:isValidBuildPlacement(player, buildKey, pos)
+	local rules = self:getPlacementRules(buildKey)
 	local root = player.Character and player.Character.PrimaryPart
 	if not root then return false, "no character" end
 	local dist = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
-	if dist > 18 then
+	if dist > rules.placementRange then
 		return false, "too far"
 	end
+	local terrainOk, terrainReason = self:isTerrainAllowed(buildKey, pos)
+	if not terrainOk then
+		return false, terrainReason
+	end
 	local size = self:getBuildFootprintSize(buildKey)
-	local overlap = false
+	local overlapBuild = false
 	for _, b in pairs(self.buildables) do
 		local d = (Vector3.new(b.pos.X, 0, b.pos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
-		if d < math.max(size.X, size.Z) * 0.9 then
-			overlap = true
+		if d < math.max(rules.collisionRadius, math.max(size.X, size.Z) * 0.5) then
+			overlapBuild = true
 			break
 		end
 	end
-	if overlap then return false, "overlap buildable" end
+	if overlapBuild then return false, "overlaps existing build" end
 	for _, c in ipairs(self.worldService.creatures) do
 		if c.alive then
 			local d = (Vector3.new(c.pos.X, 0, c.pos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
-			if d < 6 then
-				return false, "overlap creature"
+			if d < math.max(4, rules.collisionRadius) then
+				return false, "overlaps creature"
 			end
 		end
 	end
@@ -139,7 +197,8 @@ function BuildService:tryBuild(player, payload)
 	if not root then return false, "no character" end
 	local desiredPos = payload.position
 	local placementPos = root.Position + root.CFrame.LookVector * 8
-	local rotationY = tonumber(payload.rotationY) or 0
+	local rules = self:getPlacementRules(buildKey)
+	local rotationY = rules.allowRotation and (tonumber(payload.rotationY) or 0) or 0
 	if typeof(desiredPos) == "Vector3" then
 		placementPos = Vector3.new(
 			math.floor(desiredPos.X / 4 + 0.5) * 4,

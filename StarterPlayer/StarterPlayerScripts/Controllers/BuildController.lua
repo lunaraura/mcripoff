@@ -19,11 +19,12 @@ function BuildController.new()
 		buildMode = false,
 		selectedBuildKey = "tent",
 		selectedRotationY = 0,
-		placement = {
-			valid = false,
-			worldPos = nil,
-			reason = "inactive",
-		},
+			placement = {
+				valid = false,
+				worldPos = nil,
+				reason = "inactive",
+				yGround = nil,
+			},
 		preview = PlacementPreviewHelper.new(),
 	}, BuildController)
 end
@@ -52,20 +53,19 @@ end
 
 function BuildController:selectBuildable(buildKey)
 	self.selectedBuildKey = buildKey
-	if not self.buildMode then
-		self:clearPreview()
-	end
+	self:clearPreview()
 end
 
 function BuildController:handlePrimaryAction()
 	if self.buildMode then
 		if self.placement.valid and self.placement.worldPos then
-			return self:sendContext({
-				action = "build",
-				buildKey = self.selectedBuildKey,
-				position = self.placement.worldPos,
-				rotationY = self.selectedRotationY,
-			})
+				return self:sendContext({
+					action = "build",
+					buildKey = self.selectedBuildKey,
+					position = self.placement.worldPos,
+					yGround = self.placement.yGround,
+					rotationY = self.selectedRotationY,
+				})
 		end
 		return false
 	end
@@ -94,14 +94,41 @@ function BuildController:clearPreview()
 	self.placement.valid = false
 	self.placement.worldPos = nil
 	self.placement.reason = "inactive"
+	self.placement.yGround = nil
 	self.preview:destroy()
 end
 
-function BuildController:getBuildSize(buildKey)
-	if buildKey == "tent" then
-		return Vector3.new(8, 5, 8)
+function BuildController:getBuildDef(buildKey)
+	return BuildableConfig[buildKey]
+end
+
+function BuildController:getPlacementRules(buildKey)
+	local def = self:getBuildDef(buildKey)
+	local p = def and def.placement or {}
+	local footprint = p.footprintSize or { x = 4, y = 4, z = 4 }
+	return def, {
+		size = Vector3.new(footprint.x or 4, footprint.y or 4, footprint.z or 4),
+		collisionRadius = p.collisionRadius or math.max(footprint.x or 4, footprint.z or 4) * 0.5,
+		range = p.placementRange or 18,
+		allowedTerrain = p.allowedTerrain or { "ground" },
+		allowRotation = p.allowRotation ~= false,
+		grid = 4,
+	}
+end
+
+function BuildController:isTerrainAllowed(rayResult, rules)
+	local terrainClass = "ground"
+	if rayResult and rayResult.Material == Enum.Material.Water then
+		terrainClass = "water"
+	elseif rayResult and rayResult.Material == Enum.Material.Rock then
+		terrainClass = "rock"
 	end
-	return Vector3.new(4, 4, 4)
+	for _, allowed in ipairs(rules.allowedTerrain or {}) do
+		if allowed == terrainClass then
+			return true
+		end
+	end
+	return false
 end
 
 function BuildController:getMousePlacementPoint()
@@ -139,10 +166,18 @@ function BuildController:isOverlapping(cframe, size)
 	local parts = Workspace:GetPartBoundsInBox(cframe, size, params)
 	for _, part in ipairs(parts) do
 		if part.CanCollide and part.Transparency < 0.95 then
-			return true
+			local n = string.lower(part.Name or "")
+			local inCreatureModel = part:FindFirstAncestor("CreatureModels") ~= nil
+			if inCreatureModel or string.find(n, "c_") then
+				return true, "overlaps creature"
+			end
+			if string.find(n, "build_") then
+				return true, "overlaps existing build"
+			end
+			return true, "overlaps structure"
 		end
 	end
-	return false
+	return false, nil
 end
 
 function BuildController:updatePreview()
@@ -160,21 +195,44 @@ function BuildController:updatePreview()
 		self:clearPreview()
 		return
 	end
-	local grid = 4
+	local def, rules = self:getPlacementRules(self.selectedBuildKey)
+	if not def then
+		self.placement.reason = "unknown build"
+		self:clearPreview()
+		return
+	end
+	local grid = rules.grid
 	local x = math.floor((point.X / grid) + 0.5) * grid
 	local z = math.floor((point.Z / grid) + 0.5) * grid
-	local size = self:getBuildSize(self.selectedBuildKey)
+	local size = rules.size
+	if not rules.allowRotation then
+		self.selectedRotationY = 0
+	end
 	local y = point.Y + size.Y * 0.5
 	local cframe = CFrame.new(x, y, z) * CFrame.Angles(0, math.rad(self.selectedRotationY), 0)
-	local inRange = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(x, 0, z)).Magnitude <= 18
-	local allowedTerrain = not (rayResult and rayResult.Material == Enum.Material.Water)
-	local noOverlap = not self:isOverlapping(cframe, size)
+	local inRange = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(x, 0, z)).Magnitude <= rules.range
+	local allowedTerrain = self:isTerrainAllowed(rayResult, rules)
+	local overlapping, overlapReason = self:isOverlapping(cframe, size)
+	local noOverlap = not overlapping
 	local enoughMaterials = self:hasEnoughMaterials(self.selectedBuildKey)
 	local valid = inRange and allowedTerrain and noOverlap and enoughMaterials
-	self.preview:update(self.selectedBuildKey, cframe, valid)
+	self.preview:update(def, cframe, valid)
 	self.placement.valid = valid
 	self.placement.worldPos = Vector3.new(x, y, z)
-	self.placement.reason = valid and "ok" or "invalid"
+	self.placement.yGround = point.Y
+	if valid then
+		self.placement.reason = "ok"
+	elseif not inRange then
+		self.placement.reason = "too far"
+	elseif not allowedTerrain then
+		self.placement.reason = "blocked terrain"
+	elseif not noOverlap then
+		self.placement.reason = overlapReason or "overlaps structure"
+	elseif not enoughMaterials then
+		self.placement.reason = "missing materials"
+	else
+		self.placement.reason = "invalid"
+	end
 end
 
 return BuildController
