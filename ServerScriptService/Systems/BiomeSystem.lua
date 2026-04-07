@@ -58,9 +58,40 @@ function BiomeSystem.sample(x, z)
 	return bestKey
 end
 
+function BiomeSystem.sampleBiomeMixFromClimate(climate)
+	local total = 0
+	local weighted = {}
+	local bestKey, bestScore = "plains", -math.huge
+	for _, biomeKey in ipairs(BIOME_KEYS) do
+		local def = BiomeConfig[biomeKey]
+		local score = BiomeSystem.scoreBiome(def.rules or {}, climate)
+		weighted[biomeKey] = score
+		total += score
+		if score > bestScore then
+			bestScore = score
+			bestKey = biomeKey
+		end
+	end
+
+	local mix = {}
+	if total <= 0 then
+		mix[bestKey] = 1
+		return mix, bestKey
+	end
+	for biomeKey, score in pairs(weighted) do
+		mix[biomeKey] = score / total
+	end
+	return mix, bestKey
+end
+
+function BiomeSystem.sampleBiomeMix(x, z)
+	local climate = BiomeSystem.sampleClimate(x, z)
+	return BiomeSystem.sampleBiomeMixFromClimate(climate)
+end
+
 function BiomeSystem.sampleEnvironment(x, z)
 	local climate = BiomeSystem.sampleClimate(x, z)
-	local biomeKey = BiomeSystem.sample(x, z)
+	local biomeMix, biomeKey = BiomeSystem.sampleBiomeMixFromClimate(climate)
 	local heightNoise = noise01(x, z, 0.0044, 9)
 	local rugged = (climate.lithosphere * 0.65) + ((1 - climate.softness) * 0.35)
 	local wet = climate.rainfall * (1 - climate.barrenness * 0.45)
@@ -78,6 +109,7 @@ function BiomeSystem.sampleEnvironment(x, z)
 	end
 	return {
 		biomeKey = biomeKey,
+		biomeMix = biomeMix,
 		climate = climate,
 		terrainClass = terrainClass,
 		heightNoise = heightNoise,

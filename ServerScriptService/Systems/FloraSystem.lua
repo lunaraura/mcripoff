@@ -134,7 +134,7 @@ function FloraSystem.scatterChunk(chunk)
 	if not chunk or not chunk.cells or #chunk.cells == 0 then return end
 	local seed = (chunk.cx * 92821) + (chunk.cz * 52361) + 1335
 	local r = Random.new(seed)
-	local dominant = chunk.cells[1].dominantBiome or "plains"
+	local dominant = chunk.dominantBiome or chunk.cells[1].dominantBiome or "plains"
 	local spec = BIOME_TREES[dominant] or BIOME_TREES.plains
 	local trees = spec.base
 	local shrubs = math.floor(spec.base * 1.2)
