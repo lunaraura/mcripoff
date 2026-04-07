@@ -70,6 +70,9 @@ function BerryService:applyEffect(player, def, owned, runtime, slot)
 		local revived = runtime or self.worldService:getRuntimeCreatureForOwnedId(player.UserId, owned.ownedId)
 		if revived then
 			revived.currentHP = math.max(1, math.floor((revived.modifiedStats.maxHP or 1) * (effect.hpPercent or 0.5)))
+			if owned and owned.ownedId then
+				self.creatureService:syncOwnedFromRuntime(player, owned.ownedId, revived)
+			end
 		end
 	end
 end

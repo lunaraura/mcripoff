@@ -1,4 +1,8 @@
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Creatures = Shared:WaitForChild("Creatures")
+local CreatureFactoryRules = require(Creatures:WaitForChild("CreatureFactoryRules"))
 local CreatureRuntime = require(script.Parent.Parent.Runtime.CreatureRuntime)
 
 local CreatureService = {}
@@ -10,19 +14,36 @@ end
 
 function CreatureService:spawnRuntime(speciesKey, team, x, z, opts)
 	local creature = CreatureRuntime.new(speciesKey, team, x, z, opts)
+	CreatureFactoryRules.applyLifecycleDefaults(creature, self.worldService.time)
 	self.worldService:addCreature(creature)
 	self:attachModel(creature)
 	return creature
 end
 
-
 function CreatureService:spawnFromSpawnPayload(speciesKey, spawnPayload)
-	spawnPayload = spawnPayload or {}
-	local team = spawnPayload.team or 1
-	local x = spawnPayload.x or 0
-	local z = spawnPayload.z or 0
-	local opts = spawnPayload.opts or {}
-	return self:spawnRuntime(speciesKey, team, x, z, opts)
+	local payload = CreatureFactoryRules.makeSpawnPayload({
+		speciesKey = speciesKey,
+		team = spawnPayload and spawnPayload.team,
+		x = spawnPayload and spawnPayload.x,
+		z = spawnPayload and spawnPayload.z,
+		opts = spawnPayload and spawnPayload.opts,
+	})
+	return self:spawnRuntime(payload.speciesKey, payload.team, payload.x, payload.z, payload.opts)
+end
+
+function CreatureService:spawnPetFromOwned(player, ownedId, slot, pos, owned)
+	local payload = CreatureFactoryRules.makePetRuntimePayload(player.UserId, ownedId, slot, pos, owned, self.worldService.time)
+	local pet = self:spawnFromSpawnPayload(payload.speciesKey, payload)
+	CreatureFactoryRules.applyRuntimeIdentity(pet, payload.identity)
+	CreatureFactoryRules.applyLoadout(pet, payload.loadout)
+	pet:RebuildStats()
+	return pet
+end
+
+function CreatureService:syncOwnedFromRuntime(player, ownedId, runtime)
+	local data = self.playerDataService:getOrCreate(player)
+	local owned = data.ownedCreatures[ownedId]
+	CreatureFactoryRules.syncOwnedFromRuntime(owned, runtime)
 end
 
 function CreatureService:attachModel(creature)
@@ -95,25 +116,7 @@ function CreatureService:HydrateParty(player)
 		local owned = ownedId and data.ownedCreatures[ownedId] or nil
 		if owned and not owned.isDefeated then
 			local pos = root.Position + offsets[slot]
-			local pet = self:spawnRuntime(owned.speciesKey, 0, pos.X, pos.Z, {
-				mode = "pet",
-				level = owned.level or 1,
-				morphPoints = owned.morphPoints or 0,
-			})
-			pet.ownerUserId = player.UserId
-			pet.ownedId = ownedId
-			pet.partySlot = slot
-			pet.familyKey = owned.familyKey or pet.familyKey
-			pet.outerCompositeKey = owned.outerCompositeKey or pet.outerCompositeKey
-			pet.innerCompositeKey = owned.innerCompositeKey or pet.innerCompositeKey
-			pet.compositeKey = owned.compositeKey or pet.compositeKey
-			pet.command = { type = "follow", issuedAt = self.worldService.time }
-			pet.moveset = table.clone(owned.moveset or pet.moveset)
-			pet.cooldowns = {}
-			for _, key in ipairs(pet.moveset) do
-				pet.cooldowns[key] = 0
-			end
-			pet:RebuildStats()
+			self:spawnPetFromOwned(player, ownedId, slot, pos, owned)
 		end
 	end
 end
@@ -123,10 +126,7 @@ function CreatureService:despawnPetsForPlayer(player)
 	for _, c in ipairs(self.worldService.creatures) do
 		if c.ownerUserId == player.UserId and c.mode == "pet" then
 			c.alive = false
-			if c.model then
-				c.model:Destroy()
-				c.model = nil
-			end
+			if c.model then c.model:Destroy(); c.model = nil end
 			self.worldService.creaturesById[c.id] = nil
 		else
 			table.insert(remaining, c)
@@ -140,44 +140,27 @@ function CreatureService:respawnPartyFromOwned(player)
 end
 
 function CreatureService:getOrCreateCreatureModelsFolder()
-	local worldFolder = Workspace:FindFirstChild("World")
-	if not worldFolder then
-		worldFolder = Instance.new("Folder")
-		worldFolder.Name = "World"
-		worldFolder.Parent = Workspace
-	end
-	local modelsFolder = worldFolder:FindFirstChild("CreatureModels")
-	if not modelsFolder then
-		modelsFolder = Instance.new("Folder")
-		modelsFolder.Name = "CreatureModels"
-		modelsFolder.Parent = worldFolder
-	end
+	local worldFolder = Workspace:FindFirstChild("World") or Instance.new("Folder")
+	worldFolder.Name = "World"
+	worldFolder.Parent = Workspace
+	local modelsFolder = worldFolder:FindFirstChild("CreatureModels") or Instance.new("Folder")
+	modelsFolder.Name = "CreatureModels"
+	modelsFolder.Parent = worldFolder
 	return modelsFolder
 end
 
 function CreatureService:getCreatureColor(creature)
-	if creature.role == "passive" then
-		return Color3.fromRGB(177, 229, 157)
-	end
-	if creature.team == 0 then
-		return Color3.fromRGB(120, 220, 255)
-	end
-	if creature.wildTier == "big" then
-		return Color3.fromRGB(242, 130, 104)
-	end
-	if creature.wildTier == "small" then
-		return Color3.fromRGB(255, 199, 114)
-	end
+	if creature.role == "passive" then return Color3.fromRGB(177, 229, 157) end
+	if creature.team == 0 then return Color3.fromRGB(120, 220, 255) end
+	if creature.wildTier == "big" then return Color3.fromRGB(242, 130, 104) end
+	if creature.wildTier == "small" then return Color3.fromRGB(255, 199, 114) end
 	return Color3.fromRGB(255, 155, 120)
 end
 
 function CreatureService:getCreatureVisualSize(creature)
 	local base = creature.modifiedStats and creature.modifiedStats.size or 3
-	local scale = 0.45
-	local core = math.max(1.5, math.min(6, base * scale))
-	local tierScale = 1
-	if creature.wildTier == "small" then tierScale = 0.85 end
-	if creature.wildTier == "big" then tierScale = 1.25 end
+	local core = math.max(1.5, math.min(6, base * 0.45))
+	local tierScale = (creature.wildTier == "small" and 0.85) or (creature.wildTier == "big" and 1.25) or 1
 	local final = core * tierScale
 	return Vector3.new(final, final, final)
 end
