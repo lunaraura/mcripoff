@@ -24,6 +24,7 @@ local remotes = {
 	RequestContextAction = ensureRemote("RequestContextAction"),
 	RequestManualCast = ensureRemote("RequestManualCast"),
 	RequestStarterChoice = ensureRemote("RequestStarterChoice"),
+	RequestClientOption = ensureRemote("RequestClientOption"),
 	UseBerry = ensureRemote("UseBerry"),
 	FloatingTextEvent = ensureRemote("FloatingTextEvent"),
 	EventLogEvent = ensureRemote("EventLogEvent"),
@@ -63,6 +64,9 @@ local HUD_KEEPALIVE_SECONDS = 1.0
 
 Players.PlayerAdded:Connect(function(player)
 	playerDataService:getOrCreate(player)
+	player:SetAttribute("RadiusChunks", 2)
+	player:SetAttribute("PetLeashDistance", 90)
+	player:SetAttribute("PetHoldDefenseRange", 30)
 	player.CharacterAdded:Connect(function()
 		task.wait(0.3)
 		creatureService:HydrateParty(player)
@@ -164,6 +168,20 @@ end)
 remotes.UseBerry.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
 	berryService:tryUseBerry(player, payload.kind)
+end)
+
+remotes.RequestClientOption.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	local key = tostring(payload.key or "")
+	local value = tonumber(payload.value)
+	if not value then return end
+	if key == "RadiusChunks" then
+		player:SetAttribute("RadiusChunks", math.clamp(math.floor(value + 0.5), 2, 7))
+	elseif key == "PetLeashDistance" then
+		player:SetAttribute("PetLeashDistance", math.clamp(value, 35, 160))
+	elseif key == "PetHoldDefenseRange" then
+		player:SetAttribute("PetHoldDefenseRange", math.clamp(value, 10, 60))
+	end
 end)
 
 local function summarizeHudPayloadForReplication(petPayload)

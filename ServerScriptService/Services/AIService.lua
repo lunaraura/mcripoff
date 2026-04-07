@@ -25,6 +25,10 @@ end
 function AIService:thinkPet(creature)
 	local owner = Players:GetPlayerByUserId(creature.ownerUserId or -1)
 	local root = owner and owner.Character and owner.Character.PrimaryPart
+	local leashDistance = owner and tonumber(owner:GetAttribute("PetLeashDistance")) or 90
+	leashDistance = math.clamp(leashDistance or 90, 35, 160)
+	local holdDefenseRange = owner and tonumber(owner:GetAttribute("PetHoldDefenseRange")) or 30
+	holdDefenseRange = math.clamp(holdDefenseRange or 30, 10, 60)
 	local slotOffset = creature.partySlot == 2 and Vector3.new(6, 0, 8) or Vector3.new(-6, 0, 8)
 	local followAnchor = root and (root.Position + slotOffset) or creature.pos
 	if creature.command and creature.command.type == "follow" then
@@ -33,9 +37,9 @@ function AIService:thinkPet(creature)
 		if dAnchor > 6 then
 			creature.intent.move = Vector3.new(delta.X, 0, delta.Z)
 		end
-		if dAnchor < 30 then
+		if dAnchor < math.max(22, leashDistance * 0.33) then
 			local target, d = self.worldService:findNearestEnemyOf(creature, 65)
-			if target and (target.pos - followAnchor).Magnitude <= 90 then
+			if target and (target.pos - followAnchor).Magnitude <= leashDistance then
 				self:fightTarget(creature, target)
 			elseif dAnchor <= 6 then
 				creature.intent.move = Vector3.zero
@@ -45,7 +49,7 @@ function AIService:thinkPet(creature)
 	end
 	if creature.command and creature.command.type == "hold" then
 		creature.intent.move = Vector3.zero
-		local target = self.worldService:findNearestEnemyOf(creature, 30)
+		local target = self.worldService:findNearestEnemyOf(creature, holdDefenseRange)
 		if target then
 			self:fightTarget(creature, target)
 		end
