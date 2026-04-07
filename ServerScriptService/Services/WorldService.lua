@@ -12,6 +12,9 @@ function WorldService.new(remotes)
 		chunks = {},
 		nodes = {},
 		barriers = {},
+		wallBarriers = {},
+		projectiles = {},
+		areaEffects = {},
 		remotes = remotes,
 	}, WorldService)
 end

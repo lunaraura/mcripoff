@@ -45,6 +45,8 @@ function MorphService:tryMorph(player, ownedId, targetSpecies)
 	local oldSpecies = owned.speciesKey
 	owned.speciesKey = targetSpecies
 	owned.familyKey = targetDef.familyKey
+	owned.outerCompositeKey = targetDef.outerCompositeKey or targetDef.compositeKey
+	owned.innerCompositeKey = targetDef.innerCompositeKey or targetDef.compositeKey
 	owned.compositeKey = targetDef.compositeKey
 	owned.moveset = self:buildMorphMoveset(owned.moveset or {}, targetDef.moveset or {}, 4)
 	owned.morphHistory = owned.morphHistory or {}

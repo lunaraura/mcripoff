@@ -24,7 +24,9 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.pos = Vector3.new(x, opts.y or 0, z)
 	self.spawnAnchor = opts.spawnAnchor or self.pos
 	self.familyKey = def.familyKey or "canine"
-	self.compositeKey = def.compositeKey or "animal"
+	self.outerCompositeKey = def.outerCompositeKey or def.compositeKey or "animal"
+	self.innerCompositeKey = def.innerCompositeKey or def.compositeKey or "animal"
+	self.compositeKey = def.compositeKey or self.outerCompositeKey
 	self.baseStats = table.clone(def.baseStats)
 	self.modifiedStats = table.clone(def.baseStats)
 	self.level = opts.level or 1

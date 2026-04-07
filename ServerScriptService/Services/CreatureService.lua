@@ -94,6 +94,8 @@ function CreatureService:HydrateParty(player)
 			pet.ownedId = ownedId
 			pet.partySlot = slot
 			pet.familyKey = owned.familyKey or pet.familyKey
+			pet.outerCompositeKey = owned.outerCompositeKey or pet.outerCompositeKey
+			pet.innerCompositeKey = owned.innerCompositeKey or pet.innerCompositeKey
 			pet.compositeKey = owned.compositeKey or pet.compositeKey
 			pet.command = { type = "follow", issuedAt = self.worldService.time }
 			pet.moveset = table.clone(owned.moveset or pet.moveset)

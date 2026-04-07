@@ -314,6 +314,7 @@ RunService.Heartbeat:Connect(function(dt)
 	spawnService:update(dt)
 	harvestService:tickNodeRegrowth()
 	buildService:tickStructureEffects()
+	combatService:update(dt)
 	for _, creature in ipairs(worldService.creatures) do
 		if creature.alive then
 			effectService:tickCreature(creature, dt)

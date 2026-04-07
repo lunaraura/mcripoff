@@ -16,13 +16,41 @@ end
 
 local CompositeConfig = {
 	defaults = defaults,
-	animal = { resistances = withDefaults({}), traits = { toughness = 0, mobilityBias = 0.05, energyBias = 0.05 } },
-	water = { resistances = withDefaults({ energy = { heat = 1.35, water = 0.6, electric = 1.6 } }), traits = { toughness = -0.05, mobilityBias = 0.1, energyBias = 0.1 } },
-	fire = { resistances = withDefaults({ energy = { heat = 0.55, cold = 1.45, water = 1.5 } }), traits = { toughness = -0.08, mobilityBias = 0.05, energyBias = 0.2 } },
-	frost = { resistances = withDefaults({ energy = { heat = 1.5, cold = 0.55 } }), traits = { toughness = 0.08, mobilityBias = -0.02, energyBias = 0.05 } },
-	rock = { resistances = withDefaults({ physical = { slash = 0.75, pierce = 0.85, drill = 1.35 } }), traits = { toughness = 0.3, mobilityBias = -0.12, energyBias = -0.05 } },
-	voltage = { resistances = withDefaults({ energy = { electric = 0.55, water = 1.4 } }), traits = { toughness = -0.1, mobilityBias = 0.16, energyBias = 0.28 } },
-	arcane = { resistances = withDefaults({ energy = { poison = 1.2, electric = 0.85 } }), traits = { toughness = -0.04, mobilityBias = 0.05, energyBias = 0.3 } },
+	animal = {
+		resistances = withDefaults({ physical = { drill = 1.1 }, energy = { water = 0.8, electric = 1.4 } }),
+		specialEffects = {},
+		traits = { toughness = 0, conductivity = 0.25, heatRetention = 0.35, mobilityBias = 0.08, energyBias = 0.05, regenBias = 0.10 },
+	},
+	water = {
+		resistances = withDefaults({ physical = { slash = 0.95, impact = 1.15, drill = 1.05 }, energy = { heat = 1.35, cold = 0.85, poison = 0.9, water = 0.6, electric = 1.6 } }),
+		specialEffects = { "waterAdd" },
+		traits = { toughness = -0.05, conductivity = 0.90, heatRetention = -0.35, mobilityBias = 0.10, energyBias = 0.10, regenBias = 0.18 },
+	},
+	fire = {
+		resistances = withDefaults({ physical = { slash = 0.95, impact = 1.1 }, energy = { heat = 0.55, cold = 1.45, poison = 0.9, water = 1.5 } }),
+		specialEffects = { "fireUp", "burnoff" },
+		traits = { toughness = -0.08, conductivity = 0.10, heatRetention = 0.95, mobilityBias = 0.05, energyBias = 0.20, regenBias = -0.05 },
+	},
+	frost = {
+		resistances = withDefaults({ physical = { slash = 0.95, impact = 1.05 }, energy = { heat = 1.5, cold = 0.55, water = 0.85, electric = 1.1 } }),
+		specialEffects = {},
+		traits = { toughness = 0.08, conductivity = 0.35, heatRetention = -0.25, mobilityBias = -0.04, energyBias = 0.05, regenBias = 0.10 },
+	},
+	rock = {
+		resistances = withDefaults({ physical = { slash = 0.75, pierce = 0.85, impact = 1.1, drill = 1.35 }, energy = { poison = 0.6, water = 0.95, electric = 0.8 } }),
+		specialEffects = { "hardSurface" },
+		traits = { toughness = 0.35, conductivity = 0.15, heatRetention = 0.65, mobilityBias = -0.12, energyBias = -0.05, regenBias = 0.0 },
+	},
+	voltage = {
+		resistances = withDefaults({ physical = { pierce = 1.05, impact = 1.1 }, energy = { heat = 1.1, water = 1.4, electric = 0.55 } }),
+		specialEffects = { "waterVolt" },
+		traits = { toughness = -0.10, conductivity = 1.00, heatRetention = 0.05, mobilityBias = 0.18, energyBias = 0.28, regenBias = 0.00 },
+	},
+	arcane = {
+		resistances = withDefaults({ physical = { impact = 1.05 }, energy = { heat = 0.95, cold = 0.95, poison = 1.2, electric = 0.85 } }),
+		specialEffects = {},
+		traits = { toughness = -0.04, conductivity = 0.60, heatRetention = 0.20, mobilityBias = 0.05, energyBias = 0.30, regenBias = 0.05 },
+	},
 }
 
 return CompositeConfig
