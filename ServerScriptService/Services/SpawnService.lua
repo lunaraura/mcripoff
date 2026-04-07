@@ -4,11 +4,69 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Util = Shared:WaitForChild("Util")
 local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
+local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
 local MathUtil = require(Util:WaitForChild("MathUtil"))
 local ChunkSystem = require(script.Parent.Parent.Systems.ChunkSystem)
 
 local SpawnService = {}
 SpawnService.__index = SpawnService
+
+local ARCHETYPES = {
+	skirmisher = {
+		weight = 1,
+		statMult = { spd = 1.12, maxHP = 0.92, pAtk = 1.04, eAtk = 1.04 },
+		sizeMult = 0.93,
+		abilityPool = { "ram", "zap" },
+		abilitySlots = 2,
+	},
+	bruiser = {
+		weight = 1,
+		statMult = { maxHP = 1.14, pAtk = 1.12, eAtk = 0.95, spd = 0.9 },
+		sizeMult = 1.08,
+		abilityPool = { "ram", "stomp", "emberClaw" },
+		abilitySlots = 2,
+	},
+	sentinel = {
+		weight = 1,
+		statMult = { maxHP = 1.06, pAtk = 0.96, eAtk = 1.1, spd = 0.98 },
+		sizeMult = 1.03,
+		abilityPool = { "zap", "stomp" },
+		abilitySlots = 2,
+	},
+}
+
+local BIOME_ARCHETYPE_WEIGHTS = {
+	plains = { skirmisher = 3, bruiser = 2, sentinel = 1 },
+	forest = { skirmisher = 2, bruiser = 2, sentinel = 2 },
+	ocean = { skirmisher = 2, bruiser = 1, sentinel = 3 },
+	desert = { skirmisher = 2, bruiser = 3, sentinel = 1 },
+	stormfield = { skirmisher = 2, bruiser = 1, sentinel = 3 },
+	volcanic = { skirmisher = 1, bruiser = 4, sentinel = 1 },
+	tundra = { skirmisher = 1, bruiser = 2, sentinel = 3 },
+	polar = { skirmisher = 1, bruiser = 1, sentinel = 4 },
+}
+
+local TIER_ARCHETYPE_ADJUSTMENTS = {
+	small = { statMult = { spd = 1.05, maxHP = 0.92 }, slotsDelta = 0 },
+	normal = { statMult = {}, slotsDelta = 0 },
+	big = { statMult = { maxHP = 1.08, pAtk = 1.06, spd = 0.96 }, slotsDelta = 1 },
+}
+
+local function mergedMultipliers(a, b)
+	local out = {}
+	for k, v in pairs(a or {}) do out[k] = v end
+	for k, v in pairs(b or {}) do out[k] = (out[k] or 1) * v end
+	return out
+end
+
+local function pickWeightedMap(weightMap)
+	local entries = {}
+	for key, weight in pairs(weightMap or {}) do
+		table.insert(entries, { key = key, weight = weight })
+	end
+	table.sort(entries, function(a, b) return a.key < b.key end)
+	return MathUtil.pickWeighted(entries)
+end
 
 function SpawnService.new(worldService, creatureService)
 	return setmetatable({
@@ -185,6 +243,43 @@ function SpawnService:pickWeightedSpecies(spawnWeights)
 	return MathUtil.pickWeighted(entries)
 end
 
+function SpawnService:buildMoveSet(speciesKey, archetypeKey, tier)
+	local species = SpeciesConfig[speciesKey]
+	local base = table.clone((species and species.moveset) or { "ram" })
+	local set = {}
+	for _, k in ipairs(base) do set[k] = true end
+	local archetype = ARCHETYPES[archetypeKey] or ARCHETYPES.skirmisher
+	for _, abilityKey in ipairs(archetype.abilityPool or {}) do
+		set[abilityKey] = true
+	end
+	local picked = {}
+	for k, _ in pairs(set) do
+		table.insert(picked, k)
+	end
+	table.sort(picked)
+	local tierAdj = TIER_ARCHETYPE_ADJUSTMENTS[tier] or TIER_ARCHETYPE_ADJUSTMENTS.normal
+	local maxMoves = math.max(1, (archetype.abilitySlots or 2) + (tierAdj.slotsDelta or 0))
+	while #picked > maxMoves do
+		table.remove(picked, math.random(1, #picked))
+	end
+	return picked
+end
+
+function SpawnService:getSpawnProfile(point, tier)
+	local biomeWeights = BIOME_ARCHETYPE_WEIGHTS[point.biomeKey] or BIOME_ARCHETYPE_WEIGHTS.plains
+	local archetypeKey = pickWeightedMap(biomeWeights) or "skirmisher"
+	local archetype = ARCHETYPES[archetypeKey] or ARCHETYPES.skirmisher
+	local tierAdj = TIER_ARCHETYPE_ADJUSTMENTS[tier] or TIER_ARCHETYPE_ADJUSTMENTS.normal
+	return {
+		archetypeKey = archetypeKey,
+		statMult = mergedMultipliers(archetype.statMult, tierAdj.statMult),
+		sizeMult = (archetype.sizeMult or 1),
+		timidness = archetypeKey == "skirmisher" and 1.18 or (archetypeKey == "bruiser" and 0.9 or 1.0),
+		commitment = archetypeKey == "bruiser" and 1.15 or (archetypeKey == "skirmisher" and 0.9 or 1.0),
+		abilitySet = archetype.abilityPool,
+	}
+end
+
 function SpawnService:update(dt)
 	self.timer += dt
 	if self.timer < self.interval then return end
@@ -215,22 +310,35 @@ function SpawnService:update(dt)
 		local biome = BiomeConfig[point.biomeKey] or BiomeConfig.plains
 		speciesKey = MathUtil.pickWeighted(biome.spawns)
 	end
+	local profile = self:getSpawnProfile(point, tier)
 	local anchorPlayer = players[math.random(1, #players)]
 	local partyAverage = self:getPartyAverageLevel(anchorPlayer)
 	local levelBias = point.levelBias or 0
 	local level = math.max(1, math.floor(partyAverage * (1 + levelBias * 0.45) + (math.random() * 2 - 1) * 0.8 + 0.5))
+	local combinedStatMult = mergedMultipliers(cfg.statMult, profile.statMult)
+	local moveset = self:buildMoveSet(speciesKey, profile.archetypeKey, tier)
 
 	local creature = self.creatureService:spawnRuntime(speciesKey, cfg.team, point.x, point.z, {
 		mode = "wild",
 		wildTier = tier,
-		wildProfile = cfg,
+		wildArchetype = profile.archetypeKey,
+		wildProfile = {
+			aggroMult = cfg.aggroMult,
+			pursuitRange = cfg.pursuitRange,
+			targetNearPlayerBias = cfg.targetNearPlayerBias,
+			statMult = combinedStatMult,
+			sizeMult = (cfg.sizeMult or 1) * (profile.sizeMult or 1),
+			timidness = (cfg.timidness or 1) * (profile.timidness or 1),
+			commitment = (cfg.commitment or 1) * (profile.commitment or 1),
+		},
+		movesetOverride = moveset,
 		spawnAnchor = Vector3.new(point.x, point.y or 0, point.z),
 		y = point.y or 0,
 		level = level,
 	})
 	creature.spawnTime = self.worldService.time
 	creature.spawnChunkKey = picked.chunk and picked.chunk.key or nil
-	self.worldService:pushEventLogNearby(Vector3.new(point.x, 0, point.z), string.format("Wild spawned: %s L%d [%s]", speciesKey, level, tier), "#ffd9a8", 220)
+	self.worldService:pushEventLogNearby(Vector3.new(point.x, 0, point.z), string.format("Wild spawned: %s L%d [%s/%s]", speciesKey, level, tier, profile.archetypeKey), "#ffd9a8", 220)
 end
 
 return SpawnService

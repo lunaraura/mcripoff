@@ -29,7 +29,7 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.modifiedStats = table.clone(def.baseStats)
 	self.level = opts.level or 1
 	self.morphPoints = opts.morphPoints or 0
-	self.moveset = table.clone(def.moveset or {})
+	self.moveset = table.clone(opts.movesetOverride or def.moveset or {})
 	self.cooldowns = {}
 	for _, k in ipairs(self.moveset) do self.cooldowns[k] = 0 end
 	self.currentHP = self.modifiedStats.maxHP
@@ -42,6 +42,8 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.intent = { move = Vector3.zero, abilityKey = nil, targetId = nil, contextAction = nil }
 	self.runtimeAtkMult = 1
 	self.runtimeDmgReduction = 0
+	self.runtimeMoveMult = 1
+	self.statuses = {}
 	self.alive = true
 	self.lifecycle = "alive"
 	self.command = { type = "follow", issuedAt = 0, targetId = nil, point = nil }
@@ -55,6 +57,7 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 		timidness = 1,
 		commitment = 1,
 	}
+	self.wildArchetype = opts.wildArchetype
 	self:SetWildProfile(opts.wildTier or "normal", opts.wildProfile)
 	return self
 end
@@ -102,7 +105,7 @@ function CreatureRuntime:Tick(dt)
 	local move = self.intent.move or Vector3.zero
 	local mag = move.Magnitude
 	local dir = mag > 0 and (move / mag) or Vector3.zero
-	self.pos += Vector3.new(dir.X, 0, dir.Z) * self.modifiedStats.spd * dt
+	self.pos += Vector3.new(dir.X, 0, dir.Z) * self.modifiedStats.spd * (self.runtimeMoveMult or 1) * dt
 end
 
 function CreatureRuntime:GetCompositeResistances()

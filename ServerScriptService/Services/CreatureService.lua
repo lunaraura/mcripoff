@@ -173,7 +173,8 @@ end
 function CreatureService:getCreatureTagText(creature)
 	local tier = creature.mode == "wild" and (creature.wildTier or "normal") or "pet"
 	local passive = creature.role == "passive" and " passive" or ""
-	return string.format("%s (%s%s)", creature.speciesKey, tier, passive)
+	local arche = creature.mode == "wild" and creature.wildArchetype and ("/" .. creature.wildArchetype) or ""
+	return string.format("%s (%s%s%s)", creature.speciesKey, tier, arche, passive)
 end
 
 return CreatureService

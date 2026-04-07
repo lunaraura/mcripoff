@@ -7,8 +7,8 @@ local CompositeConfig = require(Config:WaitForChild("CompositeConfig"))
 local CombatService = {}
 CombatService.__index = CombatService
 
-function CombatService.new(worldService)
-	return setmetatable({ worldService = worldService, playerDataService = nil, morphService = nil }, CombatService)
+function CombatService.new(worldService, effectService)
+	return setmetatable({ worldService = worldService, effectService = effectService, playerDataService = nil, morphService = nil }, CombatService)
 end
 
 function CombatService:configureProgression(playerDataService, morphService)
@@ -87,6 +87,22 @@ function CombatService:applyDamagePacket(source, target, ability)
 	end
 end
 
+
+
+function CombatService:tryApplyStatuses(source, target, ability)
+	if not self.effectService or not ability then return end
+	for _, spec in ipairs(ability.statusOnHit or {}) do
+		if self.effectService:rollProc(spec.chance) then
+			self.effectService:applyStatus(target, spec.key, source, spec.params)
+		end
+	end
+	for _, spec in ipairs(ability.statusSelf or {}) do
+		if self.effectService:rollProc(spec.chance) then
+			self.effectService:applyStatus(source, spec.key, source, spec.params)
+		end
+	end
+end
+
 function CombatService:evaluateAbility(source, abilityKey, target)
 	local ability = AbilityConfig[abilityKey]
 	if not ability then return false, "unknown" end
@@ -119,6 +135,7 @@ function CombatService:tryUseAbility(source)
 		end
 	end
 	self:applyDamagePacket(source, target, ability)
+	self:tryApplyStatuses(source, target, ability)
 end
 
 return CombatService
