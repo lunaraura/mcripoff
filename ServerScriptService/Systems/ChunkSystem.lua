@@ -4,6 +4,7 @@ local Terrain = workspace.Terrain
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local FloraSystem = require(script.Parent.FloraSystem)
+local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
 
 local ChunkSystem = {}
 ChunkSystem.CHUNK_SIZE = 64
@@ -38,6 +39,7 @@ local BIOME_MATS = {
 
 function ChunkSystem.generateChunk(cx, cz)
 	local cells = {}
+	local spawnPoints = {}
 	local biomeMixTotals = {}
 	local cellsPerAxis = ChunkSystem.CHUNK_SIZE / ChunkSystem.CELL_SIZE
 	for iz = 0, cellsPerAxis - 1 do
@@ -70,6 +72,36 @@ function ChunkSystem.generateChunk(cx, cz)
 					spawnable = (not blocked and not water),
 					nodeable = (not blocked),
 				}
+				if (not blocked) and (not water) then
+					local biomeKey = BiomeConfig[biome] and biome or "plains"
+					local elevation = env.yGround or 0
+					local levelBias = math.clamp((elevation - 8) / 18, -0.55, 0.9)
+					local spawnWeights = {}
+					local mix = biomeMix
+					for mixBiomeKey, mixWeight in pairs(mix) do
+						local biomeCfg = BiomeConfig[mixBiomeKey]
+						if biomeCfg and biomeCfg.spawns then
+							for _, entry in ipairs(biomeCfg.spawns) do
+								local w = (entry.weight or 0) * mixWeight
+								if w > 0 then
+									spawnWeights[entry.key] = (spawnWeights[entry.key] or 0) + w
+								end
+							end
+						end
+					end
+					if next(spawnWeights) == nil then
+						spawnWeights["dog"] = 1
+					end
+					table.insert(spawnPoints, {
+						x = wx,
+						z = wz,
+						y = elevation,
+						biomeKey = biomeKey,
+						spawnWeights = spawnWeights,
+						levelBias = levelBias,
+						terrainClass = terrainClass,
+					})
+				end
 			end
 		end
 
@@ -149,6 +181,7 @@ function ChunkSystem.generateChunk(cx, cz)
 		cz = cz,
 		key = chunkKey(cx, cz),
 		cells = cells,
+		spawnPoints = spawnPoints,
 		biomeMixSummary = biomeMixSummary,
 		dominantBiome = dominantBiome,
 		generatedAt = os.clock(),

@@ -49,6 +49,8 @@ function CombatService:getFallbacks(parts)
 end
 
 function CombatService:applyDamagePacket(source, target, ability)
+	source.lastEngagedAt = self.worldService.time
+	target.lastEngagedAt = self.worldService.time
 	local parts = self:getDamageParts(source, ability)
 	local profile = ability.damageProfile or {}
 	local fallback = self:getFallbacks(parts)
