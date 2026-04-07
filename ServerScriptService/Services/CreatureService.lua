@@ -92,6 +92,12 @@ function CreatureService:updateModel(creature)
 		body.Color = self:getCreatureColor(creature)
 		body.Size = self:getCreatureVisualSize(creature)
 		body.Position = creature.pos + Vector3.new(0, (body.Size.Y * 0.5), 0)
+		if creature.ai then
+			creature.model:SetAttribute("AI_Brain", tostring(creature.ai.brainType or "-"))
+			creature.model:SetAttribute("AI_State", tostring(creature.ai.behaviorState or "-"))
+			creature.model:SetAttribute("AI_TargetId", tonumber(creature.ai.targetId) or -1)
+			creature.model:SetAttribute("AI_Intent", tostring(creature.ai.lastIntent or "idle"))
+		end
 		local tag = creature.model:FindFirstChild("Tag")
 		if tag then
 			tag.StudsOffset = Vector3.new(0, body.Size.Y * 0.85, 0)

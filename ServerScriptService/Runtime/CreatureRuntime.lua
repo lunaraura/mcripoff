@@ -49,6 +49,22 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.alive = true
 	self.lifecycle = "alive"
 	self.command = { type = "follow", issuedAt = 0, targetId = nil, point = nil }
+	self.ai = {
+		brainType = opts.brainType or ((self.mode == "pet" and "petFollower") or (self.role == "passive" and "passiveWild") or "hostileWild"),
+		behaviorState = "idle",
+		targetId = nil,
+		targetLockUntil = 0,
+		homeAnchor = self.spawnAnchor,
+		roamAnchor = self.spawnAnchor,
+		leashRadius = 80,
+		aggroRadius = 60,
+		disengageRadius = 110,
+		lastSeenTargetTime = 0,
+		nextThinkAt = 0,
+		movementRefreshAt = 0,
+		recentThreatId = nil,
+		lastIntent = "idle",
+	}
 	self.model = nil
 	self.wildProfile = {
 		aggroMult = 1,
