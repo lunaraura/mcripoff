@@ -152,6 +152,12 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 	local ok = false
 	if payload.action == "harvestCreature" and payload.targetId then
 		ok = harvestService:tryHarvestCreature(player, payload.targetId)
+	elseif payload.action == "useTool" and payload.tool then
+		ok = harvestService:tryUseTool(player, payload)
+		if not ok then
+			worldService:pushEventLog(player, "Tool use failed", "#ffb3b3")
+			return
+		end
 	elseif payload.action == "tameCreature" and payload.targetId then
 		ok = harvestService:tryTameDefeated(player, payload.targetId)
 		if not ok then

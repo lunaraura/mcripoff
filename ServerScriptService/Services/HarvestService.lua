@@ -1,6 +1,7 @@
 local HarvestService = {}
 HarvestService.__index = HarvestService
 local CollectionService = game:GetService("CollectionService")
+local Workspace = game:GetService("Workspace")
 
 function HarvestService.new(worldService, inventoryService)
 	return setmetatable({ worldService = worldService, inventoryService = inventoryService }, HarvestService)
@@ -118,6 +119,103 @@ function HarvestService:tryHarvestNearbyNode(player, radius)
 	end
 	if not best then return false, "no node nearby" end
 	return self:tryHarvestNodeInstance(player, best)
+end
+
+function HarvestService:ensureFloraFolder()
+	local flora = Workspace:FindFirstChild("Flora")
+	if not flora then
+		flora = Instance.new("Folder")
+		flora.Name = "Flora"
+		flora.Parent = Workspace
+	end
+	return flora
+end
+
+function HarvestService:tryUseDemolishHarvestTool(player, payload)
+	payload = payload or {}
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then return false, "no character" end
+	local radius = tonumber(payload.radius) or 12
+	local best, bestD = nil, radius
+	for _, node in ipairs(CollectionService:GetTagged("HarvestNode")) do
+		if node:IsA("BasePart") and node.Parent then
+			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(node.Position.X, 0, node.Position.Z)).Magnitude
+			if d < bestD then
+				best, bestD = node, d
+			end
+		end
+	end
+	if not best then return false, "no non-berry node nearby" end
+	local dropKey = tostring(best:GetAttribute("DropKey") or "stone")
+	local dropAmount = math.max(1, math.floor(tonumber(best:GetAttribute("DropAmount")) or 1))
+	local granted = self.inventoryService:grant(player, { { key = dropKey, amount = dropAmount } })
+	self.worldService:pushEventLog(player, string.format("Tool harvested %s", tostring(best:GetAttribute("NodeType") or "node")), "#d7fcb7")
+	best:Destroy()
+	return true, granted
+end
+
+function HarvestService:tryUseBerryPlanterTool(player, payload)
+	payload = payload or {}
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then return false, "no character" end
+	local berryKind = tostring(payload.kind or "berry_red")
+	local allowed = {
+		berry_red = true,
+		berry_yellow = true,
+		berry_blue = true,
+		revive_berry = true,
+		replenish_berry = true,
+	}
+	if not allowed[berryKind] then
+		return false, "invalid berry kind"
+	end
+	if self.inventoryService:getCount(player, berryKind) <= 0 then
+		return false, "missing berry seed item"
+	end
+	local placePos = root.Position + root.CFrame.LookVector * 8
+	local minDistance = 9
+	for _, bush in ipairs(CollectionService:GetTagged("BerryBush")) do
+		if bush:IsA("BasePart") and bush.Parent then
+			local d = (Vector3.new(placePos.X, 0, placePos.Z) - Vector3.new(bush.Position.X, 0, bush.Position.Z)).Magnitude
+			if d < minDistance then
+				return false, "too close to existing bush"
+			end
+		end
+	end
+	local bush = Instance.new("Part")
+	bush.Name = "BerryBush_" .. berryKind .. "_Planted"
+	bush.Shape = Enum.PartType.Ball
+	bush.Anchored, bush.CanCollide = true, false
+	bush.Material = Enum.Material.Grass
+	bush.Color = Color3.fromRGB(170, 85, 85)
+	bush.Size = Vector3.new(4.4, 4.4, 4.4)
+	bush.CFrame = CFrame.new(placePos.X, root.Position.Y + 1.6, placePos.Z)
+	bush.Parent = self:ensureFloraFolder()
+	bush:SetAttribute("BerryKind", berryKind)
+	bush:SetAttribute("Uses", 3)
+	bush:SetAttribute("PlantedByUserId", player.UserId)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Pick Berry"
+	prompt.ObjectText = "Berry Bush"
+	prompt.HoldDuration = 0.2
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = bush
+	CollectionService:AddTag(bush, "BerryBush")
+	self.inventoryService:tryConsume(player, berryKind, 1)
+	self.worldService:pushEventLog(player, string.format("Planted %s bush", berryKind), "#a8ffd7")
+	return true, { planted = true, kind = berryKind }
+end
+
+function HarvestService:tryUseTool(player, payload)
+	payload = payload or {}
+	local toolKey = tostring(payload.tool or "")
+	if toolKey == "node_demolisher" then
+		return self:tryUseDemolishHarvestTool(player, payload)
+	elseif toolKey == "berry_planter" then
+		return self:tryUseBerryPlanterTool(player, payload)
+	end
+	return false, "unknown tool"
 end
 
 function HarvestService:tryHarvestCreature(player, targetId)
