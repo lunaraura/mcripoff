@@ -89,6 +89,18 @@ local function mkBerryBush(x, yTop, z, itemKey)
 	return bush
 end
 
+local function mkCylinder(x, yTop, z, radius, height, color, material)
+	local p = Instance.new("Part")
+	p.Shape = Enum.PartType.Cylinder
+	p.Anchored, p.CanCollide = true, true
+	p.Material = material or Enum.Material.Slate
+	p.Color = color
+	p.Size = Vector3.new(radius * 2, height, radius * 2)
+	p.CFrame = CFrame.new(x, yTop + radius, z) * CFrame.Angles(0, 0, math.rad(90))
+	p.Parent = floraFolder
+	return p
+end
+
 local function build_pine(x, yTop, z, r)
 	local h = r:NextNumber(14, 22)
 	local tr = r:NextNumber(0.6, 1.0)
@@ -130,6 +142,17 @@ local BUILDERS = {
 	willow = build_oak,
 }
 
+local BIOME_OBSTACLES = {
+	plains = { rocks = 6, ore = 1, crystal = 0 },
+	forest = { rocks = 5, ore = 1, crystal = 1 },
+	ocean = { rocks = 3, ore = 0, crystal = 2 },
+	desert = { rocks = 7, ore = 2, crystal = 0 },
+	stormfield = { rocks = 6, ore = 2, crystal = 2 },
+	volcanic = { rocks = 8, ore = 4, crystal = 1 },
+	tundra = { rocks = 6, ore = 1, crystal = 2 },
+	polar = { rocks = 5, ore = 1, crystal = 3 },
+}
+
 function FloraSystem.scatterChunk(chunk)
 	if not chunk or not chunk.cells or #chunk.cells == 0 then return end
 	local seed = (chunk.cx * 92821) + (chunk.cz * 52361) + 1335
@@ -139,6 +162,7 @@ function FloraSystem.scatterChunk(chunk)
 	local trees = spec.base
 	local shrubs = math.floor(spec.base * 1.2)
 	local bushes = math.max(1, math.floor(spec.base * 0.35))
+	local obstacleSpec = BIOME_OBSTACLES[dominant] or BIOME_OBSTACLES.plains
 	local placed = {}
 	local function farEnough(x, z, min2)
 		for _, p in ipairs(placed) do
@@ -161,6 +185,45 @@ function FloraSystem.scatterChunk(chunk)
 					end
 					table.insert(placed, { x = x, z = z })
 				end
+			end
+		end
+	end
+	for _ = 1, obstacleSpec.rocks do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		if cell and (not cell.water) then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 6 * 6) then
+				local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock)
+				rock.Name = "RockObstacle"
+				addRef(chunk.key, rock)
+				table.insert(placed, { x = x, z = z })
+			end
+		end
+	end
+	for _ = 1, obstacleSpec.ore do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		if cell and (not cell.water) then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 7 * 7) then
+				local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate)
+				ore.Name = "OreNode"
+				addRef(chunk.key, ore)
+				table.insert(placed, { x = x, z = z })
+			end
+		end
+	end
+	for _ = 1, obstacleSpec.crystal do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		if cell and (not cell.water) then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 8 * 8) then
+				local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass)
+				crystal.Name = "CrystalNode"
+				addRef(chunk.key, crystal)
+				table.insert(placed, { x = x, z = z })
 			end
 		end
 	end

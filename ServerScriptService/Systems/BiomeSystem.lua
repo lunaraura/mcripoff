@@ -4,6 +4,7 @@ local Config = Shared:WaitForChild("Config")
 local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
 
 local BiomeSystem = {}
+BiomeSystem.GLOBAL_HEIGHT_AMPLIFY = 1.35
 
 local BIOME_KEYS = {}
 for key, _ in pairs(BiomeConfig) do
@@ -93,12 +94,14 @@ function BiomeSystem.sampleEnvironment(x, z)
 	local climate = BiomeSystem.sampleClimate(x, z)
 	local biomeMix, biomeKey = BiomeSystem.sampleBiomeMixFromClimate(climate)
 	local heightNoise = noise01(x, z, 0.0044, 9)
+	local globalMacro = noise01(x, z, 0.00055, 17)
+	local globalRidge = math.abs(0.5 - noise01(x, z, 0.00115, 18)) * 2
 	local rugged = (climate.lithosphere * 0.65) + ((1 - climate.softness) * 0.35)
 	local wet = climate.rainfall * (1 - climate.barrenness * 0.45)
 	local waterThreshold = 0.18 + (wet * 0.25) - (rugged * 0.14)
 	local rockThreshold = 0.82 - (rugged * 0.21) + (climate.barrenness * 0.05)
-	local baseHeight = 6 + (climate.lithosphere * 6) - (climate.barrenness * 2)
-	local ampHeight = 14 + (climate.lithosphere * 18) + ((1 - climate.softness) * 8)
+	local baseHeight = 8 + (climate.lithosphere * 8) - (climate.barrenness * 2) + (globalMacro - 0.5) * 10
+	local ampHeight = (14 + (climate.lithosphere * 18) + ((1 - climate.softness) * 8) + globalRidge * 14) * BiomeSystem.GLOBAL_HEIGHT_AMPLIFY
 	local yGround = math.max(2, math.floor(baseHeight + ampHeight * heightNoise + 0.5))
 	local yWater = math.max(2, math.floor(10 + climate.rainfall * 4 - climate.barrenness * 2 + 0.5))
 	local terrainClass = "ground"
