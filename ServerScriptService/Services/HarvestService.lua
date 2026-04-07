@@ -341,7 +341,7 @@ function HarvestService:tryTameDefeated(player, targetId)
 		return false, "need lure_meat"
 	end
 	self.inventoryService:tryConsume(player, "lure_meat", 1)
-	local owned, destination = self.playerDataService:addOwnedCreature(player, c.speciesKey)
+	local owned, destination, slotOrIndex = self.playerDataService:addOwnedFromRuntime(player, c)
 	if not owned then
 		return false, "failed to add owned creature"
 	end
@@ -352,8 +352,30 @@ function HarvestService:tryTameDefeated(player, targetId)
 	if destination == "party" and self.creatureService then
 		self.creatureService:respawnPartyFromOwned(player)
 	end
-	self.worldService:pushEventLog(player, string.format("Tamed %s -> %s", c.speciesKey, destination), "#a8ffd7")
-	return true, { ownedId = owned.ownedId, destination = destination }
+	local whereToken = destination == "party" and ("slot " .. tostring(slotOrIndex or "?")) or ("reserve " .. tostring(slotOrIndex or "?"))
+	self.worldService:pushEventLog(player, string.format("Captured %s Lv.%d -> %s", c.speciesKey, owned.level or 1, whereToken), "#a8ffd7")
+	return true, { ownedId = owned.ownedId, destination = destination, slotOrIndex = slotOrIndex }
+end
+
+function HarvestService:tryTameNearestDefeated(player, radius)
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then
+		return false, "no character"
+	end
+	local best, bestD = nil, radius or 16
+	for _, c in ipairs(self.worldService.creatures) do
+		if (not c.alive) and c.mode == "wild" then
+			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(c.pos.X, 0, c.pos.Z)).Magnitude
+			if d < bestD then
+				best = c
+				bestD = d
+			end
+		end
+	end
+	if not best then
+		return false, "no tame target nearby"
+	end
+	return self:tryTameDefeated(player, best.id)
 end
 
 return HarvestService

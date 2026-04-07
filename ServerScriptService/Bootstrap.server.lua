@@ -197,7 +197,10 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 			return
 		end
 	elseif payload.action == "context" or payload.action == "harvest" then
-		ok = harvestService:tryHarvestNearbyBerryBush(player, payload.radius or 14)
+		ok = harvestService:tryTameNearestDefeated(player, payload.radius or 16)
+		if not ok then
+			ok = harvestService:tryHarvestNearbyBerryBush(player, payload.radius or 14)
+		end
 		if not ok then
 			ok = harvestService:tryHarvestNearbyNode(player, payload.radius or 14)
 		end

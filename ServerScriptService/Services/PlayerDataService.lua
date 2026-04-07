@@ -60,6 +60,33 @@ function PlayerDataService:createOwnedCreature(speciesKey)
 	}
 end
 
+
+function PlayerDataService:createOwnedFromRuntime(creature)
+	local def = SpeciesConfig[creature.speciesKey]
+	local id = nextOwnedId
+	nextOwnedId += 1
+	local moveset = table.clone((creature.moveset and #creature.moveset > 0) and creature.moveset or (def and def.moveset) or { "ram" })
+	return {
+		ownedId = id,
+		speciesKey = creature.speciesKey,
+		nickname = (def and def.name) or creature.speciesKey,
+		level = math.max(1, math.floor(tonumber(creature.level) or 1)),
+		xp = 0,
+		morphPoints = math.max(0, math.floor(tonumber(creature.morphPoints) or 0)),
+		isDefeated = false,
+		moveset = moveset,
+		familyKey = creature.familyKey or (def and def.familyKey),
+		compositeKey = creature.compositeKey or (def and def.compositeKey),
+		outerCompositeKey = creature.outerCompositeKey or (def and (def.outerCompositeKey or def.compositeKey)),
+		innerCompositeKey = creature.innerCompositeKey or (def and (def.innerCompositeKey or def.compositeKey)),
+		capturedFrom = {
+			speciesKey = creature.speciesKey,
+			wildTier = creature.wildTier,
+			capturedAt = os.clock(),
+		},
+	}
+end
+
 function PlayerDataService:getPartyOwned(player, slot)
 	local data = self:getOrCreate(player)
 	local ownedId = data.partySlots[slot]
@@ -137,6 +164,23 @@ end
 function PlayerDataService:addOwnedCreature(player, speciesKey)
 	local data = self:getOrCreate(player)
 	local owned = self:createOwnedCreature(speciesKey)
+	data.ownedCreatures[owned.ownedId] = owned
+	local openSlot = self:getFirstOpenPartySlot(player)
+	if openSlot then
+		data.partySlots[openSlot] = owned.ownedId
+		return owned, "party", openSlot
+	end
+	table.insert(data.reserve, owned.ownedId)
+	return owned, "reserve", #data.reserve
+end
+
+
+function PlayerDataService:addOwnedFromRuntime(player, runtimeCreature)
+	if not runtimeCreature then
+		return nil, "invalid runtime creature"
+	end
+	local data = self:getOrCreate(player)
+	local owned = self:createOwnedFromRuntime(runtimeCreature)
 	data.ownedCreatures[owned.ownedId] = owned
 	local openSlot = self:getFirstOpenPartySlot(player)
 	if openSlot then
