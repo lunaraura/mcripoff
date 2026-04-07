@@ -42,6 +42,8 @@ function AIService:thinkPet(creature)
 		local delta = creature.command.point - creature.pos
 		if delta.Magnitude > 3 then
 			creature.intent.move = Vector3.new(delta.X, 0, delta.Z)
+		else
+			creature.command = { type = "follow", issuedAt = self.worldService.time }
 		end
 		return
 	end
@@ -51,6 +53,7 @@ function AIService:thinkPet(creature)
 			self:fightTarget(creature, target)
 			return
 		end
+		creature.command = { type = "follow", issuedAt = self.worldService.time }
 	end
 	if creature.command and creature.command.type == "attackNearest" then
 		local target = self.worldService:findNearestEnemyOf(creature, 100)

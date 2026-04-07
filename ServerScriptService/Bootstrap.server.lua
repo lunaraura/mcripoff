@@ -53,7 +53,7 @@ local spawnService = SpawnService.new(worldService, creatureService)
 local effectService = EffectService.new()
 local harvestService = HarvestService.new(worldService, inventoryService)
 local buildService = BuildService.new(worldService, inventoryService)
-local morphService = MorphService.new(playerDataService)
+local morphService = MorphService.new(playerDataService, creatureService)
 local berryService = BerryService.new(worldService, inventoryService, creatureService, playerDataService)
 harvestService:configure(playerDataService, creatureService, morphService)
 local hudTimer = 0
@@ -88,8 +88,29 @@ end)
 remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
 	local command = payload.command or {}
+	local function sanitizeCommand(input)
+		if type(input) ~= "table" then return nil end
+		local t = input.type
+		if t == "follow" or t == "hold" or t == "attackNearest" then
+			return { type = t, issuedAt = worldService.time }
+		end
+		if t == "move" and typeof(input.point) == "Vector3" then
+			return { type = "move", point = input.point, issuedAt = worldService.time }
+		end
+		if t == "attack" and tonumber(input.targetId) then
+			return { type = "attack", targetId = tonumber(input.targetId), issuedAt = worldService.time }
+		end
+		if t == "swapReserve" then
+			return { type = "swapReserve", reserveIndex = tonumber(input.reserveIndex) or 1 }
+		end
+		return nil
+	end
+	command = sanitizeCommand(command)
+	if not command then
+		return
+	end
 	if command.type == "swapReserve" then
-		local ok = playerDataService:swapPartyWithReserve(player, payload.slot or 1, command.reserveIndex or 1)
+		local ok = playerDataService:swapPartyWithReserve(player, payload.slot or 1, command.reserveIndex)
 		if ok then
 			creatureService:respawnPartyFromOwned(player)
 			worldService:pushEventLog(player, "Reserve swapped into slot " .. tostring(payload.slot or 1), "#bfe2ff")
