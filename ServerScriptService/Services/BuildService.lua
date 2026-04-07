@@ -1,113 +1,54 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = Shared:WaitForChild("Config")
-local BuildableConfig = require(Config:WaitForChild("BuildableConfig"))
+local Build = Shared:WaitForChild("Build")
+local PlacementRules = require(Build:WaitForChild("PlacementRules"))
 
 local BuildService = {}
 BuildService.__index = BuildService
+
+BuildService.Actions = {
+	BUILD = "build",
+	HARVEST_BUILD = "harvestBuild",
+	GATHER = "gather",
+	CONTEXT = "context",
+}
 
 function BuildService.new(worldService, inventoryService)
 	return setmetatable({ worldService = worldService, inventoryService = inventoryService, nextBuildId = 1, buildables = {} }, BuildService)
 end
 
 function BuildService:getOrCreateBuildFolder()
-	local world = workspace:FindFirstChild("World")
-	if not world then
-		world = Instance.new("Folder")
-		world.Name = "World"
-		world.Parent = workspace
-	end
-	local builds = world:FindFirstChild("Buildables")
-	if not builds then
-		builds = Instance.new("Folder")
-		builds.Name = "Buildables"
-		builds.Parent = world
-	end
+	local world = workspace:FindFirstChild("World") or Instance.new("Folder")
+	world.Name = "World"
+	world.Parent = workspace
+	local builds = world:FindFirstChild("Buildables") or Instance.new("Folder")
+	builds.Name = "Buildables"
+	builds.Parent = world
 	return builds
 end
 
 function BuildService:createBuildModel(build)
-	local def = BuildableConfig[build.key]
-	if not def then return nil end
-	local placement = def.placement or {}
-	local preview = placement.previewSize or { x = 4, y = 4, z = 4 }
+	local def = PlacementRules.getBuildDef(build.key)
+	local placement = PlacementRules.getPlacement(build.key)
+	if not def or not placement then return nil end
+	local preview = placement.previewSize
 	local parentFolder = self:getOrCreateBuildFolder()
-	local part
-	if (placement.previewShape or "block") == "wedge" then
-		part = Instance.new("WedgePart")
-		part.Size = Vector3.new(preview.x or 8, preview.y or 5, preview.z or 8)
-		part.Material = Enum.Material.Fabric
-		part.Color = Color3.fromRGB(156, 126, 98)
-		part.Anchored = true
-		part.CanCollide = true
-		part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad((build.rotationY or 180)), 0)
-	else
-		part = Instance.new("Part")
-		part.Size = Vector3.new(preview.x or 4, preview.y or 4, preview.z or 4)
-		part.Shape = Enum.PartType.Block
-		part.Material = Enum.Material.Wood
-		part.Color = Color3.fromRGB(120, 95, 72)
-		part.Anchored = true
-		part.CanCollide = true
-		part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad(build.rotationY or 0), 0)
-	end
+	local shape = placement.previewShape or "block"
+	local part = shape == "wedge" and Instance.new("WedgePart") or Instance.new("Part")
+	part.Size = Vector3.new(preview.x or 4, preview.y or 4, preview.z or 4)
+	part.Anchored = true
+	part.CanCollide = true
+	part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad(build.rotationY or 0), 0)
 	part.Name = string.format("Build_%s_%d", build.key, build.id)
 	part:SetAttribute("CollisionCategory", "buildable")
 	part:SetAttribute("BuildableKey", build.key)
 	part:SetAttribute("BuildableId", build.id)
+	part:SetAttribute("BuildRecordId", build.id)
+	part:SetAttribute("InteractionHook", "harvest_build")
 	part.Parent = parentFolder
 	build.model = part
 	return part
-end
-
-function BuildService:getFootprintCFrame(pos, rotationY)
-	return CFrame.new(pos) * CFrame.Angles(0, math.rad(rotationY or 0), 0)
-end
-
-function BuildService:getBlockingPartsAt(cframe, size)
-	local params = OverlapParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	local parts = Workspace:GetPartBoundsInBox(cframe, size, params)
-	local blocking = {}
-	for _, part in ipairs(parts) do
-		if part and part.Parent and part.CanCollide then
-			local category = part:GetAttribute("CollisionCategory")
-			local inNodes = part:FindFirstAncestor("Nodes") ~= nil
-			local inCreatureModels = part:FindFirstAncestor("CreatureModels") ~= nil
-			local inBuildables = part:FindFirstAncestor("Buildables") ~= nil
-			local isHarmlessVisual = (part:GetAttribute("NodeVisualPart") and (not part.CanCollide)) or (part.Transparency >= 0.95)
-			if (not isHarmlessVisual) and (category == "buildable" or category == "node" or category == "obstacle" or inNodes or inCreatureModels or inBuildables) then
-				table.insert(blocking, part)
-			end
-		end
-	end
-	return blocking
-end
-
-function BuildService:getBuildFootprintSize(buildKey)
-	local def = BuildableConfig[buildKey]
-	local p = def and def.placement or nil
-	local fp = p and p.footprintSize or nil
-	if fp then
-		return Vector3.new(fp.x or 4, fp.y or 4, fp.z or 4)
-	end
-	local pv = p and p.previewSize or nil
-	if pv then
-		return Vector3.new(pv.x or 4, pv.y or 4, pv.z or 4)
-	end
-	return Vector3.new(4, 4, 4)
-end
-
-function BuildService:getPlacementRules(buildKey)
-	local def = BuildableConfig[buildKey]
-	local p = def and def.placement or {}
-	return {
-		placementRange = p.placementRange or 18,
-		collisionRadius = p.collisionRadius or 4,
-		allowedTerrain = p.allowedTerrain or { "ground" },
-		allowRotation = p.allowRotation ~= false,
-	}
 end
 
 function BuildService:getCellAtPosition(pos)
@@ -118,99 +59,57 @@ function BuildService:getCellAtPosition(pos)
 	local best, bestD = nil, math.huge
 	for _, cell in ipairs(chunk.cells or {}) do
 		local d = (Vector3.new(cell.x, 0, cell.z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
-		if d < bestD then
-			best, bestD = cell, d
-		end
+		if d < bestD then best, bestD = cell, d end
 	end
 	return best
 end
 
-function BuildService:isTerrainAllowed(buildKey, pos)
-	local rules = self:getPlacementRules(buildKey)
-	local cell = self:getCellAtPosition(pos)
-	if not cell then
-		return false, "missing chunk/cell"
-	end
-	if cell.blocked or cell.water then
-		return false, "blocked terrain"
-	end
-	local terrainClass = cell.terrainClass or "ground"
-	for _, allowed in ipairs(rules.allowedTerrain) do
-		if allowed == terrainClass then
-			return true
-		end
-	end
-	return false, "invalid terrain class"
+function BuildService:getBlockingCategory(part)
+	local category = part:GetAttribute("CollisionCategory")
+	if category == "buildable" or part:FindFirstAncestor("Buildables") then return "build" end
+	if category == "node" or category == "obstacle" or part:FindFirstAncestor("Nodes") then return "obstacle" end
+	if part:FindFirstAncestor("CreatureModels") then return "creature" end
+	return nil
 end
 
-function BuildService:isValidBuildPlacement(player, buildKey, pos, rotationY)
-	local rules = self:getPlacementRules(buildKey)
+function BuildService:validatePlacement(player, buildKey, pos, rotationY)
+	local def = PlacementRules.getBuildDef(buildKey)
+	local placement = PlacementRules.getPlacement(buildKey)
+	if not def or not placement then return { ok = false, reasonCode = PlacementRules.Reason.UNKNOWN_BUILD_KEY } end
 	local root = player.Character and player.Character.PrimaryPart
-	if not root then return false, "no character" end
+	if not root then return { ok = false, reasonCode = PlacementRules.Reason.NO_CHARACTER } end
 	local dist = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
-	if dist > rules.placementRange then
-		return false, "too far"
+	if dist > placement.placementRange then return { ok = false, reasonCode = PlacementRules.Reason.TOO_FAR } end
+	local cell = self:getCellAtPosition(pos)
+	if not cell then return { ok = false, reasonCode = PlacementRules.Reason.MISSING_CELL } end
+	if cell.blocked or cell.water then return { ok = false, reasonCode = PlacementRules.Reason.BLOCKED_TERRAIN } end
+	if not PlacementRules.isTerrainAllowed(cell.terrainClass or "ground", placement) then
+		return { ok = false, reasonCode = PlacementRules.Reason.INVALID_TERRAIN }
 	end
-	local terrainOk, terrainReason = self:isTerrainAllowed(buildKey, pos)
-	if not terrainOk then
-		return false, terrainReason
-	end
-	local size = self:getBuildFootprintSize(buildKey)
-	local cframe = self:getFootprintCFrame(pos, rotationY)
-	local blocking = self:getBlockingPartsAt(cframe, size)
-	for _, part in ipairs(blocking) do
-		local category = part:GetAttribute("CollisionCategory")
-		if category == "buildable" or part:FindFirstAncestor("Buildables") then
-			return false, "overlaps existing build"
-		end
-		if category == "node" or category == "obstacle" or part:FindFirstAncestor("Nodes") then
-			return false, "overlaps obstacle/node"
-		end
-		if part:FindFirstAncestor("CreatureModels") then
-			return false, "overlaps creature"
+
+	local fp = placement.footprintSize
+	local size = Vector3.new(fp.x or 4, fp.y or 4, fp.z or 4)
+	local cframe = CFrame.new(pos) * CFrame.Angles(0, math.rad(rotationY or 0), 0)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local parts = Workspace:GetPartBoundsInBox(cframe, size, params)
+	for _, part in ipairs(parts) do
+		if part and part.CanCollide and part.Transparency < 0.95 then
+			local c = self:getBlockingCategory(part)
+			if c == "build" then return { ok = false, reasonCode = PlacementRules.Reason.OVERLAP_BUILD } end
+			if c == "obstacle" then return { ok = false, reasonCode = PlacementRules.Reason.OVERLAP_OBSTACLE } end
+			if c == "creature" then return { ok = false, reasonCode = PlacementRules.Reason.OVERLAP_CREATURE } end
 		end
 	end
 	for _, c in ipairs(self.worldService.creatures) do
 		if c.alive then
 			local d = (Vector3.new(c.pos.X, 0, c.pos.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
-			if d < math.max(4, rules.collisionRadius) then
-				return false, "overlaps creature"
+			if d < math.max(4, placement.collisionRadius) then
+				return { ok = false, reasonCode = PlacementRules.Reason.OVERLAP_CREATURE }
 			end
 		end
 	end
-	return true
-end
-
-function BuildService:nearestCell(root)
-	local best, bestD = nil, math.huge
-	for _, chunk in pairs(self.worldService.chunks) do
-		for _, cell in ipairs(chunk.cells) do
-			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(cell.x, 0, cell.z)).Magnitude
-			if d < bestD then
-				best, bestD = cell, d
-			end
-		end
-	end
-	return best, bestD
-end
-
-function BuildService:tryGather(player, payload)
-	local root = player.Character and player.Character.PrimaryPart
-	if not root then return false, "no character" end
-	local cell, dist = self:nearestCell(root)
-	if not cell or dist > 18 then
-		return false, "no gather target"
-	end
-	local key = "fiber"
-	if cell.terrainClass == "rock" then
-		key = "stone"
-	elseif cell.terrainClass == "water" then
-		key = "battery_seed"
-	end
-	local granted = self.inventoryService:grant(player, { { key = key, amount = 1 } })
-	self.worldService:pushEventLog(player, string.format("Gathered %s", key), "#d7fcb7")
-	-- TODO: Replace terrain-class gather with biome/node-driven context actions.
-	return true, granted
+	return { ok = true, reasonCode = PlacementRules.Reason.OK, placement = placement, def = def }
 end
 
 function BuildService:canAfford(player, costs)
@@ -224,68 +123,89 @@ end
 
 function BuildService:tryBuild(player, payload)
 	local buildKey = payload.buildKey or "fiber_trap"
-	local def = BuildableConfig[buildKey]
-	if not def then return false, "unknown build key" end
+	local validationDef = PlacementRules.getBuildDef(buildKey)
+	if not validationDef then return false, { reasonCode = PlacementRules.Reason.UNKNOWN_BUILD_KEY } end
 	local root = player.Character and player.Character.PrimaryPart
-	if not root then return false, "no character" end
-	local desiredPos = payload.position
-	local placementPos = root.Position + root.CFrame.LookVector * 8
-	local rules = self:getPlacementRules(buildKey)
-	local rotationY = rules.allowRotation and (tonumber(payload.rotationY) or 0) or 0
-	if typeof(desiredPos) == "Vector3" then
-		placementPos = Vector3.new(
-			math.floor(desiredPos.X / 4 + 0.5) * 4,
-			desiredPos.Y,
-			math.floor(desiredPos.Z / 4 + 0.5) * 4
-		)
-	end
-	local okPlacement, placementReason = self:isValidBuildPlacement(player, buildKey, placementPos, rotationY)
-	if not okPlacement then
-		return false, placementReason
-	end
-	local ok, missing = self:canAfford(player, def.cost)
-	if not ok then return false, "missing " .. tostring(missing) end
-	for matKey, amount in pairs(def.cost or {}) do
+	if not root then return false, { reasonCode = PlacementRules.Reason.NO_CHARACTER } end
+	local placement = PlacementRules.getPlacement(buildKey)
+	local rotationY = placement.allowRotation and (tonumber(payload.rotationY) or 0) or 0
+	local desiredPos = typeof(payload.position) == "Vector3" and payload.position or (root.Position + root.CFrame.LookVector * 8)
+	local snapped = PlacementRules.snapPosition(desiredPos, placement.grid, desiredPos.Y)
+	local v = self:validatePlacement(player, buildKey, snapped, rotationY)
+	if not v.ok then return false, v end
+	local ok, missing = self:canAfford(player, validationDef.cost)
+	if not ok then return false, { reasonCode = PlacementRules.Reason.MISSING_MATERIALS, missing = missing } end
+	for matKey, amount in pairs(validationDef.cost or {}) do
 		self.inventoryService:tryConsume(player, matKey, amount)
 	end
+	local harvest = PlacementRules.getHarvest(validationDef)
 	local id = self.nextBuildId
 	self.nextBuildId += 1
 	self.buildables[id] = {
 		id = id,
 		key = buildKey,
 		ownerUserId = player.UserId,
-		pos = placementPos,
+		pos = snapped,
 		rotationY = rotationY,
-		nextHarvestAt = self.worldService.time + (def.harvestTime or 1),
+		nextHarvestAt = self.worldService.time + harvest.interval,
 		lastEffectAt = 0,
+		harvest = harvest,
+		record = { reasonCode = PlacementRules.Reason.OK, createdAt = self.worldService.time },
 	}
 	self:createBuildModel(self.buildables[id])
-	self.worldService:pushEventLog(player, string.format("Built %s", def.name or buildKey), "#bfe2ff")
 	return true, self.buildables[id]
+end
+
+function BuildService:nearestCell(root)
+	local best, bestD = nil, math.huge
+	for _, chunk in pairs(self.worldService.chunks) do
+		for _, cell in ipairs(chunk.cells) do
+			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(cell.x, 0, cell.z)).Magnitude
+			if d < bestD then best, bestD = cell, d end
+		end
+	end
+	return best, bestD
+end
+
+function BuildService:tryGather(player)
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then return false, { reasonCode = PlacementRules.Reason.NO_CHARACTER } end
+	local cell, dist = self:nearestCell(root)
+	if not cell or dist > 18 then return false, { reasonCode = PlacementRules.Reason.NOT_FOUND } end
+	local key = cell.terrainClass == "rock" and "stone" or (cell.terrainClass == "water" and "battery_seed" or "fiber")
+	return true, self.inventoryService:grant(player, { { key = key, amount = 1 } })
+end
+
+function BuildService:tryHarvestBuild(player)
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then return false, { reasonCode = PlacementRules.Reason.NO_CHARACTER } end
+	local best, bestD = nil, 12
+	for _, b in pairs(self.buildables) do
+		local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(b.pos.X, 0, b.pos.Z)).Magnitude
+		if d < bestD then best, bestD = b, d end
+	end
+	if not best then return false, { reasonCode = PlacementRules.Reason.NOT_FOUND } end
+	if self.worldService.time < (best.nextHarvestAt or 0) then return false, { reasonCode = PlacementRules.Reason.NOT_READY } end
+	local rewards = {}
+	for key, amount in pairs((best.harvest and best.harvest.provides) or {}) do
+		table.insert(rewards, { key = (key == "bait" and "lure_meat" or key), amount = amount })
+	end
+	best.nextHarvestAt = self.worldService.time + ((best.harvest and best.harvest.interval) or 1)
+	return true, self.inventoryService:grant(player, rewards)
 end
 
 function BuildService:tickStructureEffects()
 	for _, b in pairs(self.buildables) do
-		local def = BuildableConfig[b.key]
-		local effect = def and def.effect or nil
+		local def = PlacementRules.getBuildDef(b.key)
+		local effect = def and def.effect
 		if effect and effect.type == "pet_regen" then
 			local interval = math.max(1, tonumber(effect.interval) or 5)
 			if self.worldService.time >= (b.lastEffectAt or 0) + interval then
 				b.lastEffectAt = self.worldService.time
-				local radius = tonumber(effect.radius) or 20
-				local heal = math.max(1, math.floor(tonumber(effect.flatHeal) or 5))
-				local center = Vector3.new(b.pos.X, 0, b.pos.Z)
 				for _, creature in ipairs(self.worldService.creatures) do
-					if creature.alive and creature.mode == "pet" then
-						local d = (Vector3.new(creature.pos.X, 0, creature.pos.Z) - center).Magnitude
-						if d <= radius then
-							local maxHP = creature.modifiedStats and creature.modifiedStats.maxHP or creature.currentHP
-							local before = creature.currentHP
-							creature.currentHP = math.min(maxHP, creature.currentHP + heal)
-							if creature.currentHP > before then
-								self.worldService:pushFloatingText(creature.pos, "+" .. tostring(math.floor(creature.currentHP - before)), "#a8ffd7")
-							end
-						end
+					if creature.alive and creature.mode == "pet" and (Vector3.new(creature.pos.X, 0, creature.pos.Z) - Vector3.new(b.pos.X, 0, b.pos.Z)).Magnitude <= (effect.radius or 20) then
+						local maxHP = creature.modifiedStats and creature.modifiedStats.maxHP or creature.currentHP
+						creature.currentHP = math.min(maxHP, creature.currentHP + math.max(1, math.floor(effect.flatHeal or 5)))
 					end
 				end
 			end
@@ -293,47 +213,13 @@ function BuildService:tickStructureEffects()
 	end
 end
 
-function BuildService:tryHarvestBuild(player, payload)
-	local root = player.Character and player.Character.PrimaryPart
-	if not root then return false, "no character" end
-	local best, bestD = nil, 12
-	for _, b in pairs(self.buildables) do
-		local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(b.pos.X, 0, b.pos.Z)).Magnitude
-		if d < bestD then
-			best, bestD = b, d
-		end
-	end
-	if not best then return false, "no buildable nearby" end
-	local def = BuildableConfig[best.key]
-	if not def then return false, "invalid buildable" end
-	if self.worldService.time < (best.nextHarvestAt or 0) then
-		return false, "not ready"
-	end
-	local rewards = {}
-	for key, amount in pairs(def.provides or {}) do
-		local mappedKey = key
-		if key == "bait" then
-			mappedKey = "lure_meat"
-		end
-		table.insert(rewards, { key = mappedKey, amount = amount })
-	end
-	local granted = self.inventoryService:grant(player, rewards)
-	best.nextHarvestAt = self.worldService.time + (def.harvestTime or 1)
-	self.worldService:pushEventLog(player, string.format("Harvested %s", def.name or best.key), "#d7fcb7")
-	return true, granted
-end
-
 function BuildService:handleContextAction(player, payload)
 	payload = payload or {}
-	local action = payload.action or "context"
-	if action == "gather" or action == "context" then
-		return self:tryGather(player, payload)
-	elseif action == "build" then
-		return self:tryBuild(player, payload)
-	elseif action == "harvestBuild" then
-		return self:tryHarvestBuild(player, payload)
-	end
-	return false, "unknown context action"
+	local action = payload.action or BuildService.Actions.CONTEXT
+	if action == BuildService.Actions.BUILD then return self:tryBuild(player, payload) end
+	if action == BuildService.Actions.HARVEST_BUILD then return self:tryHarvestBuild(player) end
+	if action == BuildService.Actions.GATHER or action == BuildService.Actions.CONTEXT then return self:tryGather(player) end
+	return false, { reasonCode = PlacementRules.Reason.INVALID_ACTION }
 end
 
 return BuildService

@@ -205,7 +205,8 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 	if not ok then
 		local buildOk, buildResult = buildService:handleContextAction(player, payload)
 		if not buildOk and payload.action == "build" then
-			worldService:pushEventLog(player, string.format("Build failed: %s", tostring(buildResult or "invalid placement")), "#ffb3b3")
+			local reasonCode = (type(buildResult) == "table" and buildResult.reasonCode) or tostring(buildResult)
+			worldService:pushEventLog(player, string.format("Build failed [%s]", tostring(reasonCode or "BUILD_UNKNOWN")), "#ffb3b3")
 		end
 	end
 end)
