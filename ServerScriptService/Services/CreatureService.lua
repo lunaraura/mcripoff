@@ -1,15 +1,41 @@
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SSS = game:GetService("ServerScriptService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Creatures = Shared:WaitForChild("Creatures")
 local CreatureFactoryRules = require(Creatures:WaitForChild("CreatureFactoryRules"))
 local CreatureRuntime = require(script.Parent.Parent.Runtime.CreatureRuntime)
+local ChunkSystem = require(SSS:WaitForChild("Systems"):WaitForChild("ChunkSystem"))
+local BiomeSystem = require(SSS:WaitForChild("Systems"):WaitForChild("BiomeSystem"))
 
 local CreatureService = {}
 CreatureService.__index = CreatureService
 
 function CreatureService.new(worldService, playerDataService)
 	return setmetatable({ worldService = worldService, playerDataService = playerDataService }, CreatureService)
+end
+
+function CreatureService:resolveGroundY(x, z, fallbackY)
+	local cx, cz = ChunkSystem.worldToChunk(x, z)
+	local chunk = self.worldService.chunks[ChunkSystem.key(cx, cz)]
+	if chunk and chunk.cells then
+		local bestCell, bestDist = nil, math.huge
+		for _, cell in ipairs(chunk.cells) do
+			local d = (Vector3.new(cell.x, 0, cell.z) - Vector3.new(x, 0, z)).Magnitude
+			if d < bestDist then
+				bestDist = d
+				bestCell = cell
+			end
+		end
+		if bestCell and (bestCell.yGround or bestCell.yG) then
+			return bestCell.yGround or bestCell.yG
+		end
+	end
+	local env = BiomeSystem.sampleEnvironment(x, z)
+	if env and env.yGround then
+		return env.yGround
+	end
+	return fallbackY or 0
 end
 
 function CreatureService:spawnRuntime(speciesKey, team, x, z, opts)
@@ -25,14 +51,20 @@ function CreatureService:spawnFromSpawnPayload(speciesKey, spawnPayload)
 		speciesKey = speciesKey,
 		team = spawnPayload and spawnPayload.team,
 		x = spawnPayload and spawnPayload.x,
+		y = spawnPayload and spawnPayload.y,
 		z = spawnPayload and spawnPayload.z,
 		opts = spawnPayload and spawnPayload.opts,
 	})
+	payload.opts = payload.opts or {}
+	if payload.y ~= nil and payload.opts.y == nil then
+		payload.opts.y = payload.y
+	end
 	return self:spawnRuntime(payload.speciesKey, payload.team, payload.x, payload.z, payload.opts)
 end
 
 function CreatureService:spawnPetFromOwned(player, ownedId, slot, pos, owned)
 	local payload = CreatureFactoryRules.makePetRuntimePayload(player.UserId, ownedId, slot, pos, owned, self.worldService.time)
+	payload.y = self:resolveGroundY(payload.x, payload.z, payload.y)
 	local pet = self:spawnFromSpawnPayload(payload.speciesKey, payload)
 	CreatureFactoryRules.applyRuntimeIdentity(pet, payload.identity)
 	CreatureFactoryRules.applyLoadout(pet, payload.loadout)
@@ -121,7 +153,11 @@ function CreatureService:HydrateParty(player)
 		local ownedId = data.partySlots[slot]
 		local owned = ownedId and data.ownedCreatures[ownedId] or nil
 		if owned and not owned.isDefeated then
-			local pos = root.Position + offsets[slot]
+			local offset = offsets[slot]
+			local x = root.Position.X + offset.X
+			local z = root.Position.Z + offset.Z
+			local y = self:resolveGroundY(x, z, root.Position.Y)
+			local pos = Vector3.new(x, y, z)
 			self:spawnPetFromOwned(player, ownedId, slot, pos, owned)
 		end
 	end

@@ -6,6 +6,7 @@ function CreatureFactoryRules.makeSpawnPayload(input)
 		speciesKey = input.speciesKey,
 		team = input.team or 1,
 		x = input.x or 0,
+		y = input.y,
 		z = input.z or 0,
 		opts = input.opts or {},
 	}
@@ -16,6 +17,7 @@ function CreatureFactoryRules.makePetRuntimePayload(ownerUserId, ownedId, slot, 
 		speciesKey = owned.speciesKey,
 		team = 0,
 		x = pos.X,
+		y = pos.Y,
 		z = pos.Z,
 		opts = {
 			mode = "pet",

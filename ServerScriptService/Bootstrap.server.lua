@@ -64,7 +64,8 @@ local hudReplicationCache = {}
 local HUD_KEEPALIVE_SECONDS = 1.0
 
 Players.PlayerAdded:Connect(function(player)
-	playerDataService:getOrCreate(player)
+	local data = playerDataService:getOrCreate(player)
+	player:SetAttribute("StarterChosen", data.starterChosen == true)
 	player:SetAttribute("RadiusChunks", 2)
 	player:SetAttribute("PetLeashDistance", 90)
 	player:SetAttribute("PetHoldDefenseRange", 30)
@@ -86,6 +87,7 @@ remotes.RequestStarterChoice.OnServerEvent:Connect(function(player, payload)
 	local speciesKey = payload.speciesKey
 	local ok = playerDataService:chooseStarter(player, speciesKey)
 	if not ok then return end
+	player:SetAttribute("StarterChosen", true)
 	creatureService:HydrateParty(player)
 	local root = player.Character and player.Character.PrimaryPart
 	if root then
@@ -302,6 +304,7 @@ local function pushPetHud()
 					activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1,
 					controlMode = tostring(player:GetAttribute("PetControlMode") or "AUTO"),
 					stance = tostring(player:GetAttribute("PetStance") or "FOLLOW"),
+					starterChosen = player:GetAttribute("StarterChosen") == true,
 				},
 				t = worldService.time,
 			})
