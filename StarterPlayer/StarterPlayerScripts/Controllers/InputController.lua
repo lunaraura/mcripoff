@@ -27,7 +27,7 @@ function InputController:bind()
 		elseif input.KeyCode == Enum.KeyCode.Q then
 			self.command:cast("ram", nil) -- TODO: add target picking
 		elseif input.KeyCode == Enum.KeyCode.E then
-			self.build:sendContext({ action = "context" })
+			self.build:handlePrimaryAction()
 		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
 			local targetId = self.command:getTargetIdUnderMouse()
 			if targetId then

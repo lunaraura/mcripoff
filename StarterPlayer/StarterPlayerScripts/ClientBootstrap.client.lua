@@ -14,7 +14,7 @@ local localPlayer = Players.LocalPlayer
 local party = PartyController.new()
 local build = BuildController.new()
 local command = CommandController.new(party)
-local ui = UIController.new()
+local ui = UIController.new(build)
 local input = InputController.new(party, command, build)
 
 local mouse = localPlayer:GetMouse()

@@ -8,12 +8,14 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local UIController = {}
 UIController.__index = UIController
 
-function UIController.new()
+function UIController.new(buildController)
 	return setmetatable({
 		floatingTextEvent = remotes:WaitForChild("FloatingTextEvent"),
 		eventLogEvent = remotes:WaitForChild("EventLogEvent"),
 		petHudUpdate = remotes:WaitForChild("PetHudUpdate"),
 		requestClientOption = remotes:WaitForChild("RequestClientOption"),
+		requestContextAction = remotes:WaitForChild("RequestContextAction"),
+		build = buildController,
 		hudLabels = {},
 		logLabels = {},
 		optionRows = {},
@@ -117,6 +119,7 @@ function UIController:buildUi()
 		self.logLabels[i] = line
 	end
 	self:buildOptionsMenu(gui)
+	self:buildBuildAndToolMenu(gui)
 end
 
 function UIController:buildOptionsMenu(gui)
@@ -207,6 +210,123 @@ end
 function UIController:toggleOptionsMenu()
 	if not self.optionsPanel then return end
 	self.optionsPanel.Visible = not self.optionsPanel.Visible
+end
+
+function UIController:buildBuildAndToolMenu(gui)
+	local panel = Instance.new("Frame")
+	panel.Name = "BuildToolPanel"
+	panel.Size = UDim2.fromOffset(300, 160)
+	panel.Position = UDim2.new(1, -312, 0, 190)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+	panel.BackgroundTransparency = 0.2
+	panel.Parent = gui
+
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Text = "Tools / Build Mode"
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 14
+	title.TextColor3 = Color3.fromRGB(235, 245, 255)
+	title.Size = UDim2.new(1, -12, 0, 20)
+	title.Position = UDim2.fromOffset(8, 4)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = panel
+
+	local buildToggle = Instance.new("TextButton")
+	buildToggle.Size = UDim2.fromOffset(132, 24)
+	buildToggle.Position = UDim2.fromOffset(10, 30)
+	buildToggle.Text = "Build Mode: OFF"
+	buildToggle.Parent = panel
+
+	local useButton = Instance.new("TextButton")
+	useButton.Size = UDim2.fromOffset(132, 24)
+	useButton.Position = UDim2.fromOffset(156, 30)
+	useButton.Text = "Use Selected"
+	useButton.Parent = panel
+
+	local toolDemolisher = Instance.new("TextButton")
+	toolDemolisher.Size = UDim2.fromOffset(132, 24)
+	toolDemolisher.Position = UDim2.fromOffset(10, 62)
+	toolDemolisher.Text = "Tool: Demolisher"
+	toolDemolisher.Parent = panel
+
+	local toolPlanter = Instance.new("TextButton")
+	toolPlanter.Size = UDim2.fromOffset(132, 24)
+	toolPlanter.Position = UDim2.fromOffset(156, 62)
+	toolPlanter.Text = "Tool: Planter"
+	toolPlanter.Parent = panel
+
+	local buildTent = Instance.new("TextButton")
+	buildTent.Size = UDim2.fromOffset(132, 24)
+	buildTent.Position = UDim2.fromOffset(10, 94)
+	buildTent.Text = "Build: Tent (5 wood)"
+	buildTent.Parent = panel
+
+	local buildTrap = Instance.new("TextButton")
+	buildTrap.Size = UDim2.fromOffset(132, 24)
+	buildTrap.Position = UDim2.fromOffset(156, 94)
+	buildTrap.Text = "Build: Fiber Trap"
+	buildTrap.Parent = panel
+
+	local selectedLabel = Instance.new("TextLabel")
+	selectedLabel.BackgroundTransparency = 1
+	selectedLabel.Size = UDim2.new(1, -12, 0, 20)
+	selectedLabel.Position = UDim2.fromOffset(8, 126)
+	selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
+	selectedLabel.Font = Enum.Font.Code
+	selectedLabel.TextSize = 13
+	selectedLabel.TextColor3 = Color3.fromRGB(220, 235, 255)
+	selectedLabel.Parent = panel
+
+	local function refresh()
+		local buildMode = self.build and self.build.buildMode
+		local tool = self.build and self.build.selectedTool or "-"
+		local buildKey = self.build and self.build.selectedBuildKey or "-"
+		buildToggle.Text = buildMode and "Build Mode: ON" or "Build Mode: OFF"
+		selectedLabel.Text = string.format("Selected tool=%s  build=%s", tostring(tool), tostring(buildKey))
+	end
+
+	buildToggle.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:toggleBuildMode()
+		end
+		refresh()
+	end)
+	useButton.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:handlePrimaryAction()
+		else
+			self.requestContextAction:FireServer({ action = "context" })
+		end
+	end)
+	toolDemolisher.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:selectTool("node_demolisher")
+		end
+		refresh()
+	end)
+	toolPlanter.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:selectTool("berry_planter")
+		end
+		refresh()
+	end)
+	buildTent.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:selectBuildable("tent")
+			self.build:setBuildMode(true)
+		end
+		refresh()
+	end)
+	buildTrap.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:selectBuildable("fiber_trap")
+			self.build:setBuildMode(true)
+		end
+		refresh()
+	end)
+
+	refresh()
 end
 
 function UIController:updatePetHud(payload)
