@@ -3,7 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Terrain = workspace.Terrain
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
-local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
+local FloraSystem = require(script.Parent.FloraSystem)
 
 local ChunkSystem = {}
 ChunkSystem.CHUNK_SIZE = 64
@@ -86,6 +86,7 @@ function ChunkSystem.writeChunkTerrain(chunk)
 end
 
 function ChunkSystem.clearChunkTerrain(chunk)
+	FloraSystem.unloadChunk(chunk.key)
 	local clearH = 256
 	for _, cell in ipairs(chunk.cells) do
 		Terrain:FillBlock(
@@ -103,13 +104,14 @@ function ChunkSystem.ensureLoaded(world, centerX, centerZ, radiusOverride)
 		for dx = -radius, radius do
 			local cx, cz = ccx + dx, ccz + dz
 			local key = chunkKey(cx, cz)
-			if not world.chunks[key] then
-				local chunk = ChunkSystem.generateChunk(cx, cz)
-				world.chunks[key] = chunk
-				ChunkSystem.writeChunkTerrain(chunk)
+				if not world.chunks[key] then
+					local chunk = ChunkSystem.generateChunk(cx, cz)
+					world.chunks[key] = chunk
+					ChunkSystem.writeChunkTerrain(chunk)
+					FloraSystem.scatterChunk(chunk)
+				end
 			end
 		end
-	end
 end
 
 function ChunkSystem.collectSpawnableCells(world)

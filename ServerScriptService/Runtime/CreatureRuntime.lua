@@ -21,7 +21,7 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.team = team
 	self.mode = opts.mode or (team == 0 and "pet" or "wild")
 	self.role = def.role or "fighter"
-	self.pos = Vector3.new(x, 0, z)
+	self.pos = Vector3.new(x, opts.y or 0, z)
 	self.spawnAnchor = opts.spawnAnchor or self.pos
 	self.familyKey = def.familyKey or "canine"
 	self.compositeKey = def.compositeKey or "animal"

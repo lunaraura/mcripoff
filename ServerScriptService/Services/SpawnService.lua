@@ -56,7 +56,8 @@ function SpawnService:update(dt)
 		mode = "wild",
 		wildTier = tier,
 		wildProfile = cfg,
-		spawnAnchor = Vector3.new(cell.x, 0, cell.z),
+		spawnAnchor = Vector3.new(cell.x, cell.yG or 0, cell.z),
+		y = cell.yG or 0,
 	})
 	self.worldService:pushEventLogNearby(Vector3.new(cell.x, 0, cell.z), string.format("Wild spawned: %s [%s]", speciesKey, tier), "#ffd9a8", 220)
 end
