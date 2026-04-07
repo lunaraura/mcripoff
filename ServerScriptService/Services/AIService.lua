@@ -23,19 +23,32 @@ function AIService:think(creature, dt)
 end
 
 function AIService:thinkPet(creature)
+	local owner = Players:GetPlayerByUserId(creature.ownerUserId or -1)
+	local root = owner and owner.Character and owner.Character.PrimaryPart
+	local slotOffset = creature.partySlot == 2 and Vector3.new(6, 0, 8) or Vector3.new(-6, 0, 8)
+	local followAnchor = root and (root.Position + slotOffset) or creature.pos
 	if creature.command and creature.command.type == "follow" then
-		local owner = Players:GetPlayerByUserId(creature.ownerUserId or -1)
-		local root = owner and owner.Character and owner.Character.PrimaryPart
-		if root then
-			local delta = root.Position - creature.pos
-			if delta.Magnitude > 10 then
-				creature.intent.move = Vector3.new(delta.X, 0, delta.Z)
+		local delta = followAnchor - creature.pos
+		local dAnchor = delta.Magnitude
+		if dAnchor > 6 then
+			creature.intent.move = Vector3.new(delta.X, 0, delta.Z)
+		end
+		if dAnchor < 30 then
+			local target, d = self.worldService:findNearestEnemyOf(creature, 65)
+			if target and (target.pos - followAnchor).Magnitude <= 90 then
+				self:fightTarget(creature, target)
+			elseif dAnchor <= 6 then
+				creature.intent.move = Vector3.zero
 			end
 		end
 		return
 	end
 	if creature.command and creature.command.type == "hold" then
 		creature.intent.move = Vector3.zero
+		local target = self.worldService:findNearestEnemyOf(creature, 30)
+		if target then
+			self:fightTarget(creature, target)
+		end
 		return
 	end
 	if creature.command and creature.command.type == "move" and creature.command.point then
