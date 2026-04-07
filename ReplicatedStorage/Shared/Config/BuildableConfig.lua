@@ -34,6 +34,12 @@ local BuildableConfig = {
 		cost = { wood = 5 },
 		harvestTime = 4.0,
 		provides = {},
+		effect = {
+			type = "pet_regen",
+			radius = 20,
+			interval = 5,
+			flatHeal = 6,
+		},
 		placement = {
 			previewShape = "wedge",
 			previewSize = { x = 8, y = 5, z = 8 },

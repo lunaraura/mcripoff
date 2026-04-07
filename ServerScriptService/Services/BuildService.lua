@@ -224,10 +224,40 @@ function BuildService:tryBuild(player, payload)
 		pos = placementPos,
 		rotationY = rotationY,
 		nextHarvestAt = self.worldService.time + (def.harvestTime or 1),
+		lastEffectAt = 0,
 	}
 	self:createBuildModel(self.buildables[id])
 	self.worldService:pushEventLog(player, string.format("Built %s", def.name or buildKey), "#bfe2ff")
 	return true, self.buildables[id]
+end
+
+function BuildService:tickStructureEffects()
+	for _, b in pairs(self.buildables) do
+		local def = BuildableConfig[b.key]
+		local effect = def and def.effect or nil
+		if effect and effect.type == "pet_regen" then
+			local interval = math.max(1, tonumber(effect.interval) or 5)
+			if self.worldService.time >= (b.lastEffectAt or 0) + interval then
+				b.lastEffectAt = self.worldService.time
+				local radius = tonumber(effect.radius) or 20
+				local heal = math.max(1, math.floor(tonumber(effect.flatHeal) or 5))
+				local center = Vector3.new(b.pos.X, 0, b.pos.Z)
+				for _, creature in ipairs(self.worldService.creatures) do
+					if creature.alive and creature.mode == "pet" then
+						local d = (Vector3.new(creature.pos.X, 0, creature.pos.Z) - center).Magnitude
+						if d <= radius then
+							local maxHP = creature.modifiedStats and creature.modifiedStats.maxHP or creature.currentHP
+							local before = creature.currentHP
+							creature.currentHP = math.min(maxHP, creature.currentHP + heal)
+							if creature.currentHP > before then
+								self.worldService:pushFloatingText(creature.pos, "+" .. tostring(math.floor(creature.currentHP - before)), "#a8ffd7")
+							end
+						end
+					end
+				end
+			end
+		end
+	end
 end
 
 function BuildService:tryHarvestBuild(player, payload)

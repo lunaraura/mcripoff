@@ -274,6 +274,7 @@ RunService.Heartbeat:Connect(function(dt)
 	worldService:stepTime(dt)
 	worldService:updateChunksAroundPlayers()
 	spawnService:update(dt)
+	buildService:tickStructureEffects()
 	for _, creature in ipairs(worldService.creatures) do
 		if creature.alive then
 			effectService:tickCreature(creature, dt)
