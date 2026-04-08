@@ -8,7 +8,7 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local UIController = {}
 UIController.__index = UIController
 
-function UIController.new(buildController, itemController)
+function UIController.new(buildController, itemController, partyController, commandController)
 	return setmetatable({
 		floatingTextEvent = remotes:WaitForChild("FloatingTextEvent"),
 		eventLogEvent = remotes:WaitForChild("EventLogEvent"),
@@ -18,6 +18,8 @@ function UIController.new(buildController, itemController)
 		requestContextAction = remotes:WaitForChild("RequestContextAction"),
 		build = buildController,
 		items = itemController,
+		party = partyController,
+		command = commandController,
 		hudLabels = {},
 		logLabels = {},
 		optionRows = {},
@@ -32,6 +34,8 @@ function UIController.new(buildController, itemController)
 		stance = "FOLLOW",
 		activeDesignatedTargetId = nil,
 		lastManualCast = nil,
+		commandPanelMode = "HIDDEN",
+		activeCommand = "follow",
 	}, UIController)
 end
 
@@ -137,8 +141,96 @@ function UIController:buildUi()
 		self.logLabels[i] = line
 	end
 	self:buildOptionsMenu(gui)
+	self:buildCommandPanel(gui)
 	self:buildBuildAndToolMenu(gui)
 	self:buildItemBar(gui)
+end
+
+function UIController:toggleCommandPanelMode()
+	if self.commandPanelMode == "HIDDEN" then
+		self.commandPanelMode = "VISIBLE"
+	else
+		self.commandPanelMode = "HIDDEN"
+	end
+	if self.commandPanel then
+		self.commandPanel.Visible = self.commandPanelMode == "VISIBLE"
+	end
+	self:refreshCommandPanel()
+end
+
+function UIController:sendCommandFromUi(kind)
+	if not self.command then return end
+	if kind == "follow" then
+		if self.party then self.party:setStance("FOLLOW") end
+		self.command:sendCommand({ type = "follow" })
+	elseif kind == "hold" then
+		if self.party then self.party:setStance("HOLD") end
+		self.command:sendCommand({ type = "hold" })
+	elseif kind == "attack" then
+		self.command:sendCommand({ type = "attackNearest" })
+	end
+	self.activeCommand = kind
+	self:refreshCommandPanel()
+end
+
+function UIController:refreshCommandPanel()
+	if not self.commandModeLabel then return end
+	self.commandModeLabel.Text = string.format(
+		"Command Panel [C]: %s  ActiveSlot:%s  Mode:%s  Stance:%s",
+		self.commandPanelMode,
+		tostring(self.activeSlot or 1),
+		tostring(self.controlMode or "AUTO"),
+		tostring(self.stance or "FOLLOW")
+	)
+	for key, btn in pairs(self.commandButtons or {}) do
+		btn.BackgroundColor3 = (self.activeCommand == key) and Color3.fromRGB(70, 105, 145) or Color3.fromRGB(40, 45, 58)
+	end
+end
+
+function UIController:buildCommandPanel(gui)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromOffset(404, 18)
+	label.Position = UDim2.fromOffset(20, 266)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Font = Enum.Font.Code
+	label.TextSize = 12
+	label.TextColor3 = Color3.fromRGB(210, 230, 245)
+	label.Parent = gui
+	self.commandModeLabel = label
+
+	local panel = Instance.new("Frame")
+	panel.Name = "CommandPanel"
+	panel.Size = UDim2.fromOffset(404, 34)
+	panel.Position = UDim2.fromOffset(20, 286)
+	panel.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+	panel.BackgroundTransparency = 0.18
+	panel.Visible = false
+	panel.Parent = gui
+	self.commandPanel = panel
+
+	local function makeButton(text, x, key)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.fromOffset(124, 24)
+		b.Position = UDim2.fromOffset(x, 5)
+		b.Text = text
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 12
+		b.TextColor3 = Color3.fromRGB(230, 240, 255)
+		b.BackgroundColor3 = Color3.fromRGB(40, 45, 58)
+		b.Parent = panel
+		b.MouseButton1Click:Connect(function()
+			self:sendCommandFromUi(key)
+		end)
+		return b
+	end
+
+	self.commandButtons = {
+		follow = makeButton("Follow", 6, "follow"),
+		hold = makeButton("Hold", 140, "hold"),
+		attack = makeButton("Attack", 274, "attack"),
+	}
+	self:refreshCommandPanel()
 end
 
 function UIController:buildOptionsMenu(gui)
@@ -234,7 +326,7 @@ end
 function UIController:buildBuildAndToolMenu(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "BuildToolPanel"
-	panel.Size = UDim2.fromOffset(300, 194)
+	panel.Size = UDim2.fromOffset(320, 250)
 	panel.Position = UDim2.new(1, -312, 0, 190)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
@@ -242,7 +334,7 @@ function UIController:buildBuildAndToolMenu(gui)
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Text = "Tools / Build Mode"
+	title.Text = "Tools / Build"
 	title.Font = Enum.Font.GothamBold
 	title.TextSize = 14
 	title.TextColor3 = Color3.fromRGB(235, 245, 255)
@@ -251,83 +343,126 @@ function UIController:buildBuildAndToolMenu(gui)
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = panel
 
-	local buildToggle = Instance.new("TextButton")
-	buildToggle.Size = UDim2.fromOffset(132, 24)
-	buildToggle.Position = UDim2.fromOffset(10, 30)
-	buildToggle.Text = "Build Mode: OFF"
-	buildToggle.Parent = panel
+	local buildMenuToggle = Instance.new("TextButton")
+	buildMenuToggle.Size = UDim2.fromOffset(150, 24)
+	buildMenuToggle.Position = UDim2.fromOffset(10, 30)
+	buildMenuToggle.Text = "Open Build Menu"
+	buildMenuToggle.Parent = panel
 
 	local useButton = Instance.new("TextButton")
-	useButton.Size = UDim2.fromOffset(132, 24)
-	useButton.Position = UDim2.fromOffset(156, 30)
+	useButton.Size = UDim2.fromOffset(150, 24)
+	useButton.Position = UDim2.fromOffset(164, 30)
 	useButton.Text = "Use Selected"
 	useButton.Parent = panel
 
+	local toolTitle = Instance.new("TextLabel")
+	toolTitle.BackgroundTransparency = 1
+	toolTitle.Size = UDim2.fromOffset(140, 18)
+	toolTitle.Position = UDim2.fromOffset(10, 58)
+	toolTitle.TextXAlignment = Enum.TextXAlignment.Left
+	toolTitle.Font = Enum.Font.GothamBold
+	toolTitle.TextSize = 12
+	toolTitle.TextColor3 = Color3.fromRGB(210, 225, 240)
+	toolTitle.Text = "Tools"
+	toolTitle.Parent = panel
+
+	local buildTitle = Instance.new("TextLabel")
+	buildTitle.BackgroundTransparency = 1
+	buildTitle.Size = UDim2.fromOffset(140, 18)
+	buildTitle.Position = UDim2.fromOffset(164, 58)
+	buildTitle.TextXAlignment = Enum.TextXAlignment.Left
+	buildTitle.Font = Enum.Font.GothamBold
+	buildTitle.TextSize = 12
+	buildTitle.TextColor3 = Color3.fromRGB(210, 225, 240)
+	buildTitle.Text = "Buildables"
+	buildTitle.Parent = panel
+
 	local toolDemolisher = Instance.new("TextButton")
-	toolDemolisher.Size = UDim2.fromOffset(132, 24)
-	toolDemolisher.Position = UDim2.fromOffset(10, 62)
-	toolDemolisher.Text = "Tool: Demolisher"
+	toolDemolisher.Size = UDim2.fromOffset(150, 22)
+	toolDemolisher.Position = UDim2.fromOffset(10, 76)
+	toolDemolisher.Text = "Demolisher"
 	toolDemolisher.Parent = panel
 
 	local toolPlanter = Instance.new("TextButton")
-	toolPlanter.Size = UDim2.fromOffset(132, 24)
-	toolPlanter.Position = UDim2.fromOffset(156, 62)
-	toolPlanter.Text = "Tool: Planter"
+	toolPlanter.Size = UDim2.fromOffset(150, 22)
+	toolPlanter.Position = UDim2.fromOffset(10, 102)
+	toolPlanter.Text = "Berry Planter"
 	toolPlanter.Parent = panel
 
-	local buildTent = Instance.new("TextButton")
-	buildTent.Size = UDim2.fromOffset(132, 24)
-	buildTent.Position = UDim2.fromOffset(10, 94)
-	buildTent.Text = "Build: Tent (5 wood)"
-	buildTent.Parent = panel
+	local buildList = Instance.new("ScrollingFrame")
+	buildList.Size = UDim2.fromOffset(150, 132)
+	buildList.Position = UDim2.fromOffset(164, 76)
+	buildList.CanvasSize = UDim2.fromOffset(0, 0)
+	buildList.ScrollBarThickness = 6
+	buildList.Visible = false
+	buildList.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+	buildList.BackgroundTransparency = 0.15
+	buildList.Parent = panel
 
-	local buildTrap = Instance.new("TextButton")
-	buildTrap.Size = UDim2.fromOffset(132, 24)
-	buildTrap.Position = UDim2.fromOffset(156, 94)
-	buildTrap.Text = "Build: Fiber Trap"
-	buildTrap.Parent = panel
-
-	local shrubRed = Instance.new("TextButton")
-	shrubRed.Size = UDim2.fromOffset(90, 24)
-	shrubRed.Position = UDim2.fromOffset(10, 126)
-	shrubRed.Text = "Plant Red"
-	shrubRed.Parent = panel
-
-	local shrubYellow = Instance.new("TextButton")
-	shrubYellow.Size = UDim2.fromOffset(90, 24)
-	shrubYellow.Position = UDim2.fromOffset(104, 126)
-	shrubYellow.Text = "Plant Yellow"
-	shrubYellow.Parent = panel
-
-	local shrubBlue = Instance.new("TextButton")
-	shrubBlue.Size = UDim2.fromOffset(90, 24)
-	shrubBlue.Position = UDim2.fromOffset(198, 126)
-	shrubBlue.Text = "Plant Blue"
-	shrubBlue.Parent = panel
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 4)
+	layout.Parent = buildList
 
 	local selectedLabel = Instance.new("TextLabel")
 	selectedLabel.BackgroundTransparency = 1
 	selectedLabel.Size = UDim2.new(1, -12, 0, 20)
-	selectedLabel.Position = UDim2.fromOffset(8, 158)
+	selectedLabel.Position = UDim2.fromOffset(8, 218)
 	selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
 	selectedLabel.Font = Enum.Font.Code
 	selectedLabel.TextSize = 13
 	selectedLabel.TextColor3 = Color3.fromRGB(220, 235, 255)
 	selectedLabel.Parent = panel
 
-	local function refresh()
+	local refresh
+
+	local function formatCost(cost)
+		local tokens = {}
+		for mat, amt in pairs(cost or {}) do
+			table.insert(tokens, string.format("%s:%s", tostring(mat), tostring(amt)))
+		end
+		table.sort(tokens)
+		return (#tokens > 0) and table.concat(tokens, ",") or "free"
+	end
+
+	local function rebuildBuildMenu()
+		for _, child in ipairs(buildList:GetChildren()) do
+			if child:IsA("TextButton") then
+				child:Destroy()
+			end
+		end
+		local yCount = 0
+		local entries = (self.build and self.build:getBuildableEntries()) or {}
+		for _, entry in ipairs(entries) do
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, -8, 0, 24)
+			btn.TextXAlignment = Enum.TextXAlignment.Left
+			btn.Font = Enum.Font.Code
+			btn.TextSize = 12
+			btn.Text = string.format("%s [%s]", tostring(entry.label), formatCost(entry.cost))
+			btn.Parent = buildList
+			btn.MouseButton1Click:Connect(function()
+				if self.build then
+					self.build:selectBuildable(entry.key)
+					self.build:setBuildMode(true)
+				end
+				refresh()
+			end)
+			yCount += 28
+		end
+		buildList.CanvasSize = UDim2.fromOffset(0, yCount)
+	end
+
+	refresh = function()
 		local buildMode = self.build and self.build.buildMode
 		local tool = self.build and self.build.selectedTool or "-"
 		local buildKey = self.build and self.build.selectedBuildKey or "-"
-		local placementReason = self.build and self.build.placement and self.build.placement.reason or "-"
-		buildToggle.Text = buildMode and "Build Mode: ON" or "Build Mode: OFF"
-		selectedLabel.Text = string.format("tool=%s  build=%s  %s", tostring(tool), tostring(buildKey), tostring(placementReason))
+		local placementReason = self.build and self.build.placement and (self.build.placement.reasonCode or self.build.placement.reason) or "-"
+		buildMenuToggle.Text = buildList.Visible and "Close Build Menu" or "Open Build Menu"
+		selectedLabel.Text = string.format("tool=%s  build=%s  mode=%s  reason=%s", tostring(tool), tostring(buildKey), buildMode and "BUILD" or "TOOL", tostring(placementReason))
 	end
 
-	buildToggle.MouseButton1Click:Connect(function()
-		if self.build then
-			self.build:toggleBuildMode()
-		end
+	buildMenuToggle.MouseButton1Click:Connect(function()
+		buildList.Visible = not buildList.Visible
 		refresh()
 	end)
 	useButton.MouseButton1Click:Connect(function()
@@ -349,47 +484,8 @@ function UIController:buildBuildAndToolMenu(gui)
 		end
 		refresh()
 	end)
-	buildTent.MouseButton1Click:Connect(function()
-		if self.build then
-			self.build:selectBuildable("tent")
-			self.build:setBuildMode(true)
-		end
-		refresh()
-	end)
-	buildTrap.MouseButton1Click:Connect(function()
-		if self.build then
-			self.build:selectBuildable("fiber_trap")
-			self.build:setBuildMode(true)
-		end
-		refresh()
-	end)
-
-	shrubRed.MouseButton1Click:Connect(function()
-		if self.build then
-			self.build:plantShrub("berry_red")
-		end
-		refresh()
-	end)
-	shrubYellow.MouseButton1Click:Connect(function()
-		if self.build then
-			self.build:plantShrub("berry_yellow")
-		end
-		refresh()
-	end)
-	shrubBlue.MouseButton1Click:Connect(function()
-		if self.build then
-			self.build:plantShrub("berry_blue")
-		end
-		refresh()
-	end)
-
+	rebuildBuildMenu()
 	refresh()
-	task.spawn(function()
-		while panel.Parent do
-			refresh()
-			task.wait(0.1)
-		end
-	end)
 end
 
 function UIController:buildItemBar(gui)
@@ -506,6 +602,13 @@ function UIController:updatePetHud(payload)
 				local displayName = tostring(pet.name or speciesName)
 				local state = tostring(pet.state or "alive")
 				local cooldownSummary = self:buildCooldownSummary(pet.cooldowns)
+				if i == (self.activeSlot or 1) and pet.command then
+					if pet.command == "follow" or pet.command == "hold" then
+						self.activeCommand = pet.command
+					elseif pet.command == "attack" or pet.command == "attackNearest" then
+						self.activeCommand = "attack"
+					end
+				end
 				if state == "alive" then
 					local cmd = pet.command or "auto"
 						local manual = tostring(pet.manualCastState or "idle")
@@ -543,6 +646,7 @@ function UIController:updatePetHud(payload)
 			end
 		end
 	end
+	self:refreshCommandPanel()
 end
 
 function UIController:buildCooldownSummary(cooldowns)

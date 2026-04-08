@@ -7,6 +7,8 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Build = Shared:WaitForChild("Build")
 local PlacementRules = require(Build:WaitForChild("PlacementRules"))
+local Config = Shared:WaitForChild("Config")
+local BuildableConfig = require(Config:WaitForChild("BuildableConfig"))
 local PlacementPreviewHelper = require(script.Parent:WaitForChild("PlacementPreviewHelper"))
 
 local BuildController = {}
@@ -47,6 +49,23 @@ end
 function BuildController:selectBuildable(buildKey)
 	self.selectedBuildKey = buildKey
 	self:clearPreview()
+end
+
+function BuildController:getBuildableEntries()
+	local entries = {}
+	for key, def in pairs(BuildableConfig) do
+		if def and def.placement then
+			table.insert(entries, {
+				key = key,
+				label = def.name or key,
+				cost = def.cost or {},
+			})
+		end
+	end
+	table.sort(entries, function(a, b)
+		return tostring(a.label) < tostring(b.label)
+	end)
+	return entries
 end
 
 function BuildController:handlePrimaryAction()
