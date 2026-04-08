@@ -32,6 +32,10 @@ local function hasStatus(creature, key)
 	return creature and creature.statuses and creature.statuses[key] ~= nil
 end
 
+local function isValidEnemy(source, target)
+	return target and target.alive and target.team ~= source.team
+end
+
 function AIService.new(worldService)
 	return setmetatable({ worldService = worldService }, AIService)
 end
@@ -85,6 +89,11 @@ function AIService:think(creature, dt)
 	creature.intent.move = Vector3.zero
 	creature.intent.abilityKey = nil
 	creature.intent.targetId = nil
+	if creature.manualCastState == "pending" and creature.manualCastRequest and self.worldService.time > ((creature.manualCastRequest.createdAt or 0) + 1.5) then
+		creature.manualCastState = "rejected"
+		creature.manualCastNote = "timeout"
+		creature.manualCastRequest = nil
+	end
 	local state = self:ensureAIState(creature)
 	local profile = self:getProfile(creature)
 	self:applyProfileSettings(creature, state, profile)
@@ -107,6 +116,8 @@ function AIService:sense(creature, state, profile, dt)
 	local stance = "FOLLOW"
 	local activeSlot = 1
 	local holdDefenseRange = profile.holdDefenseRange or 30
+	local isActivePet = false
+	local designatedTargetId = creature.designatedTargetId
 	if creature.mode == "pet" then
 		owner = Players:GetPlayerByUserId(creature.ownerUserId or -1)
 		ownerRoot = owner and owner.Character and owner.Character.PrimaryPart
@@ -117,6 +128,11 @@ function AIService:sense(creature, state, profile, dt)
 		state.leashRadius = math.clamp(leashDistance or profile.leashRadius, 35, 160)
 		holdDefenseRange = owner and tonumber(owner:GetAttribute("PetHoldDefenseRange")) or holdDefenseRange
 		holdDefenseRange = math.clamp(holdDefenseRange or 30, 10, 80)
+		isActivePet = creature.partySlot == activeSlot
+		if owner and creature.partySlot then
+			local attrKey = string.format("PetDesignatedTargetSlot%d", creature.partySlot)
+			designatedTargetId = tonumber(owner:GetAttribute(attrKey))
+		end
 		local slotOffset = creature.partySlot == 2 and Vector3.new(6, 0, 8) or Vector3.new(-6, 0, 8)
 		if ownerRoot then
 			state.homeAnchor = ownerRoot.Position
@@ -174,6 +190,9 @@ function AIService:sense(creature, state, profile, dt)
 		ownerThreat = ownerThreat,
 		command = creature.command,
 		holdDefenseRange = holdDefenseRange,
+		isActivePet = isActivePet,
+		designatedTargetId = designatedTargetId,
+		commandOverrideActive = self.worldService.time <= (creature.commandOverrideUntil or 0),
 	}
 end
 
@@ -197,6 +216,23 @@ end
 
 function AIService:selectTarget(creature, state, profile, facts)
 	local now = facts.now
+	local preferredIds = {
+		(facts.command and facts.command.targetId) or nil,
+		facts.designatedTargetId,
+		state.targetId,
+	}
+	for _, id in ipairs(preferredIds) do
+		local preferred = id and self.worldService:getCreatureById(id) or nil
+		if isValidEnemy(creature, preferred) then
+			local dPreferred = flatDistance(creature.pos, preferred.pos)
+			if dPreferred <= state.disengageRadius then
+				state.targetId = preferred.id
+				state.targetLockUntil = now + (profile.targetLockSeconds or 1.2)
+				state.lastSeenTargetTime = now
+				return preferred
+			end
+		end
+	end
 	local current = state.targetId and self.worldService:getCreatureById(state.targetId) or nil
 	if current and current.alive and now <= (state.targetLockUntil or 0) then
 		local dCurrent = flatDistance(creature.pos, current.pos)
@@ -230,7 +266,8 @@ end
 function AIService:decide(creature, state, profile, facts)
 	local now = facts.now
 	local command = facts.command or { type = "follow" }
-	local isManual = facts.controlMode == "MANUAL"
+	local isManual = facts.controlMode == "MANUAL" and facts.isActivePet
+	local autonomousOffenseAllowed = not isManual
 	local target = nil
 	local forcedState = nil
 
@@ -245,6 +282,7 @@ function AIService:decide(creature, state, profile, facts)
 		elseif command.type == "attack" and command.targetId then
 			target = self.worldService:getCreatureById(command.targetId)
 			if target and target.alive and target.team ~= creature.team then
+				state.targetId = target.id
 				forcedState = "chase"
 			else
 				creature.command = { type = "follow", issuedAt = now }
@@ -272,7 +310,7 @@ function AIService:decide(creature, state, profile, facts)
 	end
 
 	if forcedState == "hold" then
-		if not isManual then
+		if autonomousOffenseAllowed then
 			target = target or self:selectTarget(creature, state, profile, facts)
 			if target and flatDistance(creature.pos, target.pos) <= (facts.holdDefenseRange or profile.holdDefenseRange or 30) then
 				self:transition(state, "attack")
@@ -289,7 +327,7 @@ function AIService:decide(creature, state, profile, facts)
 			self:transition(state, "return")
 			return { state = "return", anchor = state.roamAnchor }
 		end
-		if not isManual then
+		if autonomousOffenseAllowed then
 			target = self:selectTarget(creature, state, profile, facts)
 			if target then
 				local d = flatDistance(creature.pos, target.pos)
@@ -313,8 +351,18 @@ function AIService:decide(creature, state, profile, facts)
 		self:transition(state, "chase")
 		return { state = "chase", target = target }
 	end
+	if creature.mode == "pet" and facts.commandOverrideActive and (command.type == "follow" or command.type == "hold" or command.type == "move") then
+		self:transition(state, command.type == "follow" and "follow" or "hold")
+		return { state = command.type == "follow" and "follow" or "hold", anchor = state.roamAnchor }
+	end
 
-	target = self:selectTarget(creature, state, profile, facts)
+	target = autonomousOffenseAllowed and self:selectTarget(creature, state, profile, facts) or nil
+	if not target and facts.designatedTargetId then
+		local designated = self.worldService:getCreatureById(facts.designatedTargetId)
+		if isValidEnemy(creature, designated) and flatDistance(creature.pos, designated.pos) <= state.disengageRadius then
+			target = designated
+		end
+	end
 	if target then
 		local d = flatDistance(creature.pos, target.pos)
 		if d <= profile.preferredRange then
@@ -459,6 +507,7 @@ end
 
 function AIService:buildIntent(creature, state, profile, facts, decision)
 	local intent = { kind = decision.state, move = Vector3.zero, targetId = nil, abilityKey = nil }
+	local manualReq = creature.manualCastRequest
 	if decision.target then
 		state.targetId = decision.target.id
 		intent.targetId = decision.target.id
@@ -473,7 +522,17 @@ function AIService:buildIntent(creature, state, profile, facts, decision)
 	if decision.state == "attack" then
 		local dir, d = unitFlat(creature.pos, decision.target.pos)
 		if d > profile.preferredRange then intent.move = dir end
-		local abilityKey, summary = self:pickAbilityForTarget(creature, decision.target, state, profile, facts)
+		local abilityKey, summary = nil, nil
+		if manualReq and manualReq.abilityKey then
+			abilityKey = manualReq.abilityKey
+			intent.targetId = manualReq.targetId or intent.targetId
+			creature.manualCastRequest = nil
+			creature.manualCastState = "accepted"
+			creature.manualCastNote = "queued"
+			summary = "manual_cast"
+		elseif facts.controlMode ~= "MANUAL" or (not facts.isActivePet) then
+			abilityKey, summary = self:pickAbilityForTarget(creature, decision.target, state, profile, facts)
+		end
 		intent.abilityKey = abilityKey
 		state.lastAbilityScoreSummary = summary
 		state.lastChosenAbility = abilityKey
@@ -507,7 +566,21 @@ function AIService:buildIntent(creature, state, profile, facts, decision)
 	end
 	if decision.state == "hold" then
 		intent.move = Vector3.zero
+		if manualReq and manualReq.abilityKey then
+			intent.abilityKey = manualReq.abilityKey
+			intent.targetId = manualReq.targetId
+			creature.manualCastRequest = nil
+			creature.manualCastState = "accepted"
+			creature.manualCastNote = "queued"
+		end
 		return intent
+	end
+	if manualReq and manualReq.abilityKey then
+		intent.abilityKey = manualReq.abilityKey
+		intent.targetId = manualReq.targetId
+		creature.manualCastRequest = nil
+		creature.manualCastState = "accepted"
+		creature.manualCastNote = "queued"
 	end
 	return intent
 end
@@ -524,6 +597,9 @@ function AIService:applyIntent(creature, state, intent)
 		intent = state.lastIntent,
 		lastChosenAbility = state.lastChosenAbility,
 		abilityScoreSummary = state.lastAbilityScoreSummary,
+		controlMode = creature.ownerUserId and tostring((Players:GetPlayerByUserId(creature.ownerUserId) and Players:GetPlayerByUserId(creature.ownerUserId):GetAttribute("PetControlMode")) or "AUTO") or "-",
+		manualCastState = creature.manualCastState,
+		commandOverride = self.worldService.time <= (creature.commandOverrideUntil or 0),
 	}
 end
 

@@ -62,6 +62,29 @@ combatService:configureProgression(playerDataService, morphService)
 local hudTimer = 0
 local hudReplicationCache = {}
 local HUD_KEEPALIVE_SECONDS = 1.0
+local COMMAND_OVERRIDE_SECONDS = 2.5
+
+local function getDesignatedAttrKey(slot)
+	return string.format("PetDesignatedTargetSlot%d", tonumber(slot) or 1)
+end
+
+local function getPetBySlot(player, slot)
+	for _, c in ipairs(worldService.creatures) do
+		if c.ownerUserId == player.UserId and c.partySlot == slot and c.mode == "pet" and c.alive then
+			return c
+		end
+	end
+	return nil
+end
+
+local function setDesignatedTarget(player, slot, targetId)
+	local attrKey = getDesignatedAttrKey(slot)
+	if targetId then
+		player:SetAttribute(attrKey, tonumber(targetId))
+	else
+		player:SetAttribute(attrKey, nil)
+	end
+end
 
 Players.PlayerAdded:Connect(function(player)
 	local data = playerDataService:getOrCreate(player)
@@ -72,6 +95,8 @@ Players.PlayerAdded:Connect(function(player)
 	player:SetAttribute("ActivePetSlot", 1)
 	player:SetAttribute("PetControlMode", "AUTO")
 	player:SetAttribute("PetStance", "FOLLOW")
+	player:SetAttribute("PetDesignatedTargetSlot1", nil)
+	player:SetAttribute("PetDesignatedTargetSlot2", nil)
 	player.CharacterAdded:Connect(function()
 		task.wait(0.3)
 		creatureService:HydrateParty(player)
@@ -117,6 +142,12 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 		if t == "attack" and tonumber(input.targetId) then
 			return { type = "attack", targetId = tonumber(input.targetId), issuedAt = worldService.time }
 		end
+		if t == "designateTarget" and tonumber(input.targetId) then
+			return { type = "designateTarget", targetId = tonumber(input.targetId), issuedAt = worldService.time }
+		end
+		if t == "clearDesignatedTarget" then
+			return { type = "clearDesignatedTarget", issuedAt = worldService.time }
+		end
 		if t == "swapReserve" then
 			return { type = "swapReserve", reserveIndex = tonumber(input.reserveIndex) or 1 }
 		end
@@ -152,8 +183,19 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 		if c.ownerUserId == player.UserId and c.partySlot and c.partySlot <= 2 then
 			if payload.slot == nil or payload.slot == c.partySlot then
 				c.command = command
+				c.commandOverrideUntil = worldService.time + COMMAND_OVERRIDE_SECONDS
 				if c.partySlot == (tonumber(payload.slot) or c.partySlot) then
 					player:SetAttribute("ActivePetSlot", c.partySlot)
+				end
+				if command.type == "attack" then
+					setDesignatedTarget(player, c.partySlot, command.targetId)
+					c.designatedTargetId = command.targetId
+				elseif command.type == "designateTarget" then
+					setDesignatedTarget(player, c.partySlot, command.targetId)
+					c.designatedTargetId = command.targetId
+				elseif command.type == "clearDesignatedTarget" then
+					setDesignatedTarget(player, c.partySlot, nil)
+					c.designatedTargetId = nil
 				end
 				if command.type == "follow" then
 					player:SetAttribute("PetStance", "FOLLOW")
@@ -171,11 +213,39 @@ remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
 	if requestedSlot ~= 1 and requestedSlot ~= 2 then
 		return
 	end
-	for _, c in ipairs(worldService.creatures) do
-		if c.ownerUserId == player.UserId and c.partySlot == requestedSlot then
-			c.intent.abilityKey = payload.abilityKey
-			c.intent.targetId = payload.targetId
-		end
+	local pet = getPetBySlot(player, requestedSlot)
+	if not pet then
+		return
+	end
+	local abilityKey = tostring(payload.abilityKey or "")
+	if abilityKey == "" then
+		pet.manualCastState = "rejected"
+		pet.manualCastNote = "missing_ability"
+		return
+	end
+	local requestedTargetId = tonumber(payload.targetId)
+	local designatedTargetId = tonumber(player:GetAttribute(getDesignatedAttrKey(requestedSlot)))
+	local chosenTargetId = requestedTargetId or designatedTargetId
+	local chosenTarget = chosenTargetId and worldService:getCreatureById(chosenTargetId) or nil
+	local ok, abilityOrReason = combatService:validateManualCast(pet, abilityKey, chosenTarget)
+	if not ok then
+		pet.manualCastState = "rejected"
+		pet.manualCastNote = tostring(abilityOrReason)
+		worldService:pushEventLog(player, string.format("Manual cast rejected [%s]", tostring(abilityOrReason)), "#ffb3b3")
+		return
+	end
+	pet.manualCastRequest = {
+		abilityKey = abilityKey,
+		targetId = chosenTarget and chosenTarget.id or nil,
+		createdAt = worldService.time,
+	}
+	pet.manualCastState = "pending"
+	pet.manualCastNote = "validated"
+	pet.commandOverrideUntil = worldService.time + COMMAND_OVERRIDE_SECONDS
+	pet.command = { type = "hold", issuedAt = worldService.time }
+	if chosenTarget and chosenTarget.team ~= pet.team then
+		setDesignatedTarget(player, requestedSlot, chosenTarget.id)
+		pet.designatedTargetId = chosenTarget.id
 	end
 end)
 
@@ -296,6 +366,9 @@ local function pushPetHud()
 					energy = isAlive and pet.currentEnergy or 0,
 					command = isAlive and (pet.command and pet.command.type or "auto") or nil,
 					targetId = isAlive and (pet.intent and pet.intent.targetId or nil) or nil,
+					designatedTargetId = isAlive and (pet.designatedTargetId or nil) or nil,
+					manualCastState = isAlive and (pet.manualCastState or "idle") or "idle",
+					commandOverride = isAlive and (worldService.time <= (pet.commandOverrideUntil or 0)) or false,
 					cooldowns = cooldowns,
 				}
 			else
@@ -336,6 +409,22 @@ RunService.Heartbeat:Connect(function(dt)
 			combatService:tryUseAbility(creature)
 			creature:Tick(dt)
 			creatureService:updateModel(creature)
+		end
+	end
+	for _, player in ipairs(Players:GetPlayers()) do
+		for slot = 1, 2 do
+			local attrKey = getDesignatedAttrKey(slot)
+			local targetId = tonumber(player:GetAttribute(attrKey))
+			if targetId then
+				local target = worldService:getCreatureById(targetId)
+				if not target or not target.alive then
+					player:SetAttribute(attrKey, nil)
+					local pet = getPetBySlot(player, slot)
+					if pet then
+						pet.designatedTargetId = nil
+					end
+				end
+			end
 		end
 	end
 	for _, creature in ipairs(worldService.creatures) do

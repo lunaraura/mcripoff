@@ -212,11 +212,30 @@ function CombatService:evaluateAbility(source, abilityKey, target)
 	if (source.cooldowns[abilityKey] or 0) > 0 then return false, "cooldown" end
 	if (ability.resourceUse.stamina or 0) > source.currentStamina then return false, "stamina" end
 	if (ability.resourceUse.energy or 0) > source.currentEnergy then return false, "energy" end
-	if ability.category == "utility" or ability.category == "utility_dash" or ability.category == "barrier" then return true, ability end
-	if not target or not target.alive or target.team == source.team then return false, "target" end
-	local d = (Vector3.new(source.pos.X, 0, source.pos.Z) - Vector3.new(target.pos.X, 0, target.pos.Z)).Magnitude
-	if d > (ability.range or 20) then return false, "range" end
+	local category = ability.category
+	if category == "utility" or category == "utility_dash" then
+		local targeting = ability.targeting or "self"
+		if targeting == "ally" and target then
+			if not target.alive or target.team ~= source.team then return false, "target" end
+		elseif targeting == "enemy" and target then
+			if not target.alive or target.team == source.team then return false, "target" end
+		end
+	elseif category == "barrier" then
+		-- barrier has no strict target requirement
+	else
+		if not target or not target.alive or target.team == source.team then return false, "target" end
+	end
+	if target then
+		local d = (Vector3.new(source.pos.X, 0, source.pos.Z) - Vector3.new(target.pos.X, 0, target.pos.Z)).Magnitude
+		if d > (ability.range or 20) then return false, "range" end
+	end
 	return true, ability
+end
+
+function CombatService:validateManualCast(source, abilityKey, target)
+	local ok, abilityOrReason = self:evaluateAbility(source, abilityKey, target)
+	if not ok then return false, abilityOrReason end
+	return true, abilityOrReason
 end
 
 function CombatService:performMobility(source, target, ability)

@@ -31,6 +31,13 @@ function InputController:bind()
 			self.command:setControlMode(mode)
 		elseif input.KeyCode == Enum.KeyCode.G then
 			self.command:sendCommand({ type = "attackNearest" })
+		elseif input.KeyCode == Enum.KeyCode.R then
+			local targetId = self.command:getTargetIdUnderMouse()
+			if targetId then
+				self.command:sendCommand({ type = "designateTarget", targetId = targetId })
+			else
+				self.command:sendCommand({ type = "clearDesignatedTarget" })
+			end
 		elseif input.KeyCode == Enum.KeyCode.Q then
 			self.command:cast("ram", nil) -- TODO: add target picking
 		elseif input.KeyCode == Enum.KeyCode.E then

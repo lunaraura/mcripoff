@@ -493,8 +493,11 @@ function UIController:updatePetHud(payload)
 				local cooldownSummary = self:buildCooldownSummary(pet.cooldowns)
 				if state == "alive" then
 					local cmd = pet.command or "auto"
+					local manual = tostring(pet.manualCastState or "idle")
+					local designated = tostring(pet.designatedTargetId or "-")
+					local override = pet.commandOverride and "Y" or "N"
 					label.Text = string.format(
-						"Slot %d: %s [%s] (Lv %d)\nHP %d/%d  ST %d  EN %d\nCmd: %s  Target: %s\nCD: %s",
+						"Slot %d: %s [%s] (Lv %d)\nHP %d/%d  ST %d  EN %d\nCmd: %s  Target: %s  Designated: %s\nManual:%s  Override:%s\nCD: %s",
 						i,
 						displayName,
 						speciesName,
@@ -505,6 +508,9 @@ function UIController:updatePetHud(payload)
 						en,
 						tostring(cmd),
 						tostring(pet.targetId or "-"),
+						designated,
+						manual,
+						override,
 						cooldownSummary
 					)
 				else

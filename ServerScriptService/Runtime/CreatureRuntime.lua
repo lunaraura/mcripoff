@@ -50,6 +50,11 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.alive = true
 	self.lifecycle = "alive"
 	self.command = { type = "follow", issuedAt = 0, targetId = nil, point = nil }
+	self.commandOverrideUntil = 0
+	self.designatedTargetId = nil
+	self.manualCastState = "idle"
+	self.manualCastNote = nil
+	self.manualCastRequest = nil
 	self.ai = {
 		brainType = opts.brainType or ((self.mode == "pet" and "petFollower") or (self.role == "passive" and "passiveWild") or "hostileWild"),
 		behaviorState = "idle",
