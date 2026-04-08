@@ -112,6 +112,8 @@ function CreatureService:updateModel(creature)
 			creature.model:SetAttribute("AI_AbilityScore", tostring(creature.ai.lastAbilityScoreSummary or "-"))
 		end
 		creature.model:SetAttribute("GroundY", creature.pos.Y)
+		creature.model:SetAttribute("EffectSummary", tostring(creature.effectSummary or ""))
+		creature.model:SetAttribute("LastReaction", tostring(creature.lastReactionTriggered or "-"))
 		creature.model:SetAttribute("TerrainY", terrainY or creature.pos.Y)
 		creature.model:SetAttribute("ModelCenterY", modelCenterY)
 		creature.model:SetAttribute("VisualSizeY", body.Size.Y)

@@ -401,6 +401,20 @@ function AIService:evaluateAbility(creature, target, abilityKey, state, profile,
 		reason = "utility_timing"
 		if selfHpRatio < 0.65 then score += 4 end
 	end
+
+	local tags = {}
+	for _, t in ipairs(ability.effectTags or {}) do tags[t] = true end
+	if tags.electric and hasStatus(target, "wet") then
+		score += 8
+		reason = "reaction_wet_electric"
+	end
+	if tags.water and hasStatus(target, "burn") then
+		score += 6
+		reason = "reaction_wet_cools_burn"
+	end
+	if tags.impact and hasStatus(target, "guard") then
+		score -= 4
+	end
 	for _, spec in ipairs(ability.statusOnHit or {}) do
 		if not hasStatus(target, spec.key) then
 			score += 4 + (tactical.status or 0)

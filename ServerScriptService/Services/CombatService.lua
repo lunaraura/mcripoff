@@ -45,17 +45,10 @@ function CombatService:getFallbacks(parts)
 end
 
 function CombatService:tryApplyStatuses(source, target, ability)
-	if not self.effectService or not ability then return end
-	for _, spec in ipairs(ability.statusOnHit or {}) do
-		if self.effectService:rollProc(spec.chance) then
-			self.effectService:applyStatus(target, spec.key, source, spec.params)
-		end
-	end
-	for _, spec in ipairs(ability.statusSelf or {}) do
-		if self.effectService:rollProc(spec.chance) then
-			self.effectService:applyStatus(source, spec.key, source, spec.params)
-		end
-	end
+	if not self.effectService or not ability then return 0, nil end
+	self.effectService:applyAbilityStatuses(source, target, ability)
+	local bonusDamage, reactionKey = self.effectService:evaluateReactions(source, target, ability)
+	return bonusDamage or 0, reactionKey
 end
 
 function CombatService:applyDamagePacket(source, target, ability)
@@ -75,7 +68,14 @@ function CombatService:applyDamagePacket(source, target, ability)
 	local final = math.max(1, reduced)
 	target.currentHP = math.max(0, target.currentHP - final)
 	self.worldService:pushFloatingText(target.pos, tostring(math.floor(final + 0.5)), "#ffd7d7")
-	self:tryApplyStatuses(source, target, ability)
+	local bonusDamage, reactionKey = self:tryApplyStatuses(source, target, ability)
+	if (bonusDamage or 0) > 0 then
+		target.currentHP = math.max(0, target.currentHP - bonusDamage)
+		self.worldService:pushFloatingText(target.pos, string.format("+R%d", math.floor(bonusDamage + 0.5)), "#9fe8ff")
+	end
+	if reactionKey then
+		target.lastReactionTriggered = reactionKey
+	end
 	if target.currentHP <= 0 then
 		target.alive = false
 		target.lifecycle = "defeated"

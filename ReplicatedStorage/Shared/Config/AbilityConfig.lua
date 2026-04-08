@@ -4,6 +4,7 @@ local AbilityConfig = {
 		resourceUse = { stamina = 5, energy = 0 },
 		flatDmg = { p = 3, e = 0 }, dmgScale = { p = 0.8, e = 0 },
 		damageProfile = { physical = { "impact" } }, range = 24,
+		effectTags = { "impact", "physical" },
 		statusOnHit = {
 			{ key = "bleed", chance = 0.2, params = { duration = 4, dps = 1.5 } },
 		},
@@ -13,6 +14,7 @@ local AbilityConfig = {
 		resourceUse = { stamina = 0, energy = 10 },
 		flatDmg = { p = 0, e = 2 }, dmgScale = { p = 0, e = 0.3 },
 		damageProfile = { energy = { "electric" } }, range = 80,
+		effectTags = { "electric", "offensive" },
 		statusOnHit = {
 			{ key = "slow", chance = 0.35, params = { duration = 3.5, mult = 0.72 } },
 		},
@@ -22,6 +24,7 @@ local AbilityConfig = {
 		resourceUse = { stamina = 6, energy = 2 },
 		flatDmg = { p = 5, e = 3 }, dmgScale = { p = 0.4, e = 0.2 },
 		damageProfile = { physical = { "slash" }, energy = { "heat" } }, range = 26,
+		effectTags = { "fire", "offensive" },
 		statusOnHit = {
 			{ key = "burn", chance = 0.4, params = { duration = 5, dps = 2.2 } },
 		},
@@ -32,6 +35,7 @@ local AbilityConfig = {
 		flatDmg = { p = 4, e = 0 }, dmgScale = { p = 0.2, e = 0 },
 		damageProfile = { physical = { "pierce" } }, range = 150,
 		projectile = { speed = 90, homing = false, radius = 4, life = 2.6 },
+		effectTags = { "physical", "impact" },
 	},
 	staticBurst = {
 		name = "Static Burst", category = "aoe", cooldown = 5.2,
@@ -40,6 +44,7 @@ local AbilityConfig = {
 		damageProfile = { energy = { "electric" } }, range = 90,
 		area = { radius = 40, mode = "instant" },
 		statusOnHit = { { key = "slow", chance = 1, params = { duration = 1.5, mult = 0.65 } } },
+		effectTags = { "electric", "offensive" },
 	},
 	stomp = {
 		name = "Stomp", category = "aoe", cooldown = 5.2,
@@ -48,6 +53,7 @@ local AbilityConfig = {
 		damageProfile = { physical = { "impact" } }, range = 26,
 		area = { radius = 28, mode = "lingering", duration = 1.0, tick = 0.5 },
 		statusSelf = { { key = "guard", chance = 1, params = { duration = 2.5, reduction = 0.22 } } },
+		effectTags = { "impact", "offensive" },
 	},
 	dashBite = {
 		name = "Dash Bite", category = "dash", cooldown = 3.0,
@@ -56,18 +62,21 @@ local AbilityConfig = {
 		damageProfile = { physical = { "slash" } }, range = 26,
 		dash = { distance = 90, stopShort = 10 },
 		statusOnHit = { { key = "slow", chance = 0.35, params = { duration = 1.1, mult = 0.75 } } },
+		effectTags = { "impact", "mobility" },
 	},
 	staticBarrier = {
 		name = "Static Barrier", category = "barrier", cooldown = 10.5,
 		resourceUse = { stamina = 0, energy = 20 },
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 120,
 		barrier = { kind = "zone", radius = 52, duration = 5.0, slow = 0.25, damageReduction = 0.22, blockMovement = true },
+		effectTags = { "electric", "defensive" },
 	},
 	stoneWall = {
 		name = "Stone Wall", category = "barrier", cooldown = 12.0,
 		resourceUse = { stamina = 8, energy = 10 },
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 90,
 		barrier = { kind = "wall", duration = 4.0, length = 60, thickness = 8, blockMovement = true, damageReduction = 0.15 },
+		effectTags = { "physical", "defensive" },
 	},
 
 	mendPulse = {
@@ -76,7 +85,8 @@ local AbilityConfig = {
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 80,
 		targeting = "ally",
 		heal = { flat = 12, scale = 0.35, maxPercent = 0.28 },
-		statusOnTarget = { { key = "guard", chance = 1, params = { duration = 2.5, reduction = 0.2 } } },
+		statusOnTarget = { { key = "guard", chance = 1, params = { duration = 2.5, reduction = 0.2 } }, { key = "wet", chance = 1, params = { duration = 4, stacks = 1 } } },
+		effectTags = { "water", "utility" },
 	},
 	energize = {
 		name = "Energize", category = "utility", cooldown = 7.0,
@@ -84,7 +94,8 @@ local AbilityConfig = {
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 70,
 		targeting = "ally",
 		restore = { energy = 10, stamina = 6 },
-		statusOnTarget = { { key = "haste", chance = 1, params = { duration = 2.2, mult = 1.18 } } },
+		statusOnTarget = { { key = "haste", chance = 1, params = { duration = 2.2, mult = 1.18 } }, { key = "wet", chance = 1, params = { duration = 3, stacks = 1 } } },
+		effectTags = { "water", "utility" },
 	},
 	guardianLeap = {
 		name = "Guardian Leap", category = "utility_dash", cooldown = 6.8,
@@ -92,6 +103,7 @@ local AbilityConfig = {
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 95,
 		targeting = "ally", dash = { distance = 70, stopShort = 6 },
 		statusOnTarget = { { key = "guard", chance = 1, params = { duration = 3.0, reduction = 0.28 } } },
+		effectTags = { "defensive", "mobility" },
 	},
 	blinkStrike = {
 		name = "Blink Strike", category = "blink", cooldown = 6.2,
@@ -100,12 +112,14 @@ local AbilityConfig = {
 		damageProfile = { physical = { "pierce" }, energy = { "electric" } },
 		range = 120, blink = { behind = 10 },
 		statusOnHit = { { key = "slow", chance = 0.5, params = { duration = 1.4, mult = 0.7 } } },
+		effectTags = { "electric", "mobility" },
 	},
 	rallyHowl = {
 		name = "Rally Howl", category = "utility", cooldown = 6.2,
 		resourceUse = { stamina = 0, energy = 10 },
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 0,
 		statusSelf = { { key = "haste", chance = 1, params = { duration = 4, mult = 1.2 } } },
+		effectTags = { "utility", "defensive" },
 	},
 	disengage = {
 		name = "Disengage", category = "retreat", cooldown = 3.0,
@@ -113,6 +127,7 @@ local AbilityConfig = {
 		flatDmg = { p = 10, e = 0 }, dmgScale = { p = 0, e = 0 },
 		damageProfile = { physical = { "impact" } },
 		dash = { distance = 80, stopShort = 10 }, range = 20,
+		effectTags = { "impact", "mobility" },
 	},
 }
 
