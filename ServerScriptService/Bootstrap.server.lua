@@ -29,6 +29,7 @@ local remotes = {
 	FloatingTextEvent = ensureRemote("FloatingTextEvent"),
 	EventLogEvent = ensureRemote("EventLogEvent"),
 	PetHudUpdate = ensureRemote("PetHudUpdate"),
+	ManualCastResult = ensureRemote("ManualCastResult"),
 	ItemUseResult = ensureRemote("ItemUseResult"),
 }
 
@@ -87,6 +88,31 @@ local function setDesignatedTarget(player, slot, targetId)
 	local activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1
 	if tonumber(slot) == activeSlot then
 		player:SetAttribute("ActiveDesignatedTargetId", targetId and tonumber(targetId) or nil)
+	end
+end
+
+local function pushManualCastResult(player, pet, payload)
+	payload = payload or {}
+	local result = {
+		ok = payload.ok == true,
+		code = tostring(payload.code or "unknown"),
+		slot = pet and pet.partySlot or payload.slot,
+		petId = pet and pet.id or nil,
+		abilityKey = payload.abilityKey,
+		targetId = payload.targetId,
+		t = worldService.time,
+	}
+	if pet then
+		if result.ok then
+			pet.manualCastState = (result.code == "accepted") and "pending" or "accepted"
+		else
+			pet.manualCastState = "rejected"
+		end
+		pet.manualCastNote = result.code
+		pet.lastManualCastResult = result
+	end
+	if remotes.ManualCastResult then
+		remotes.ManualCastResult:FireClient(player, result)
 	end
 end
 
@@ -177,6 +203,11 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 		if slot == 1 or slot == 2 then
 			player:SetAttribute("ActivePetSlot", slot)
 			player:SetAttribute("ActiveDesignatedTargetId", tonumber(player:GetAttribute(getDesignatedAttrKey(slot))))
+			local pet = getPetBySlot(player, slot)
+			if pet then
+				pet.commandOverrideUntil = worldService.time + COMMAND_OVERRIDE_SECONDS
+				pet.command = { type = "follow", issuedAt = worldService.time }
+			end
 		end
 		return
 	end
@@ -217,27 +248,43 @@ remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
 	local requestedSlot = tonumber(payload.slot)
 	if requestedSlot ~= 1 and requestedSlot ~= 2 then
+		pushManualCastResult(player, nil, {
+			ok = false,
+			code = "invalid_slot",
+			slot = requestedSlot,
+			abilityKey = payload.abilityKey,
+			targetId = payload.targetId,
+		})
 		return
 	end
 	local pet = getPetBySlot(player, requestedSlot)
 	if not pet then
+		pushManualCastResult(player, nil, {
+			ok = false,
+			code = "pet_unavailable",
+			slot = requestedSlot,
+			abilityKey = payload.abilityKey,
+			targetId = payload.targetId,
+		})
 		return
 	end
 	local abilityKey = tostring(payload.abilityKey or "")
 	if abilityKey == "" then
-		pet.manualCastState = "rejected"
-		pet.manualCastNote = "missing_ability"
+		pushManualCastResult(player, pet, {
+			ok = false,
+			code = "missing_ability",
+			slot = requestedSlot,
+		})
 		return
 	end
 	local requestedTargetId = tonumber(payload.targetId)
 	local designatedTargetId = tonumber(player:GetAttribute(getDesignatedAttrKey(requestedSlot)))
 	local chosenTargetId = requestedTargetId or designatedTargetId
 	local chosenTarget = chosenTargetId and worldService:getCreatureById(chosenTargetId) or nil
-	local ok, abilityOrReason = combatService:validateManualCast(pet, abilityKey, chosenTarget)
-	if not ok then
-		pet.manualCastState = "rejected"
-		pet.manualCastNote = tostring(abilityOrReason)
-		worldService:pushEventLog(player, string.format("Manual cast rejected [%s]", tostring(abilityOrReason)), "#ffb3b3")
+	local result = combatService:validateManualCast(pet, abilityKey, chosenTarget)
+	if not result.ok then
+		pushManualCastResult(player, pet, result)
+		worldService:pushEventLog(player, string.format("Manual cast rejected [%s]", tostring(result.code)), "#ffb3b3")
 		return
 	end
 	pet.manualCastRequest = {
@@ -253,6 +300,7 @@ remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
 		setDesignatedTarget(player, requestedSlot, chosenTarget.id)
 		pet.designatedTargetId = chosenTarget.id
 	end
+	pushManualCastResult(player, pet, result)
 end)
 
 remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
@@ -373,8 +421,9 @@ local function pushPetHud()
 					command = isAlive and (pet.command and pet.command.type or "auto") or nil,
 					targetId = isAlive and (pet.intent and pet.intent.targetId or nil) or nil,
 					designatedTargetId = isAlive and (pet.designatedTargetId or nil) or nil,
-					manualCastState = isAlive and (pet.manualCastState or "idle") or "idle",
-					commandOverride = isAlive and (worldService.time <= (pet.commandOverrideUntil or 0)) or false,
+						manualCastState = isAlive and (pet.manualCastState or "idle") or "idle",
+						manualCastCode = isAlive and (pet.lastManualCastResult and pet.lastManualCastResult.code or pet.manualCastNote or "-") or "-",
+						commandOverride = isAlive and (worldService.time <= (pet.commandOverrideUntil or 0)) or false,
 					cooldowns = cooldowns,
 				}
 			else

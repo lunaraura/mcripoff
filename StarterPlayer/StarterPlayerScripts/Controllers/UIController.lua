@@ -13,6 +13,7 @@ function UIController.new(buildController, itemController)
 		floatingTextEvent = remotes:WaitForChild("FloatingTextEvent"),
 		eventLogEvent = remotes:WaitForChild("EventLogEvent"),
 		petHudUpdate = remotes:WaitForChild("PetHudUpdate"),
+		manualCastResult = remotes:WaitForChild("ManualCastResult"),
 		requestClientOption = remotes:WaitForChild("RequestClientOption"),
 		requestContextAction = remotes:WaitForChild("RequestContextAction"),
 		build = buildController,
@@ -30,6 +31,7 @@ function UIController.new(buildController, itemController)
 		controlMode = "AUTO",
 		stance = "FOLLOW",
 		activeDesignatedTargetId = nil,
+		lastManualCast = nil,
 	}, UIController)
 end
 
@@ -51,6 +53,11 @@ function UIController:bind()
 		self.stance = tostring(meta.stance or self.stance)
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
+	end)
+	self.manualCastResult.OnClientEvent:Connect(function(payload)
+		self.lastManualCast = payload
+		local color = payload and payload.ok and "#a8ffd7" or "#ffb3b3"
+		self:appendLog(string.format("ManualCast[%s] slot=%s ability=%s", tostring(payload and payload.code or "?"), tostring(payload and payload.slot or "-"), tostring(payload and payload.abilityKey or "-")), color)
 	end)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
@@ -501,11 +508,12 @@ function UIController:updatePetHud(payload)
 				local cooldownSummary = self:buildCooldownSummary(pet.cooldowns)
 				if state == "alive" then
 					local cmd = pet.command or "auto"
-					local manual = tostring(pet.manualCastState or "idle")
+						local manual = tostring(pet.manualCastState or "idle")
+						local manualCode = tostring(pet.manualCastCode or "-")
 					local designated = tostring(pet.designatedTargetId or "-")
 					local override = pet.commandOverride and "Y" or "N"
 					label.Text = string.format(
-						"Slot %d: %s [%s] (Lv %d)\nHP %d/%d  ST %d  EN %d\nCmd: %s  Target: %s  Designated: %s\nManual:%s  Override:%s\nCD: %s",
+							"Slot %d: %s [%s] (Lv %d)\nHP %d/%d  ST %d  EN %d\nCmd: %s  Target: %s  Designated: %s\nManual:%s (%s)  Override:%s\nCD: %s",
 						i,
 						displayName,
 						speciesName,
@@ -516,9 +524,10 @@ function UIController:updatePetHud(payload)
 						en,
 						tostring(cmd),
 						tostring(pet.targetId or "-"),
-						designated,
-						manual,
-						override,
+							designated,
+							manual,
+							manualCode,
+							override,
 						cooldownSummary
 					)
 				else

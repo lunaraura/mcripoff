@@ -209,6 +209,8 @@ function CombatService:evaluateAbility(source, abilityKey, target)
 	local ability = AbilityConfig[abilityKey]
 	if not ability then return false, "unknown" end
 	if not self:hasMoveEquipped(source, abilityKey) then return false, "not_learned" end
+	if (source.castLockUntil or 0) > self.worldService.time then return false, "cast_lock" end
+	if (source.gcdUntil or 0) > self.worldService.time then return false, "gcd" end
 	if (source.cooldowns[abilityKey] or 0) > 0 then return false, "cooldown" end
 	if (ability.resourceUse.stamina or 0) > source.currentStamina then return false, "stamina" end
 	if (ability.resourceUse.energy or 0) > source.currentEnergy then return false, "energy" end
@@ -234,8 +236,21 @@ end
 
 function CombatService:validateManualCast(source, abilityKey, target)
 	local ok, abilityOrReason = self:evaluateAbility(source, abilityKey, target)
-	if not ok then return false, abilityOrReason end
-	return true, abilityOrReason
+	if not ok then
+		return {
+			ok = false,
+			code = tostring(abilityOrReason or "invalid"),
+			abilityKey = abilityKey,
+			targetId = target and target.id or nil,
+		}
+	end
+	return {
+		ok = true,
+		code = "accepted",
+		abilityKey = abilityKey,
+		targetId = target and target.id or nil,
+		ability = abilityOrReason,
+	}
 end
 
 function CombatService:performMobility(source, target, ability)
@@ -261,6 +276,8 @@ function CombatService:tryUseAbility(source)
 	source.currentStamina -= (ability.resourceUse.stamina or 0)
 	source.currentEnergy -= (ability.resourceUse.energy or 0)
 	source.cooldowns[key] = ability.cooldown or 1
+	source.gcdUntil = self.worldService.time + (ability.gcd or 0.45)
+	source.castLockUntil = self.worldService.time + (ability.castLock or 0)
 	if ability.category == "utility" then
 		local utilTarget = self:resolveUtilityTarget(source, ability, target)
 		self:applyUtilityAbility(source, utilTarget, ability)

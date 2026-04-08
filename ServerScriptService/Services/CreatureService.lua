@@ -1,4 +1,5 @@
 local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Creatures = Shared:WaitForChild("Creatures")
@@ -113,9 +114,17 @@ function CreatureService:updateModel(creature)
 			creature.model:SetAttribute("AI_ControlMode", tostring(creature.debugAI and creature.debugAI.controlMode or "-"))
 			creature.model:SetAttribute("AI_CommandOverride", creature.debugAI and creature.debugAI.commandOverride and true or false)
 		end
+		if creature.mode == "pet" and creature.ownerUserId then
+			local owner = Players:GetPlayerByUserId(creature.ownerUserId)
+			if owner then
+				creature.model:SetAttribute("PetControlMode", tostring(owner:GetAttribute("PetControlMode") or "AUTO"))
+				creature.model:SetAttribute("PetStance", tostring(owner:GetAttribute("PetStance") or "FOLLOW"))
+			end
+		end
 		creature.model:SetAttribute("DesignatedTargetId", tonumber(creature.designatedTargetId) or -1)
 		creature.model:SetAttribute("ManualCastState", tostring(creature.manualCastState or "idle"))
 		creature.model:SetAttribute("ManualCastNote", tostring(creature.manualCastNote or "-"))
+		creature.model:SetAttribute("LastManualCastCode", tostring(creature.lastManualCastResult and creature.lastManualCastResult.code or "-"))
 		creature.model:SetAttribute("GroundY", creature.pos.Y)
 		creature.model:SetAttribute("EffectSummary", tostring(creature.effectSummary or ""))
 		creature.model:SetAttribute("LastReaction", tostring(creature.lastReactionTriggered or "-"))

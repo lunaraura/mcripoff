@@ -35,6 +35,8 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.moveset = table.clone(opts.movesetOverride or def.moveset or {})
 	self.cooldowns = {}
 	for _, k in ipairs(self.moveset) do self.cooldowns[k] = 0 end
+	self.gcdUntil = 0
+	self.castLockUntil = 0
 	self.currentHP = self.modifiedStats.maxHP
 	self.currentStamina = self.modifiedStats.stamina
 	self.currentEnergy = self.modifiedStats.energy
@@ -55,6 +57,7 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.manualCastState = "idle"
 	self.manualCastNote = nil
 	self.manualCastRequest = nil
+	self.lastManualCastResult = nil
 	self.ai = {
 		brainType = opts.brainType or ((self.mode == "pet" and "petFollower") or (self.role == "passive" and "passiveWild") or "hostileWild"),
 		behaviorState = "idle",
