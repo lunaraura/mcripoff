@@ -36,6 +36,9 @@ local function isValidEnemy(source, target)
 	return target and target.alive and target.team ~= source.team
 end
 
+local COMMAND_INTENT_MEMORY = 4.0
+local ACTIVE_ASSIST_RANGE = 90
+
 function AIService.new(worldService)
 	return setmetatable({ worldService = worldService }, AIService)
 end
@@ -192,6 +195,7 @@ function AIService:sense(creature, state, profile, dt)
 		holdDefenseRange = holdDefenseRange,
 		isActivePet = isActivePet,
 		designatedTargetId = designatedTargetId,
+		activeDesignatedTargetId = owner and tonumber(owner:GetAttribute("ActiveDesignatedTargetId")) or nil,
 		commandOverrideActive = self.worldService.time <= (creature.commandOverrideUntil or 0),
 	}
 end
@@ -266,6 +270,10 @@ end
 function AIService:decide(creature, state, profile, facts)
 	local now = facts.now
 	local command = facts.command or { type = "follow" }
+	if command and command.issuedAt and (now - command.issuedAt) > COMMAND_INTENT_MEMORY then
+		command = { type = "follow", issuedAt = now }
+		creature.command = command
+	end
 	local isManual = facts.controlMode == "MANUAL" and facts.isActivePet
 	local autonomousOffenseAllowed = not isManual
 	local target = nil
@@ -357,6 +365,15 @@ function AIService:decide(creature, state, profile, facts)
 	end
 
 	target = autonomousOffenseAllowed and self:selectTarget(creature, state, profile, facts) or nil
+	if not target and creature.mode == "pet" and (not facts.isActivePet) and facts.activeDesignatedTargetId then
+		local activeDesignated = self.worldService:getCreatureById(facts.activeDesignatedTargetId)
+		if isValidEnemy(creature, activeDesignated) then
+			local dAssist = flatDistance(creature.pos, activeDesignated.pos)
+			if dAssist <= ACTIVE_ASSIST_RANGE then
+				target = activeDesignated
+			end
+		end
+	end
 	if not target and facts.designatedTargetId then
 		local designated = self.worldService:getCreatureById(facts.designatedTargetId)
 		if isValidEnemy(creature, designated) and flatDistance(creature.pos, designated.pos) <= state.disengageRadius then

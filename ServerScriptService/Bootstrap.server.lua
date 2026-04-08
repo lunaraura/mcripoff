@@ -84,6 +84,10 @@ local function setDesignatedTarget(player, slot, targetId)
 	else
 		player:SetAttribute(attrKey, nil)
 	end
+	local activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1
+	if tonumber(slot) == activeSlot then
+		player:SetAttribute("ActiveDesignatedTargetId", targetId and tonumber(targetId) or nil)
+	end
 end
 
 Players.PlayerAdded:Connect(function(player)
@@ -95,6 +99,7 @@ Players.PlayerAdded:Connect(function(player)
 	player:SetAttribute("ActivePetSlot", 1)
 	player:SetAttribute("PetControlMode", "AUTO")
 	player:SetAttribute("PetStance", "FOLLOW")
+	player:SetAttribute("ActiveDesignatedTargetId", nil)
 	player:SetAttribute("PetDesignatedTargetSlot1", nil)
 	player:SetAttribute("PetDesignatedTargetSlot2", nil)
 	player.CharacterAdded:Connect(function()
@@ -171,6 +176,7 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 		local slot = tonumber(payload.slot)
 		if slot == 1 or slot == 2 then
 			player:SetAttribute("ActivePetSlot", slot)
+			player:SetAttribute("ActiveDesignatedTargetId", tonumber(player:GetAttribute(getDesignatedAttrKey(slot))))
 		end
 		return
 	end
@@ -386,6 +392,7 @@ local function pushPetHud()
 					activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1,
 					controlMode = tostring(player:GetAttribute("PetControlMode") or "AUTO"),
 					stance = tostring(player:GetAttribute("PetStance") or "FOLLOW"),
+					activeDesignatedTargetId = tonumber(player:GetAttribute("ActiveDesignatedTargetId")),
 					starterChosen = player:GetAttribute("StarterChosen") == true,
 				},
 				t = worldService.time,
@@ -417,16 +424,19 @@ RunService.Heartbeat:Connect(function(dt)
 			local targetId = tonumber(player:GetAttribute(attrKey))
 			if targetId then
 				local target = worldService:getCreatureById(targetId)
-				if not target or not target.alive then
-					player:SetAttribute(attrKey, nil)
-					local pet = getPetBySlot(player, slot)
-					if pet then
-						pet.designatedTargetId = nil
+					if not target or not target.alive then
+						player:SetAttribute(attrKey, nil)
+						local pet = getPetBySlot(player, slot)
+						if pet then
+							pet.designatedTargetId = nil
+						end
+						if slot == (tonumber(player:GetAttribute("ActivePetSlot")) or 1) then
+							player:SetAttribute("ActiveDesignatedTargetId", nil)
+						end
 					end
 				end
 			end
 		end
-	end
 	for _, creature in ipairs(worldService.creatures) do
 		if (not creature.alive) and creature.mode == "pet" and creature.ownerUserId and creature.ownedId then
 			local owner = Players:GetPlayerByUserId(creature.ownerUserId)

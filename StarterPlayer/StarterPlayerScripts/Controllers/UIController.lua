@@ -29,6 +29,7 @@ function UIController.new(buildController, itemController)
 		activeSlot = 1,
 		controlMode = "AUTO",
 		stance = "FOLLOW",
+		activeDesignatedTargetId = nil,
 	}, UIController)
 end
 
@@ -48,6 +49,7 @@ function UIController:bind()
 		self.activeSlot = tonumber(meta.activeSlot) or self.activeSlot
 		self.controlMode = tostring(meta.controlMode or self.controlMode)
 		self.stance = tostring(meta.stance or self.stance)
+		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
 	end)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -469,7 +471,13 @@ end
 function UIController:updatePetHud(payload)
 	local pets = payload and payload.pets or {}
 	if self.titleLabel then
-		self.titleLabel.Text = string.format("Pet HUD (Debug)  Active:%d  Mode:%s  Stance:%s", self.activeSlot or 1, self.controlMode or "AUTO", self.stance or "FOLLOW")
+		self.titleLabel.Text = string.format(
+			"Pet HUD (Debug)  Active:%d  Mode:%s  Stance:%s  ActiveTarget:%s",
+			self.activeSlot or 1,
+			self.controlMode or "AUTO",
+			self.stance or "FOLLOW",
+			tostring(self.activeDesignatedTargetId or "-")
+		)
 	end
 	for i = 1, 2 do
 		local label = self.hudLabels[i]
