@@ -196,6 +196,12 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 			worldService:pushEventLog(player, "Tame failed (need lure_meat or valid target)", "#ffb3b3")
 			return
 		end
+	elseif payload.action == "plantShrub" then
+		ok = buildService:tryPlantShrub(player, payload)
+		if not ok then
+			worldService:pushEventLog(player, "Plant shrub failed", "#ffb3b3")
+			return
+		end
 	elseif payload.action == "context" or payload.action == "harvest" then
 		ok = harvestService:tryTameNearestDefeated(player, payload.radius or 16)
 		if not ok then

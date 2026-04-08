@@ -60,6 +60,12 @@ function BuildController:handlePrimaryAction()
 	return self:sendContext({ action = "context" })
 end
 
+
+function BuildController:plantShrub(berryKey)
+	local pos = self.placement and self.placement.worldPos
+	self:sendContext({ action = "plantShrub", berryKey = berryKey, position = pos })
+end
+
 function BuildController:bind(mouse)
 	self.mouse = mouse
 	self.renderConn = RunService.RenderStepped:Connect(function() self:updatePreview() end)

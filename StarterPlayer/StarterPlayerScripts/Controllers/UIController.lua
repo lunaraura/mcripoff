@@ -225,7 +225,7 @@ end
 function UIController:buildBuildAndToolMenu(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "BuildToolPanel"
-	panel.Size = UDim2.fromOffset(300, 160)
+	panel.Size = UDim2.fromOffset(300, 194)
 	panel.Position = UDim2.new(1, -312, 0, 190)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
@@ -278,10 +278,28 @@ function UIController:buildBuildAndToolMenu(gui)
 	buildTrap.Text = "Build: Fiber Trap"
 	buildTrap.Parent = panel
 
+	local shrubRed = Instance.new("TextButton")
+	shrubRed.Size = UDim2.fromOffset(90, 24)
+	shrubRed.Position = UDim2.fromOffset(10, 126)
+	shrubRed.Text = "Plant Red"
+	shrubRed.Parent = panel
+
+	local shrubYellow = Instance.new("TextButton")
+	shrubYellow.Size = UDim2.fromOffset(90, 24)
+	shrubYellow.Position = UDim2.fromOffset(104, 126)
+	shrubYellow.Text = "Plant Yellow"
+	shrubYellow.Parent = panel
+
+	local shrubBlue = Instance.new("TextButton")
+	shrubBlue.Size = UDim2.fromOffset(90, 24)
+	shrubBlue.Position = UDim2.fromOffset(198, 126)
+	shrubBlue.Text = "Plant Blue"
+	shrubBlue.Parent = panel
+
 	local selectedLabel = Instance.new("TextLabel")
 	selectedLabel.BackgroundTransparency = 1
 	selectedLabel.Size = UDim2.new(1, -12, 0, 20)
-	selectedLabel.Position = UDim2.fromOffset(8, 126)
+	selectedLabel.Position = UDim2.fromOffset(8, 158)
 	selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
 	selectedLabel.Font = Enum.Font.Code
 	selectedLabel.TextSize = 13
@@ -333,6 +351,25 @@ function UIController:buildBuildAndToolMenu(gui)
 		if self.build then
 			self.build:selectBuildable("fiber_trap")
 			self.build:setBuildMode(true)
+		end
+		refresh()
+	end)
+
+	shrubRed.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:plantShrub("berry_red")
+		end
+		refresh()
+	end)
+	shrubYellow.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:plantShrub("berry_yellow")
+		end
+		refresh()
+	end)
+	shrubBlue.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:plantShrub("berry_blue")
 		end
 		refresh()
 	end)

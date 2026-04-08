@@ -35,6 +35,25 @@ local BuildableConfig = {
 			grid = 4,
 		},
 	},
+
+	berry_shrub = {
+		name = "Berry Shrub",
+		cost = {},
+		harvesting = {
+			interval = 20,
+			provides = {},
+		},
+		placement = {
+			previewShape = "ball",
+			previewSize = { x = 4, y = 3, z = 4 },
+			footprintSize = { x = 4, y = 4, z = 4 },
+			collisionRadius = 2.5,
+			placementRange = 16,
+			allowedTerrain = { "ground" },
+			allowRotation = false,
+			grid = 4,
+		},
+	},
 	tent = {
 		name = "Tent",
 		cost = { wood = 5 },

@@ -12,11 +12,14 @@ BuildService.Actions = {
 	HARVEST_BUILD = "harvestBuild",
 	GATHER = "gather",
 	CONTEXT = "context",
+	PLANT_SHRUB = "plantShrub",
 }
 
 function BuildService.new(worldService, inventoryService)
 	return setmetatable({ worldService = worldService, inventoryService = inventoryService, nextBuildId = 1, buildables = {} }, BuildService)
 end
+
+local SHRUB_BERRY_KEYS = { berry_red = true, berry_yellow = true, berry_blue = true }
 
 function BuildService:getOrCreateBuildFolder()
 	local world = workspace:FindFirstChild("World") or Instance.new("Folder")
@@ -41,6 +44,12 @@ function BuildService:createBuildModel(build)
 	part.CanCollide = true
 	part.CFrame = CFrame.new(build.pos) * CFrame.Angles(0, math.rad(build.rotationY or 0), 0)
 	part.Name = string.format("Build_%s_%d", build.key, build.id)
+	if build.key == "berry_shrub" then
+		part.Shape = Enum.PartType.Ball
+		part.Material = Enum.Material.Grass
+		part.Color = (build.shrubBerryKey == "berry_blue" and Color3.fromRGB(110, 180, 255)) or (build.shrubBerryKey == "berry_yellow" and Color3.fromRGB(235, 215, 115)) or Color3.fromRGB(160, 220, 120)
+		part.CanCollide = true
+	end
 	part:SetAttribute("CollisionCategory", "buildable")
 	part:SetAttribute("BuildableKey", build.key)
 	part:SetAttribute("BuildableId", build.id)
@@ -176,6 +185,55 @@ function BuildService:tryGather(player)
 	return true, self.inventoryService:grant(player, { { key = key, amount = 1 } })
 end
 
+function BuildService:getResolvedHarvestRewards(build)
+	local rewards = {}
+	for key, amount in pairs((build.harvest and build.harvest.provides) or {}) do
+		table.insert(rewards, { key = (key == "bait" and "lure_meat" or key), amount = amount })
+	end
+	if build.key == "berry_shrub" and build.shrubBerryKey then
+		table.insert(rewards, { key = build.shrubBerryKey, amount = 1 })
+	end
+	return rewards
+end
+
+function BuildService:tryPlantShrub(player, payload)
+	payload = payload or {}
+	local berryKey = tostring(payload.berryKey or "berry_red")
+	if not SHRUB_BERRY_KEYS[berryKey] then
+		return false, { reasonCode = "INVALID_BERRY_KEY" }
+	end
+	if self.inventoryService:getCount(player, berryKey) < 1 then
+		return false, { reasonCode = "MISSING_BERRY", berryKey = berryKey }
+	end
+	local root = player.Character and player.Character.PrimaryPart
+	if not root then return false, { reasonCode = PlacementRules.Reason.NO_CHARACTER } end
+	local placement = PlacementRules.getPlacement("berry_shrub")
+	local desiredPos = typeof(payload.position) == "Vector3" and payload.position or (root.Position + root.CFrame.LookVector * 8)
+	local sampledY = self.worldService.resolveCreatureGroundY and self.worldService:resolveCreatureGroundY(desiredPos.X, desiredPos.Z, desiredPos.Y) or desiredPos.Y
+	local snapped = PlacementRules.snapPosition(desiredPos, placement.grid, sampledY)
+	local v = self:validatePlacement(player, "berry_shrub", snapped, 0)
+	if not v.ok then return false, v end
+	self.inventoryService:tryConsume(player, berryKey, 1)
+	local id = self.nextBuildId
+	self.nextBuildId += 1
+	local harvest = PlacementRules.getHarvest(v.def)
+	self.buildables[id] = {
+		id = id,
+		key = "berry_shrub",
+		ownerUserId = player.UserId,
+		pos = snapped,
+		rotationY = 0,
+		nextHarvestAt = self.worldService.time + (harvest.interval or 20),
+		lastEffectAt = 0,
+		harvest = harvest,
+		shrubBerryKey = berryKey,
+		record = { reasonCode = PlacementRules.Reason.OK, createdAt = self.worldService.time },
+	}
+	self:createBuildModel(self.buildables[id])
+	self.worldService:pushEventLog(player, string.format("Planted shrub (%s)", berryKey), "#b7f0c1")
+	return true, self.buildables[id]
+end
+
 function BuildService:tryHarvestBuild(player)
 	local root = player.Character and player.Character.PrimaryPart
 	if not root then return false, { reasonCode = PlacementRules.Reason.NO_CHARACTER } end
@@ -186,10 +244,7 @@ function BuildService:tryHarvestBuild(player)
 	end
 	if not best then return false, { reasonCode = PlacementRules.Reason.NOT_FOUND } end
 	if self.worldService.time < (best.nextHarvestAt or 0) then return false, { reasonCode = PlacementRules.Reason.NOT_READY } end
-	local rewards = {}
-	for key, amount in pairs((best.harvest and best.harvest.provides) or {}) do
-		table.insert(rewards, { key = (key == "bait" and "lure_meat" or key), amount = amount })
-	end
+	local rewards = self:getResolvedHarvestRewards(best)
 	best.nextHarvestAt = self.worldService.time + ((best.harvest and best.harvest.interval) or 1)
 	return true, self.inventoryService:grant(player, rewards)
 end
@@ -217,6 +272,7 @@ function BuildService:handleContextAction(player, payload)
 	payload = payload or {}
 	local action = payload.action or BuildService.Actions.CONTEXT
 	if action == BuildService.Actions.BUILD then return self:tryBuild(player, payload) end
+	if action == BuildService.Actions.PLANT_SHRUB then return self:tryPlantShrub(player, payload) end
 	if action == BuildService.Actions.HARVEST_BUILD then return self:tryHarvestBuild(player) end
 	if action == BuildService.Actions.GATHER or action == BuildService.Actions.CONTEXT then return self:tryGather(player) end
 	return false, { reasonCode = PlacementRules.Reason.INVALID_ACTION }
