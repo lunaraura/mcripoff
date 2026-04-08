@@ -93,6 +93,7 @@ function CreatureService:attachModel(creature)
 	text.Parent = tag
 
 	model.PrimaryPart = mainPart
+	model:SetAttribute("CreatureId", creature.id)
 	creature.model = model
 end
 
@@ -110,10 +111,11 @@ function CreatureService:updateModel(creature)
 			creature.model:SetAttribute("AI_TargetId", tonumber(creature.ai.targetId) or -1)
 			creature.model:SetAttribute("AI_Intent", tostring(creature.ai.lastIntent or "idle"))
 			creature.model:SetAttribute("AI_Ability", tostring(creature.ai.lastChosenAbility or "-"))
-			creature.model:SetAttribute("AI_AbilityScore", tostring(creature.ai.lastAbilityScoreSummary or "-"))
-			creature.model:SetAttribute("AI_ControlMode", tostring(creature.debugAI and creature.debugAI.controlMode or "-"))
-			creature.model:SetAttribute("AI_CommandOverride", creature.debugAI and creature.debugAI.commandOverride and true or false)
-		end
+				creature.model:SetAttribute("AI_AbilityScore", tostring(creature.ai.lastAbilityScoreSummary or "-"))
+				creature.model:SetAttribute("AI_ControlMode", tostring(creature.debugAI and creature.debugAI.controlMode or "-"))
+				creature.model:SetAttribute("AI_CommandOverride", creature.debugAI and creature.debugAI.commandOverride and true or false)
+				creature.model:SetAttribute("AI_IntendedMove", tostring(creature.debugAI and creature.debugAI.intendedMove or "0,0,0"))
+			end
 		if creature.mode == "pet" and creature.ownerUserId then
 			local owner = Players:GetPlayerByUserId(creature.ownerUserId)
 			if owner then
@@ -122,10 +124,14 @@ function CreatureService:updateModel(creature)
 			end
 		end
 		creature.model:SetAttribute("DesignatedTargetId", tonumber(creature.designatedTargetId) or -1)
-		creature.model:SetAttribute("ManualCastState", tostring(creature.manualCastState or "idle"))
-		creature.model:SetAttribute("ManualCastNote", tostring(creature.manualCastNote or "-"))
-		creature.model:SetAttribute("LastManualCastCode", tostring(creature.lastManualCastResult and creature.lastManualCastResult.code or "-"))
-		creature.model:SetAttribute("GroundY", creature.pos.Y)
+			creature.model:SetAttribute("ManualCastState", tostring(creature.manualCastState or "idle"))
+			creature.model:SetAttribute("ManualCastNote", tostring(creature.manualCastNote or "-"))
+			creature.model:SetAttribute("LastManualCastCode", tostring(creature.lastManualCastResult and creature.lastManualCastResult.code or "-"))
+			creature.model:SetAttribute("LastCmdType", tostring(creature.lastReceivedCommandType or (creature.command and creature.command.type) or "-"))
+			creature.model:SetAttribute("LastCmdTargetId", tonumber(creature.lastReceivedCommandTargetId) or -1)
+			creature.model:SetAttribute("LastCmdPoint", tostring(creature.lastReceivedCommandPoint or "-"))
+			creature.model:SetAttribute("LastSanitizedCmd", tostring(creature.lastSanitizedCommandType or "-"))
+			creature.model:SetAttribute("GroundY", creature.pos.Y)
 		creature.model:SetAttribute("EffectSummary", tostring(creature.effectSummary or ""))
 		creature.model:SetAttribute("EffectFlags", creature.effectFlags and string.format("b:%s bl:%s s:%s sh:%s g:%s h:%s w:%s",
 			creature.effectFlags.burning and "1" or "0",

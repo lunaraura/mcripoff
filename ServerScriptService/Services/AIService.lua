@@ -270,7 +270,8 @@ end
 function AIService:decide(creature, state, profile, facts)
 	local now = facts.now
 	local command = facts.command or { type = "follow" }
-	if command and command.issuedAt and (now - command.issuedAt) > COMMAND_INTENT_MEMORY then
+	local commandMemory = command.type == "move" and 20 or COMMAND_INTENT_MEMORY
+	if command and command.issuedAt and (now - command.issuedAt) > commandMemory then
 		command = { type = "follow", issuedAt = now }
 		creature.command = command
 	end
@@ -617,6 +618,7 @@ function AIService:applyIntent(creature, state, intent)
 		controlMode = creature.ownerUserId and tostring((Players:GetPlayerByUserId(creature.ownerUserId) and Players:GetPlayerByUserId(creature.ownerUserId):GetAttribute("PetControlMode")) or "AUTO") or "-",
 		manualCastState = creature.manualCastState,
 		commandOverride = self.worldService.time <= (creature.commandOverrideUntil or 0),
+		intendedMove = string.format("%.2f,%.2f,%.2f", creature.intent.move.X, creature.intent.move.Y, creature.intent.move.Z),
 	}
 end
 

@@ -219,6 +219,10 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 	for _, c in ipairs(worldService.creatures) do
 		if c.ownerUserId == player.UserId and c.partySlot and c.partySlot <= 2 then
 			if payload.slot == nil or payload.slot == c.partySlot then
+				c.lastReceivedCommandType = tostring(command.type or "-")
+				c.lastReceivedCommandTargetId = tonumber(command.targetId)
+				c.lastReceivedCommandPoint = command.point and string.format("%.1f,%.1f,%.1f", command.point.X, command.point.Y, command.point.Z) or nil
+				c.lastSanitizedCommandType = tostring(command.type or "-")
 				c.command = command
 				c.commandOverrideUntil = worldService.time + COMMAND_OVERRIDE_SECONDS
 				if c.partySlot == (tonumber(payload.slot) or c.partySlot) then

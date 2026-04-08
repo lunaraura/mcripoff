@@ -39,6 +39,13 @@ function InputController:bind()
 			self.command:cast("ram", nil) -- TODO: add target picking
 		elseif input.KeyCode == Enum.KeyCode.E then
 			self.build:handlePrimaryAction()
+		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local targetId = self.command:getTargetIdUnderMouse()
+			if targetId then
+				self.command:sendCommand({ type = "attack", targetId = targetId })
+			else
+				self.command:sendCommand({ type = "attackNearest" })
+			end
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 			local hit = self.command.mouse and self.command.mouse.Hit
 			if hit then

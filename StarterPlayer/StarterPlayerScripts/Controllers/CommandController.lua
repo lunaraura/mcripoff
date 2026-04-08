@@ -50,10 +50,22 @@ function CommandController:getTargetIdUnderMouse()
 	local target = self.mouse and self.mouse.Target
 	if not target then return nil end
 	local model = target:FindFirstAncestorOfClass("Model")
+	if not model and target.Parent and target.Parent:IsA("Model") then
+		model = target.Parent
+	end
 	if not model then return nil end
+	local attrId = tonumber(model:GetAttribute("CreatureId"))
+	if attrId then return attrId end
 	local id = string.match(model.Name, "^C_(%d+)_")
-	if not id then return nil end
-	return tonumber(id)
+	if id then return tonumber(id) end
+	local parentModel = model.Parent and model.Parent:IsA("Model") and model.Parent or nil
+	if parentModel then
+		local parentAttrId = tonumber(parentModel:GetAttribute("CreatureId"))
+		if parentAttrId then return parentAttrId end
+		local parentId = string.match(parentModel.Name, "^C_(%d+)_")
+		if parentId then return tonumber(parentId) end
+	end
+	return nil
 end
 
 return CommandController
