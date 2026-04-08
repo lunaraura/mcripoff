@@ -83,7 +83,8 @@ function ChunkSystem.generateChunk(cx, cz)
 				if canSpawn then
 					local biomeKey = BiomeConfig[biome] and biome or "plains"
 					local elevation = env.yGround or 0
-					local levelBias = math.clamp((elevation - 8) / 18, -0.55, 0.9)
+					local litho = (env.climate and env.climate.lithosphere) or 0.5
+					local levelBias = math.clamp(((elevation - 8) / 18) + (litho - 0.5) * 0.35, -0.6, 1.05)
 					local spawnWeights = {}
 					local mix = biomeMix
 					for mixBiomeKey, mixWeight in pairs(mix) do

@@ -5,6 +5,15 @@ local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
 
 local BiomeSystem = {}
 BiomeSystem.GLOBAL_HEIGHT_AMPLIFY = 1.35
+BiomeSystem.MOUNTAIN_AMPLIFY = 1.45
+BiomeSystem.OCEAN_FLOOR_AMPLIFY = 1.2
+
+local HEIGHT_PROFILE = {
+	ocean = { baseOffset = -6, ampScale = 0.72, oceanCapOffset = -1 },
+	volcanic = { baseOffset = 4, ampScale = 1.25, ridgeBoost = 1.35 },
+	polar = { baseOffset = 2, ampScale = 1.12, ridgeBoost = 1.18 },
+	tundra = { baseOffset = 2, ampScale = 1.1, ridgeBoost = 1.1 },
+}
 
 local BIOME_KEYS = {}
 for key, _ in pairs(BiomeConfig) do
@@ -93,6 +102,7 @@ end
 function BiomeSystem.sampleEnvironment(x, z)
 	local climate = BiomeSystem.sampleClimate(x, z)
 	local biomeMix, biomeKey = BiomeSystem.sampleBiomeMixFromClimate(climate)
+	local profile = HEIGHT_PROFILE[biomeKey] or {}
 	local heightNoise = noise01(x, z, 0.0044, 9)
 	local globalMacro = noise01(x, z, 0.00055, 17)
 	local globalRidge = math.abs(0.5 - noise01(x, z, 0.00115, 18)) * 2
@@ -100,10 +110,19 @@ function BiomeSystem.sampleEnvironment(x, z)
 	local wet = climate.rainfall * (1 - climate.barrenness * 0.45)
 	local waterThreshold = 0.18 + (wet * 0.25) - (rugged * 0.14)
 	local rockThreshold = 0.82 - (rugged * 0.21) + (climate.barrenness * 0.05)
-	local baseHeight = 8 + (climate.lithosphere * 8) - (climate.barrenness * 2) + (globalMacro - 0.5) * 10
-	local ampHeight = (14 + (climate.lithosphere * 18) + ((1 - climate.softness) * 8) + globalRidge * 14) * BiomeSystem.GLOBAL_HEIGHT_AMPLIFY
-	local yGround = math.max(2, math.floor(baseHeight + ampHeight * heightNoise + 0.5))
+	local lithoPeak = math.pow(climate.lithosphere, 1.65)
+	local mountainLift = math.max(0, climate.lithosphere - 0.55)
+	mountainLift = (mountainLift * mountainLift) * 46 * BiomeSystem.MOUNTAIN_AMPLIFY
+	local baseHeight = 8 + (climate.lithosphere * 8) - (climate.barrenness * 2) + (globalMacro - 0.5) * 10 + (profile.baseOffset or 0)
+	local ampHeight = (14 + (lithoPeak * 26) + ((1 - climate.softness) * 8) + globalRidge * 14 * (profile.ridgeBoost or 1)) * BiomeSystem.GLOBAL_HEIGHT_AMPLIFY * (profile.ampScale or 1)
+	local yGround = math.max(2, math.floor(baseHeight + ampHeight * heightNoise + mountainLift + 0.5))
 	local yWater = math.max(2, math.floor(10 + climate.rainfall * 4 - climate.barrenness * 2 + 0.5))
+	if biomeKey == "ocean" then
+		local oceanDepthPush = (1 - climate.lithosphere) * 6 * BiomeSystem.OCEAN_FLOOR_AMPLIFY
+		yGround = math.max(2, math.floor(yGround - oceanDepthPush + 0.5))
+		local oceanCap = yWater + (profile.oceanCapOffset or -1)
+		yGround = math.min(yGround, oceanCap)
+	end
 	local terrainClass = "ground"
 	if yGround < yWater or heightNoise <= waterThreshold then
 		terrainClass = "water"
