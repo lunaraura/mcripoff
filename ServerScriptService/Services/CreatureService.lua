@@ -1,12 +1,9 @@
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SSS = game:GetService("ServerScriptService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Creatures = Shared:WaitForChild("Creatures")
 local CreatureFactoryRules = require(Creatures:WaitForChild("CreatureFactoryRules"))
 local CreatureRuntime = require(script.Parent.Parent.Runtime.CreatureRuntime)
-local ChunkSystem = require(SSS:WaitForChild("Systems"):WaitForChild("ChunkSystem"))
-local BiomeSystem = require(SSS:WaitForChild("Systems"):WaitForChild("BiomeSystem"))
 
 local CreatureService = {}
 CreatureService.__index = CreatureService
@@ -16,30 +13,12 @@ function CreatureService.new(worldService, playerDataService)
 end
 
 function CreatureService:resolveGroundY(x, z, fallbackY)
-	local cx, cz = ChunkSystem.worldToChunk(x, z)
-	local chunk = self.worldService.chunks[ChunkSystem.key(cx, cz)]
-	if chunk and chunk.cells then
-		local bestCell, bestDist = nil, math.huge
-		for _, cell in ipairs(chunk.cells) do
-			local d = (Vector3.new(cell.x, 0, cell.z) - Vector3.new(x, 0, z)).Magnitude
-			if d < bestDist then
-				bestDist = d
-				bestCell = cell
-			end
-		end
-		if bestCell and (bestCell.yGround or bestCell.yG) then
-			return bestCell.yGround or bestCell.yG
-		end
-	end
-	local env = BiomeSystem.sampleEnvironment(x, z)
-	if env and env.yGround then
-		return env.yGround
-	end
-	return fallbackY or 0
+	return self.worldService:resolveCreatureGroundY(x, z, fallbackY)
 end
 
 function CreatureService:spawnRuntime(speciesKey, team, x, z, opts)
 	local creature = CreatureRuntime.new(speciesKey, team, x, z, opts)
+	self.worldService:snapCreatureToGround(creature)
 	CreatureFactoryRules.applyLifecycleDefaults(creature, self.worldService.time)
 	self.worldService:addCreature(creature)
 	self:attachModel(creature)
@@ -56,9 +35,7 @@ function CreatureService:spawnFromSpawnPayload(speciesKey, spawnPayload)
 		opts = spawnPayload and spawnPayload.opts,
 	})
 	payload.opts = payload.opts or {}
-	if payload.y ~= nil and payload.opts.y == nil then
-		payload.opts.y = payload.y
-	end
+	payload.opts.y = self:resolveGroundY(payload.x, payload.z, payload.y)
 	return self:spawnRuntime(payload.speciesKey, payload.team, payload.x, payload.z, payload.opts)
 end
 
@@ -119,17 +96,23 @@ function CreatureService:attachModel(creature)
 end
 
 function CreatureService:updateModel(creature)
+	local terrainY = self.worldService:snapCreatureToGround(creature)
 	if creature.model and creature.model.PrimaryPart then
 		local body = creature.model.PrimaryPart
 		body.Color = self:getCreatureColor(creature)
 		body.Size = self:getCreatureVisualSize(creature)
-		body.Position = creature.pos + Vector3.new(0, (body.Size.Y * 0.5), 0)
+		local modelCenterY = creature.pos.Y + (body.Size.Y * 0.5)
+		body.Position = Vector3.new(creature.pos.X, modelCenterY, creature.pos.Z)
 		if creature.ai then
 			creature.model:SetAttribute("AI_Brain", tostring(creature.ai.brainType or "-"))
 			creature.model:SetAttribute("AI_State", tostring(creature.ai.behaviorState or "-"))
 			creature.model:SetAttribute("AI_TargetId", tonumber(creature.ai.targetId) or -1)
 			creature.model:SetAttribute("AI_Intent", tostring(creature.ai.lastIntent or "idle"))
 		end
+		creature.model:SetAttribute("GroundY", creature.pos.Y)
+		creature.model:SetAttribute("TerrainY", terrainY or creature.pos.Y)
+		creature.model:SetAttribute("ModelCenterY", modelCenterY)
+		creature.model:SetAttribute("VisualSizeY", body.Size.Y)
 		local tag = creature.model:FindFirstChild("Tag")
 		if tag then
 			tag.StudsOffset = Vector3.new(0, body.Size.Y * 0.85, 0)

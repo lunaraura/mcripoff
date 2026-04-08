@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local ChunkSystem = require(script.Parent.Parent.Systems.ChunkSystem)
+local BiomeSystem = require(script.Parent.Parent.Systems.BiomeSystem)
 
 local WorldService = {}
 WorldService.__index = WorldService
@@ -69,6 +70,40 @@ function WorldService:findNearestEnemyOf(creature, maxRange)
 		end
 	end
 	return best, bestD
+end
+
+function WorldService:getChunkCellAtWorld(x, z)
+	local cx, cz = ChunkSystem.worldToChunk(x, z)
+	local chunk = self.chunks[ChunkSystem.key(cx, cz)]
+	if not chunk or not chunk.cells then return nil end
+	local cellsPerAxis = ChunkSystem.CHUNK_SIZE / ChunkSystem.CELL_SIZE
+	local localX = x - (cx * ChunkSystem.CHUNK_SIZE)
+	local localZ = z - (cz * ChunkSystem.CHUNK_SIZE)
+	local ix = math.clamp(math.floor((localX / ChunkSystem.CELL_SIZE) + 0.5), 0, cellsPerAxis - 1)
+	local iz = math.clamp(math.floor((localZ / ChunkSystem.CELL_SIZE) + 0.5), 0, cellsPerAxis - 1)
+	local idx = iz * cellsPerAxis + ix + 1
+	return chunk.cells[idx]
+end
+
+-- Canonical contract: creature.pos.Y is ALWAYS world ground-contact height (feet), never model center.
+function WorldService:resolveCreatureGroundY(x, z, fallbackY)
+	local cell = self:getChunkCellAtWorld(x, z)
+	if cell and (cell.yGround or cell.yG) then
+		return cell.yGround or cell.yG
+	end
+	local env = BiomeSystem.sampleEnvironment(x, z)
+	if env and env.yGround then
+		return env.yGround
+	end
+	return fallbackY or 0
+end
+
+function WorldService:snapCreatureToGround(creature)
+	if not creature or not creature.pos then return nil end
+	local y = self:resolveCreatureGroundY(creature.pos.X, creature.pos.Z, creature.pos.Y)
+	creature.pos = Vector3.new(creature.pos.X, y, creature.pos.Z)
+	creature.lastResolvedGroundY = y
+	return y
 end
 
 function WorldService:updateChunksAroundPlayers()

@@ -21,6 +21,7 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.team = team
 	self.mode = opts.mode or (team == 0 and "pet" or "wild")
 	self.role = def.role or "fighter"
+	-- Canonical Y contract: pos.Y is terrain ground-contact (feet), not visual/model center.
 	self.pos = Vector3.new(x, opts.y or 0, z)
 	self.spawnAnchor = opts.spawnAnchor or self.pos
 	self.familyKey = def.familyKey or "canine"
