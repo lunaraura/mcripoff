@@ -127,6 +127,15 @@ function CreatureService:updateModel(creature)
 		creature.model:SetAttribute("LastManualCastCode", tostring(creature.lastManualCastResult and creature.lastManualCastResult.code or "-"))
 		creature.model:SetAttribute("GroundY", creature.pos.Y)
 		creature.model:SetAttribute("EffectSummary", tostring(creature.effectSummary or ""))
+		creature.model:SetAttribute("EffectFlags", creature.effectFlags and string.format("b:%s bl:%s s:%s sh:%s g:%s h:%s w:%s",
+			creature.effectFlags.burning and "1" or "0",
+			creature.effectFlags.bleeding and "1" or "0",
+			creature.effectFlags.slowed and "1" or "0",
+			creature.effectFlags.shocked and "1" or "0",
+			creature.effectFlags.guarded and "1" or "0",
+			creature.effectFlags.hasted and "1" or "0",
+			creature.effectFlags.wet and "1" or "0"
+		) or "")
 		creature.model:SetAttribute("LastReaction", tostring(creature.lastReactionTriggered or "-"))
 		creature.model:SetAttribute("TerrainY", terrainY or creature.pos.Y)
 		creature.model:SetAttribute("ModelCenterY", modelCenterY)
