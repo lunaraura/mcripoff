@@ -65,6 +65,8 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 		movementRefreshAt = 0,
 		recentThreatId = nil,
 		lastIntent = "idle",
+		lastChosenAbility = nil,
+		lastAbilityScoreSummary = nil,
 	}
 	self.model = nil
 	self.wildProfile = {

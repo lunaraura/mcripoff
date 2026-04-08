@@ -108,6 +108,8 @@ function CreatureService:updateModel(creature)
 			creature.model:SetAttribute("AI_State", tostring(creature.ai.behaviorState or "-"))
 			creature.model:SetAttribute("AI_TargetId", tonumber(creature.ai.targetId) or -1)
 			creature.model:SetAttribute("AI_Intent", tostring(creature.ai.lastIntent or "idle"))
+			creature.model:SetAttribute("AI_Ability", tostring(creature.ai.lastChosenAbility or "-"))
+			creature.model:SetAttribute("AI_AbilityScore", tostring(creature.ai.lastAbilityScoreSummary or "-"))
 		end
 		creature.model:SetAttribute("GroundY", creature.pos.Y)
 		creature.model:SetAttribute("TerrainY", terrainY or creature.pos.Y)

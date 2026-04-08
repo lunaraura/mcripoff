@@ -19,6 +19,19 @@ local function unitFlat(fromPos, toPos)
 	return delta / mag, mag
 end
 
+
+local function getAbilityTag(ability)
+	local category = ability and ability.category or "melee"
+	if category == "utility" or category == "utility_dash" then return "utility" end
+	if category == "barrier" or category == "retreat" then return "defensive" end
+	if category == "dash" or category == "blink" then return "mobility" end
+	return "offensive"
+end
+
+local function hasStatus(creature, key)
+	return creature and creature.statuses and creature.statuses[key] ~= nil
+end
+
 function AIService.new(worldService)
 	return setmetatable({ worldService = worldService }, AIService)
 end
@@ -52,6 +65,8 @@ function AIService:ensureAIState(creature)
 		movementRefreshAt = now,
 		recentThreatId = nil,
 		lastIntent = "idle",
+		lastChosenAbility = nil,
+		lastAbilityScoreSummary = nil,
 	}
 	return creature.ai
 end
@@ -330,16 +345,102 @@ function AIService:decide(creature, state, profile, facts)
 	return { state = "roam", anchor = state.homeAnchor }
 end
 
-function AIService:pickAbilityForTarget(creature, target)
-	if not target then return nil end
-	local d = flatDistance(creature.pos, target.pos)
-	for _, key in ipairs(creature.moveset or {}) do
-		local ability = AbilityConfig[key]
-		if ability and (creature.cooldowns[key] or 0) <= 0 and d <= (ability.range or 20) then
-			return key
+function AIService:evaluateAbility(creature, target, abilityKey, state, profile, facts)
+	local ability = AbilityConfig[abilityKey]
+	if not ability then
+		return nil
+	end
+	if (creature.cooldowns[abilityKey] or 0) > 0 then
+		return nil
+	end
+	if (ability.resourceUse and (ability.resourceUse.stamina or 0) or 0) > creature.currentStamina then
+		return nil
+	end
+	if (ability.resourceUse and (ability.resourceUse.energy or 0) or 0) > creature.currentEnergy then
+		return nil
+	end
+	local selfHpRatio = creature.currentHP / math.max(1, creature.modifiedStats.maxHP)
+	local targetHpRatio = target and (target.currentHP / math.max(1, target.modifiedStats.maxHP)) or 1
+	local dist = target and flatDistance(creature.pos, target.pos) or math.huge
+	local abilityRange = ability.range or 20
+	local tag = getAbilityTag(ability)
+	if tag == "offensive" and dist > abilityRange and tag ~= "mobility" then
+		return nil
+	end
+	local tactical = profile.tactical or {}
+	local score = 0
+	local reason = "baseline"
+	if tag == "offensive" then
+		local dmgEstimate = (ability.flatDmg and (ability.flatDmg.p or 0) + (ability.flatDmg.e or 0) or 0)
+		dmgEstimate += (ability.dmgScale and (ability.dmgScale.p or 0) * creature.modifiedStats.pAtk + (ability.dmgScale.e or 0) * creature.modifiedStats.eAtk or 0)
+		score += dmgEstimate * 0.12 + (tactical.offensive or 0)
+		reason = "offensive_damage"
+		if dist <= abilityRange then score += 10 else score -= 12 end
+		if targetHpRatio <= 0.35 then score += 3 end
+	end
+	if tag == "mobility" then
+		score += (tactical.mobility or 0)
+		reason = "mobility_position"
+		if state.behaviorState == "chase" and dist > profile.preferredRange then
+			score += 9
+		else
+			score -= 8
 		end
 	end
-	return nil
+	if tag == "defensive" then
+		score += (tactical.defensive or 0)
+		reason = "defensive_safety"
+		if selfHpRatio < 0.45 then
+			score += 12
+		else
+			score -= 4
+		end
+	end
+	if tag == "utility" then
+		score += (tactical.utility or 0)
+		reason = "utility_timing"
+		if selfHpRatio < 0.65 then score += 4 end
+	end
+	for _, spec in ipairs(ability.statusOnHit or {}) do
+		if not hasStatus(target, spec.key) then
+			score += 4 + (tactical.status or 0)
+			reason = "apply_status_" .. tostring(spec.key)
+		end
+	end
+	if state.behaviorState == "flee" or state.behaviorState == "return" or state.behaviorState == "roam" then
+		if tag == "offensive" then score -= 30 end
+	end
+	if creature.role == "passive" and tag == "offensive" then
+		score -= 40
+	end
+	if dist > abilityRange and tag ~= "mobility" then
+		score -= 6
+	end
+	return { key = abilityKey, score = score, reason = reason, tag = tag }
+end
+
+function AIService:pickAbilityForTarget(creature, target, state, profile, facts)
+	if not target then return nil, nil end
+	local best = nil
+	local top = {}
+	for _, key in ipairs(creature.moveset or {}) do
+		local entry = self:evaluateAbility(creature, target, key, state, profile, facts)
+		if entry then
+			table.insert(top, entry)
+			if (not best) or entry.score > best.score then
+				best = entry
+			end
+		end
+	end
+	table.sort(top, function(a, b)
+		return a.score > b.score
+	end)
+	local summary = {}
+	for i = 1, math.min(3, #top) do
+		local e = top[i]
+		table.insert(summary, string.format("%s=%.1f[%s]", e.key, e.score, e.reason))
+	end
+	return best and best.key or nil, table.concat(summary, ", ")
 end
 
 function AIService:buildIntent(creature, state, profile, facts, decision)
@@ -358,7 +459,10 @@ function AIService:buildIntent(creature, state, profile, facts, decision)
 	if decision.state == "attack" then
 		local dir, d = unitFlat(creature.pos, decision.target.pos)
 		if d > profile.preferredRange then intent.move = dir end
-		intent.abilityKey = self:pickAbilityForTarget(creature, decision.target)
+		local abilityKey, summary = self:pickAbilityForTarget(creature, decision.target, state, profile, facts)
+		intent.abilityKey = abilityKey
+		state.lastAbilityScoreSummary = summary
+		state.lastChosenAbility = abilityKey
 		return intent
 	end
 	if decision.state == "follow" or decision.state == "return" then
@@ -404,6 +508,8 @@ function AIService:applyIntent(creature, state, intent)
 		behaviorState = state.behaviorState,
 		targetId = state.targetId,
 		intent = state.lastIntent,
+		lastChosenAbility = state.lastChosenAbility,
+		abilityScoreSummary = state.lastAbilityScoreSummary,
 	}
 end
 

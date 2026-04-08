@@ -14,6 +14,7 @@ AIConfig.profiles = {
 		retainBias = 4,
 		ownerThreatBias = 0,
 		holdDefenseRange = 0,
+		tactical = { offensive = 0.25, defensive = 0.45, utility = 0.55, mobility = 0.2, status = 0.1 },
 	},
 	hostileWild = {
 		brainType = "hostileWild",
@@ -28,6 +29,7 @@ AIConfig.profiles = {
 		retainBias = 14,
 		ownerThreatBias = 0,
 		holdDefenseRange = 0,
+		tactical = { offensive = 0.25, defensive = 0.45, utility = 0.55, mobility = 0.2, status = 0.1 },
 	},
 	petFollower = {
 		brainType = "petFollower",
@@ -42,6 +44,7 @@ AIConfig.profiles = {
 		retainBias = 18,
 		ownerThreatBias = 28,
 		holdDefenseRange = 30,
+		tactical = { offensive = 0.5, defensive = 0.45, utility = 0.35, mobility = 0.35, status = 0.3 },
 	},
 }
 
