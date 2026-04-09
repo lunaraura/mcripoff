@@ -4,6 +4,8 @@ local Config = Shared:WaitForChild("Config")
 local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
 local FamilyConfig = require(Config:WaitForChild("FamilyConfig"))
 local CompositeConfig = require(Config:WaitForChild("CompositeConfig"))
+local Creatures = Shared:WaitForChild("Creatures")
+local MoveProgression = require(Creatures:WaitForChild("MoveProgression"))
 
 local CreatureRuntime = {}
 CreatureRuntime.__index = CreatureRuntime
@@ -32,7 +34,8 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.modifiedStats = table.clone(def.baseStats)
 	self.level = opts.level or 1
 	self.morphPoints = opts.morphPoints or 0
-	self.moveset = table.clone(opts.movesetOverride or def.moveset or {})
+	self.abilities = table.clone(def.abilities or {})
+	self.moveset = table.clone(opts.movesetOverride or MoveProgression.getLearnedMoves(speciesKey, self.level))
 	self.cooldowns = {}
 	for _, k in ipairs(self.moveset) do self.cooldowns[k] = 0 end
 	self.gcdUntil = 0

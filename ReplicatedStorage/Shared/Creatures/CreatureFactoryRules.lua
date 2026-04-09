@@ -76,6 +76,7 @@ function CreatureFactoryRules.syncOwnedFromRuntime(owned, runtime)
 	owned.outerCompositeKey = runtime.outerCompositeKey
 	owned.innerCompositeKey = runtime.innerCompositeKey
 	owned.compositeKey = runtime.compositeKey
+	owned.abilities = table.clone(runtime.abilities or owned.abilities or {})
 	owned.moveset = table.clone(runtime.moveset or owned.moveset or {})
 end
 

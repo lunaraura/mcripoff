@@ -5,7 +5,8 @@ local Config = Shared:WaitForChild("Config")
 local Util = Shared:WaitForChild("Util")
 local Ecology = Shared:WaitForChild("Ecology")
 local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
-local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
+local Creatures = Shared:WaitForChild("Creatures")
+local MoveProgression = require(Creatures:WaitForChild("MoveProgression"))
 local MathUtil = require(Util:WaitForChild("MathUtil"))
 local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
 local ChunkSystem = require(script.Parent.Parent.Systems.ChunkSystem)
@@ -145,9 +146,8 @@ function SpawnService:pickWeightedSpecies(spawnWeights)
 	return MathUtil.pickWeighted(entries)
 end
 
-function SpawnService:buildMoveSet(speciesKey, profile)
-	local species = SpeciesConfig[speciesKey]
-	local base = table.clone((species and species.moveset) or { "ram" })
+function SpawnService:buildMoveSet(speciesKey, level, profile)
+	local base = table.clone(MoveProgression.getLearnedMoves(speciesKey, level))
 	local set = {}
 	for _, k in ipairs(base) do set[k] = true end
 	for _, abilityKey in ipairs(profile.abilityPool or {}) do set[abilityKey] = true end
@@ -181,7 +181,7 @@ function SpawnService:update(dt)
 	local speciesKey = self:pickWeightedSpecies(point.spawnWeights)
 	if not speciesKey then speciesKey = MathUtil.pickWeighted((BiomeConfig[point.biomeKey] or BiomeConfig.plains).spawns) end
 	local level = math.max(1, math.floor(self:getPartyAverageLevel(players[math.random(1, #players)]) * (1 + (point.levelBias or 0) * 0.45) + (math.random() * 2 - 1) * 0.8 + 0.5))
-	local moveset = self:buildMoveSet(speciesKey, profile)
+	local moveset = self:buildMoveSet(speciesKey, level, profile)
 
 	local payload = {
 		mode = "wild",

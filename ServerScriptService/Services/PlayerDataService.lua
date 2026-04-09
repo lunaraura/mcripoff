@@ -2,6 +2,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
+local Creatures = Shared:WaitForChild("Creatures")
+local MoveProgression = require(Creatures:WaitForChild("MoveProgression"))
 
 local PlayerDataService = {}
 PlayerDataService.__index = PlayerDataService
@@ -52,7 +54,8 @@ function PlayerDataService:createOwnedCreature(speciesKey)
 		xp = 0,
 		morphPoints = 0,
 		isDefeated = false,
-		moveset = table.clone(def.moveset),
+		abilities = table.clone(def.abilities or {}),
+		moveset = MoveProgression.getLearnedMoves(speciesKey, 1),
 		familyKey = def.familyKey,
 		compositeKey = def.compositeKey,
 		outerCompositeKey = def.outerCompositeKey or def.compositeKey,
@@ -65,15 +68,18 @@ function PlayerDataService:createOwnedFromRuntime(creature)
 	local def = SpeciesConfig[creature.speciesKey]
 	local id = nextOwnedId
 	nextOwnedId += 1
-	local moveset = table.clone((creature.moveset and #creature.moveset > 0) and creature.moveset or (def and def.moveset) or { "ram" })
+	local level = math.max(1, math.floor(tonumber(creature.level) or 1))
+	local defaultMoveset = MoveProgression.getLearnedMoves(creature.speciesKey, level)
+	local moveset = table.clone((creature.moveset and #creature.moveset > 0) and creature.moveset or defaultMoveset)
 	return {
 		ownedId = id,
 		speciesKey = creature.speciesKey,
 		nickname = (def and def.name) or creature.speciesKey,
-		level = math.max(1, math.floor(tonumber(creature.level) or 1)),
+		level = level,
 		xp = 0,
 		morphPoints = math.max(0, math.floor(tonumber(creature.morphPoints) or 0)),
 		isDefeated = false,
+		abilities = table.clone((def and def.abilities) or {}),
 		moveset = moveset,
 		familyKey = creature.familyKey or (def and def.familyKey),
 		compositeKey = creature.compositeKey or (def and def.compositeKey),
@@ -241,7 +247,10 @@ function PlayerDataService:addOwnedXP(player, ownedId, amount)
 		owned.level += 1
 		levelUps += 1
 	end
-	return true, { gained = gained, levelUps = levelUps, level = owned.level, xp = owned.xp }
+	local def = SpeciesConfig[owned.speciesKey]
+	owned.abilities = table.clone((def and def.abilities) or owned.abilities or {})
+	owned.moveset = MoveProgression.getLearnedMoves(owned.speciesKey, owned.level)
+	return true, { gained = gained, levelUps = levelUps, level = owned.level, xp = owned.xp, moveset = owned.moveset }
 end
 
 return PlayerDataService

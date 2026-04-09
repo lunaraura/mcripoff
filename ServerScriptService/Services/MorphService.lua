@@ -2,6 +2,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
+local Creatures = Shared:WaitForChild("Creatures")
+local MoveProgression = require(Creatures:WaitForChild("MoveProgression"))
 
 local MorphService = {}
 MorphService.__index = MorphService
@@ -48,7 +50,8 @@ function MorphService:tryMorph(player, ownedId, targetSpecies)
 	owned.outerCompositeKey = targetDef.outerCompositeKey or targetDef.compositeKey
 	owned.innerCompositeKey = targetDef.innerCompositeKey or targetDef.compositeKey
 	owned.compositeKey = targetDef.compositeKey
-	owned.moveset = self:buildMorphMoveset(owned.moveset or {}, targetDef.moveset or {}, 4)
+	owned.abilities = table.clone(targetDef.abilities or {})
+	owned.moveset = self:buildMorphMoveset(owned.moveset or {}, MoveProgression.getLearnedMoves(targetSpecies, owned.level or 1), 4)
 	owned.morphHistory = owned.morphHistory or {}
 	table.insert(owned.morphHistory, { from = oldSpecies, to = targetSpecies, at = os.clock() })
 	if self.creatureService then
