@@ -2,7 +2,7 @@ local SpeciesConfig = {
 	dog = {
 		name = "Dog", familyKey = "canine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "fighter",
 		stage = 0,
-		baseStats = { pAtk = 12, eAtk = 2, range = 24, maxHP = 110, spd = 28, castSpd = 1, size = 4, stamina = 25, energy = 10, recoverStamina = 2, recoverEnergy = 1 },
+		baseStats = { pAtk = 12, eAtk = 2, range = 24, maxHP = 110, spd = 14, castSpd = 1, size = 4, stamina = 25, energy = 10, recoverStamina = 2, recoverEnergy = 1 },
 		abilities = { "packTactics", "keenNose" },
 		learnset = { { level = 1, move = "ram" }, { level = 4, move = "dashBite" }, { level = 8, move = "rallyHowl" }, { level = 12, move = "guardianLeap" } },
 		drop = { { key = "meat", amount = 1 } },
@@ -11,7 +11,7 @@ local SpeciesConfig = {
 	sparko = {
 		name = "Sparko", familyKey = "avian", compositeKey = "voltage", outerCompositeKey = "animal", innerCompositeKey = "voltage", role = "ranged",
 		stage = 1,
-		baseStats = { pAtk = 4, eAtk = 11, range = 90, maxHP = 82, spd = 30, castSpd = 1.1, size = 3, stamina = 16, energy = 22, recoverStamina = 1.1, recoverEnergy = 2 },
+		baseStats = { pAtk = 4, eAtk = 11, range = 90, maxHP = 82, spd = 15, castSpd = 1.1, size = 3, stamina = 16, energy = 22, recoverStamina = 1.1, recoverEnergy = 2 },
 		abilities = { "ionFeed", "arcWing" },
 		learnset = { { level = 1, move = "zap" }, { level = 6, move = "staticBurst" }, { level = 10, move = "ram" } },
 		drop = { { key = "battery_seed", amount = 1 } }, morphOptions = {},
@@ -19,7 +19,7 @@ local SpeciesConfig = {
 	sparkit = {
 		name = "Sparkit", familyKey = "feline", compositeKey = "voltage", outerCompositeKey = "animal", innerCompositeKey = "voltage", role = "ranged",
 		stage = 1,
-		baseStats = { pAtk = 4, eAtk = 10, range = 88, maxHP = 80, spd = 30, castSpd = 1.1, size = 3, stamina = 16, energy = 22, recoverStamina = 1.1, recoverEnergy = 2 },
+		baseStats = { pAtk = 4, eAtk = 10, range = 88, maxHP = 80, spd = 15, castSpd = 1.1, size = 3, stamina = 16, energy = 22, recoverStamina = 1.1, recoverEnergy = 2 },
 		abilities = { "voltaicFur", "quickPounce" },
 		learnset = { { level = 1, move = "zap" }, { level = 5, move = "staticBurst" }, { level = 9, move = "staticBarrier" }, { level = 12, move = "energize" } },
 		drop = { { key = "battery_seed", amount = 1 } }, morphOptions = { { option = "sparko", pointsNeeded = 2 } },
@@ -27,7 +27,7 @@ local SpeciesConfig = {
 	cinderpup = {
 		name = "Cinderpup", familyKey = "ursine", compositeKey = "fire", outerCompositeKey = "fire", innerCompositeKey = "animal", role = "fighter",
 		stage = 1,
-		baseStats = { pAtk = 10, eAtk = 6, range = 24, maxHP = 102, spd = 29, castSpd = 1.0, size = 4, stamina = 24, energy = 14, recoverStamina = 1.9, recoverEnergy = 1.4 },
+		baseStats = { pAtk = 10, eAtk = 6, range = 24, maxHP = 102, spd = 15, castSpd = 1.0, size = 4, stamina = 24, energy = 14, recoverStamina = 1.9, recoverEnergy = 1.4 },
 		abilities = { "emberHide", "ashRush" },
 		learnset = { { level = 1, move = "emberClaw" }, { level = 5, move = "ram" } },
 		drop = { { key = "meat", amount = 1 } }, morphOptions = { { option = "magma_ursa", pointsNeeded = 3 }, { option = "dog", pointsNeeded = 3 } },
@@ -35,7 +35,7 @@ local SpeciesConfig = {
 	pebblit = {
 		name = "Pebblit", familyKey = "crust_rock", compositeKey = "rock", outerCompositeKey = "rock", innerCompositeKey = "animal", role = "tank",
 		stage = 1,
-		baseStats = { pAtk = 11, eAtk = 1, range = 22, maxHP = 124, spd = 22, castSpd = 0.9, size = 4, stamina = 26, energy = 8, recoverStamina = 2.0, recoverEnergy = 1.0 },
+		baseStats = { pAtk = 11, eAtk = 1, range = 22, maxHP = 124, spd = 11, castSpd = 0.9, size = 4, stamina = 26, energy = 8, recoverStamina = 2.0, recoverEnergy = 1.0 },
 		abilities = { "graniteCore", "sturdyFooting" },
 		learnset = { { level = 1, move = "pebbleShot" }, { level = 4, move = "ram" }, { level = 8, move = "stoneWall" } },
 		drop = { { key = "stone", amount = 1 } }, morphOptions = { { option = "boarox", pointsNeeded = 3 } },
@@ -43,7 +43,7 @@ local SpeciesConfig = {
 	boarox = {
 		name = "Boarox", familyKey = "ursine", compositeKey = "rock", outerCompositeKey = "rock", innerCompositeKey = "animal", role = "tank",
 		stage = 1,
-		baseStats = { pAtk = 13, eAtk = 1, range = 24, maxHP = 140, spd = 22, castSpd = 0.9, size = 5, stamina = 28, energy = 8, recoverStamina = 2.1, recoverEnergy = 0.9 },
+		baseStats = { pAtk = 13, eAtk = 1, range = 24, maxHP = 140, spd = 11, castSpd = 0.9, size = 5, stamina = 28, energy = 8, recoverStamina = 2.1, recoverEnergy = 0.9 },
 		abilities = { "bedrockPlates", "bristleGuard" },
 		learnset = { { level = 1, move = "stomp" }, { level = 4, move = "ram" }, { level = 8, move = "rallyHowl" } },
 		drop = { { key = "stone", amount = 1 } }, morphOptions = {},
@@ -51,7 +51,7 @@ local SpeciesConfig = {
 	warden_hound = {
 		name = "Warden Hound", familyKey = "canine", compositeKey = "rock", outerCompositeKey = "rock", innerCompositeKey = "animal", role = "tank",
 		stage = 1,
-		baseStats = { pAtk = 12, eAtk = 4, range = 26, maxHP = 135, spd = 24, castSpd = 0.95, size = 5, stamina = 28, energy = 12, recoverStamina = 2.1, recoverEnergy = 1.0 },
+		baseStats = { pAtk = 12, eAtk = 4, range = 26, maxHP = 135, spd = 12, castSpd = 0.95, size = 5, stamina = 28, energy = 12, recoverStamina = 2.1, recoverEnergy = 1.0 },
 		abilities = { "sentinelBark", "fortifiedHide" },
 		learnset = { { level = 1, move = "ram" }, { level = 4, move = "stomp" }, { level = 8, move = "rallyHowl" }, { level = 12, move = "stoneWall" } },
 		drop = { { key = "stone", amount = 2 } }, morphOptions = {},
@@ -59,7 +59,7 @@ local SpeciesConfig = {
 	storm_hound = {
 		name = "Storm Hound", familyKey = "canine", compositeKey = "voltage", outerCompositeKey = "animal", innerCompositeKey = "voltage", role = "skirmisher",
 		stage = 1,
-		baseStats = { pAtk = 9, eAtk = 10, range = 90, maxHP = 96, spd = 32, castSpd = 1.1, size = 4, stamina = 24, energy = 20, recoverStamina = 2.0, recoverEnergy = 2.1 },
+		baseStats = { pAtk = 9, eAtk = 10, range = 90, maxHP = 96, spd = 16, castSpd = 1.1, size = 4, stamina = 24, energy = 20, recoverStamina = 2.0, recoverEnergy = 2.1 },
 		abilities = { "stormrunner", "chargedHide" },
 		learnset = { { level = 1, move = "dashBite" }, { level = 5, move = "blinkStrike" }, { level = 9, move = "staticBurst" }, { level = 13, move = "disengage" } },
 		drop = { { key = "battery_seed", amount = 2 } }, morphOptions = {},
@@ -67,7 +67,7 @@ local SpeciesConfig = {
 	magma_ursa = {
 		name = "Magma Ursa", familyKey = "ursine", compositeKey = "rock", outerCompositeKey = "rock", innerCompositeKey = "fire", role = "tank",
 		stage = 1,
-		baseStats = { pAtk = 14, eAtk = 7, range = 30, maxHP = 150, spd = 20, castSpd = 0.9, size = 6, stamina = 30, energy = 16, recoverStamina = 2.2, recoverEnergy = 1.2 },
+		baseStats = { pAtk = 14, eAtk = 7, range = 30, maxHP = 150, spd = 10, castSpd = 0.9, size = 6, stamina = 30, energy = 16, recoverStamina = 2.2, recoverEnergy = 1.2 },
 		abilities = { "magmaBlood", "searingGuard" },
 		learnset = { { level = 1, move = "emberClaw" }, { level = 4, move = "stomp" }, { level = 8, move = "ram" }, { level = 12, move = "stoneWall" } },
 		drop = { { key = "stone", amount = 2 } }, morphOptions = {},
@@ -75,7 +75,7 @@ local SpeciesConfig = {
 	glintswift = {
 		name = "Glintswift", familyKey = "avian", compositeKey = "frost", outerCompositeKey = "frost", innerCompositeKey = "arcane", role = "ranged",
 		stage = 1,
-		baseStats = { pAtk = 5, eAtk = 11, range = 110, maxHP = 80, spd = 33, castSpd = 1.2, size = 3, stamina = 18, energy = 25, recoverStamina = 1.3, recoverEnergy = 2.4 },
+		baseStats = { pAtk = 5, eAtk = 11, range = 110, maxHP = 80, spd = 17, castSpd = 1.2, size = 3, stamina = 18, energy = 25, recoverStamina = 1.3, recoverEnergy = 2.4 },
 		abilities = { "frigidDraft", "prismPlume" },
 		learnset = { { level = 1, move = "zap" }, { level = 6, move = "staticBurst" }, { level = 11, move = "disengage" } },
 		drop = { { key = "crystal_shard", amount = 1 } }, morphOptions = {},
@@ -83,7 +83,7 @@ local SpeciesConfig = {
 	miregel = {
 		name = "Miregel", familyKey = "slime", compositeKey = "water", outerCompositeKey = "water", innerCompositeKey = "arcane", role = "utility",
 		stage = 1,
-		baseStats = { pAtk = 6, eAtk = 9, range = 70, maxHP = 112, spd = 24, castSpd = 1.0, size = 5, stamina = 18, energy = 22, recoverStamina = 1.0, recoverEnergy = 2.1 },
+		baseStats = { pAtk = 6, eAtk = 9, range = 70, maxHP = 112, spd = 12, castSpd = 1.0, size = 5, stamina = 18, energy = 22, recoverStamina = 1.0, recoverEnergy = 2.1 },
 		abilities = { "oozeReserve", "tidalSoothe" },
 		learnset = { { level = 1, move = "ram" }, { level = 4, move = "mendPulse" }, { level = 8, move = "staticBarrier" }, { level = 12, move = "energize" } },
 		drop = { { key = "water_glob", amount = 1 } }, morphOptions = {},
@@ -91,7 +91,7 @@ local SpeciesConfig = {
 	sheeplet = {
 		name = "Sheeplet", familyKey = "herd", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
 		stage = 0,
-		baseStats = { pAtk = 3, eAtk = 0, range = 20, maxHP = 76, spd = 24, castSpd = 1.0, size = 3, stamina = 14, energy = 8, recoverStamina = 1.8, recoverEnergy = 1.0 },
+		baseStats = { pAtk = 3, eAtk = 0, range = 20, maxHP = 76, spd = 12, castSpd = 1.0, size = 3, stamina = 14, energy = 8, recoverStamina = 1.8, recoverEnergy = 1.0 },
 		abilities = { "woolyCoat", "grazer" },
 		learnset = {},
 		harvestDrop = { { key = "fiber", amount = 2 } }, harvestCooldown = 20, drop = { { key = "meat", amount = 1 } }, morphOptions = {},
@@ -99,7 +99,7 @@ local SpeciesConfig = {
 	goat = {
 		name = "Goat", familyKey = "herd", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
 		stage = 0,
-		baseStats = { pAtk = 5, eAtk = 0, range = 22, maxHP = 88, spd = 26, castSpd = 1.0, size = 3.5, stamina = 18, energy = 9, recoverStamina = 2.0, recoverEnergy = 1.0 },
+		baseStats = { pAtk = 5, eAtk = 0, range = 22, maxHP = 88, spd = 13, castSpd = 1.0, size = 3.5, stamina = 18, energy = 9, recoverStamina = 2.0, recoverEnergy = 1.0 },
 		abilities = { "sureFooted", "forager" },
 		learnset = { { level = 1, move = "ram" } },
 		harvestDrop = { { key = "fiber", amount = 1 } }, harvestCooldown = 22, drop = { { key = "meat", amount = 1 } }, morphOptions = {},
@@ -107,7 +107,7 @@ local SpeciesConfig = {
 	got = {
 		name = "Got", familyKey = "herd", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
 		stage = 0,
-		baseStats = { pAtk = 5, eAtk = 0, range = 22, maxHP = 88, spd = 26, castSpd = 1.0, size = 3.5, stamina = 18, energy = 9, recoverStamina = 2.0, recoverEnergy = 1.0 },
+		baseStats = { pAtk = 5, eAtk = 0, range = 22, maxHP = 88, spd = 13, castSpd = 1.0, size = 3.5, stamina = 18, energy = 9, recoverStamina = 2.0, recoverEnergy = 1.0 },
 		abilities = { "sureFooted", "forager" },
 		learnset = { { level = 1, move = "ram" } },
 		harvestDrop = { { key = "fiber", amount = 1 } }, harvestCooldown = 22, drop = { { key = "meat", amount = 1 } }, morphOptions = {},
@@ -115,7 +115,7 @@ local SpeciesConfig = {
 	elephant = {
 		name = "Elephant", familyKey = "ursine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "tank",
 		stage = 0,
-		baseStats = { pAtk = 14, eAtk = 1, range = 24, maxHP = 175, spd = 19, castSpd = 0.85, size = 7, stamina = 34, energy = 8, recoverStamina = 2.3, recoverEnergy = 0.8 },
+		baseStats = { pAtk = 14, eAtk = 1, range = 24, maxHP = 175, spd = 10, castSpd = 0.85, size = 7, stamina = 34, energy = 8, recoverStamina = 2.3, recoverEnergy = 0.8 },
 		abilities = { "thickHide", "earthshaker" },
 		learnset = { { level = 1, move = "stomp" }, { level = 6, move = "ram" } },
 		drop = { { key = "meat", amount = 2 }, { key = "fiber", amount = 2 } }, morphOptions = {},
@@ -123,7 +123,7 @@ local SpeciesConfig = {
 	boar = {
 		name = "Boar", familyKey = "ursine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "fighter",
 		stage = 0,
-		baseStats = { pAtk = 11, eAtk = 0, range = 24, maxHP = 108, spd = 25, castSpd = 0.95, size = 4.5, stamina = 24, energy = 7, recoverStamina = 2.0, recoverEnergy = 0.9 },
+		baseStats = { pAtk = 11, eAtk = 0, range = 24, maxHP = 108, spd = 13, castSpd = 0.95, size = 4.5, stamina = 24, energy = 7, recoverStamina = 2.0, recoverEnergy = 0.9 },
 		abilities = { "recklessCharge", "ironTusks" },
 		learnset = { { level = 1, move = "ram" }, { level = 5, move = "dashBite" } },
 		drop = { { key = "meat", amount = 1 } }, morphOptions = { { option = "boarox", pointsNeeded = 3 } },
