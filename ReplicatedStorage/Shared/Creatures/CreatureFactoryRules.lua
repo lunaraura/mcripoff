@@ -33,6 +33,8 @@ function CreatureFactoryRules.makePetRuntimePayload(ownerUserId, ownedId, slot, 
 			innerCompositeKey = owned.innerCompositeKey,
 			compositeKey = owned.compositeKey,
 			command = { type = "follow", issuedAt = worldTime or 0 },
+			rollStats = table.clone(owned.rollStats or {}),
+			growthStats = table.clone(owned.growthStats or {}),
 		},
 		loadout = {
 			moveset = owned.moveset,
@@ -51,6 +53,8 @@ function CreatureFactoryRules.applyRuntimeIdentity(creature, identity)
 	creature.innerCompositeKey = identity.innerCompositeKey or creature.innerCompositeKey
 	creature.compositeKey = identity.compositeKey or creature.compositeKey
 	creature.command = identity.command or creature.command
+	creature.rollStats = table.clone(identity.rollStats or creature.rollStats or {})
+	creature.growthStats = table.clone(identity.growthStats or creature.growthStats or {})
 end
 
 function CreatureFactoryRules.applyLoadout(creature, loadout)
@@ -78,6 +82,9 @@ function CreatureFactoryRules.syncOwnedFromRuntime(owned, runtime)
 	owned.compositeKey = runtime.compositeKey
 	owned.abilities = table.clone(runtime.abilities or owned.abilities or {})
 	owned.moveset = table.clone(runtime.moveset or owned.moveset or {})
+	owned.rollStats = table.clone(runtime.rollStats or owned.rollStats or {})
+	owned.growthStats = table.clone(runtime.growthStats or owned.growthStats or {})
+	owned.rollStatsInitialized = true
 end
 
 return CreatureFactoryRules

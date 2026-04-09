@@ -2,8 +2,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
+local FamilyConfig = require(Config:WaitForChild("FamilyConfig"))
 local Creatures = Shared:WaitForChild("Creatures")
 local MoveProgression = require(Creatures:WaitForChild("MoveProgression"))
+local StatProgression = require(Creatures:WaitForChild("StatProgression"))
 
 local PlayerDataService = {}
 PlayerDataService.__index = PlayerDataService
@@ -41,12 +43,31 @@ function PlayerDataService:getOrCreate(player)
 	return data
 end
 
+
+local function defaultFamilyKey(owned)
+	local def = owned and SpeciesConfig[owned.speciesKey]
+	return (owned and owned.familyKey) or (def and def.familyKey) or "canine"
+end
+
+local function ensureOwnedStatLayers(owned)
+	if not owned then return end
+	if not FamilyConfig[owned.familyKey or ""] then
+		owned.familyKey = defaultFamilyKey(owned)
+	end
+	owned.rollStats = StatProgression.sanitizeLayer(owned.rollStats)
+	owned.growthStats = StatProgression.sanitizeLayer(owned.growthStats)
+	if (not owned.rollStatsInitialized) then
+		owned.rollStats = StatProgression.generateRollStats(owned.speciesKey, owned.ownedId)
+		owned.rollStatsInitialized = true
+	end
+end
+
 local nextOwnedId = 1
 function PlayerDataService:createOwnedCreature(speciesKey)
 	local def = SpeciesConfig[speciesKey]
 	local id = nextOwnedId
 	nextOwnedId += 1
-	return {
+	local owned = {
 		ownedId = id,
 		speciesKey = speciesKey,
 		nickname = def.name,
@@ -60,7 +81,11 @@ function PlayerDataService:createOwnedCreature(speciesKey)
 		compositeKey = def.compositeKey,
 		outerCompositeKey = def.outerCompositeKey or def.compositeKey,
 		innerCompositeKey = def.innerCompositeKey or def.compositeKey,
+		rollStats = StatProgression.generateRollStats(speciesKey, id),
+		growthStats = StatProgression.zeroLayer(),
+		rollStatsInitialized = true,
 	}
+	return owned
 end
 
 
@@ -71,7 +96,7 @@ function PlayerDataService:createOwnedFromRuntime(creature)
 	local level = math.max(1, math.floor(tonumber(creature.level) or 1))
 	local defaultMoveset = MoveProgression.getLearnedMoves(creature.speciesKey, level)
 	local moveset = table.clone((creature.moveset and #creature.moveset > 0) and creature.moveset or defaultMoveset)
-	return {
+	local owned = {
 		ownedId = id,
 		speciesKey = creature.speciesKey,
 		nickname = (def and def.name) or creature.speciesKey,
@@ -85,12 +110,17 @@ function PlayerDataService:createOwnedFromRuntime(creature)
 		compositeKey = creature.compositeKey or (def and def.compositeKey),
 		outerCompositeKey = creature.outerCompositeKey or (def and (def.outerCompositeKey or def.compositeKey)),
 		innerCompositeKey = creature.innerCompositeKey or (def and (def.innerCompositeKey or def.compositeKey)),
+		rollStats = StatProgression.sanitizeLayer(creature.rollStats),
+		growthStats = StatProgression.sanitizeLayer(creature.growthStats),
+		rollStatsInitialized = creature.rollStats ~= nil,
 		capturedFrom = {
 			speciesKey = creature.speciesKey,
 			wildTier = creature.wildTier,
 			capturedAt = os.clock(),
 		},
 	}
+	ensureOwnedStatLayers(owned)
+	return owned
 end
 
 function PlayerDataService:getPartyOwned(player, slot)
@@ -233,12 +263,14 @@ function PlayerDataService:addOwnedXP(player, ownedId, amount)
 	if not owned then
 		return false, "owned creature not found"
 	end
+	ensureOwnedStatLayers(owned)
 	local gained = math.max(0, math.floor(amount or 0))
 	if gained <= 0 then
 		return true, { gained = 0, levelUps = 0, level = owned.level }
 	end
 	owned.xp = (owned.xp or 0) + gained
 	owned.level = owned.level or 1
+	local startLevel = owned.level
 	local levelUps = 0
 	while true do
 		local needed = math.max(15, owned.level * 25)
@@ -248,9 +280,28 @@ function PlayerDataService:addOwnedXP(player, ownedId, amount)
 		levelUps += 1
 	end
 	local def = SpeciesConfig[owned.speciesKey]
+	local growthGains = StatProgression.zeroLayer()
+	if levelUps > 0 then
+		owned.growthStats, growthGains = StatProgression.applyLevelGrowth(
+			owned.growthStats,
+			owned.familyKey or (def and def.familyKey) or "canine",
+			startLevel,
+			owned.level,
+			owned.ownedId,
+			owned.speciesKey
+		)
+	end
 	owned.abilities = table.clone((def and def.abilities) or owned.abilities or {})
 	owned.moveset = MoveProgression.getLearnedMoves(owned.speciesKey, owned.level)
-	return true, { gained = gained, levelUps = levelUps, level = owned.level, xp = owned.xp, moveset = owned.moveset }
+	return true, {
+		gained = gained,
+		levelUps = levelUps,
+		level = owned.level,
+		xp = owned.xp,
+		moveset = owned.moveset,
+		growthGains = growthGains,
+		growthStats = owned.growthStats,
+	}
 end
 
 return PlayerDataService

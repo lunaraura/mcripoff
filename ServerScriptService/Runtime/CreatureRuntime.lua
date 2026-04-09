@@ -2,10 +2,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
-local FamilyConfig = require(Config:WaitForChild("FamilyConfig"))
 local CompositeConfig = require(Config:WaitForChild("CompositeConfig"))
 local Creatures = Shared:WaitForChild("Creatures")
 local MoveProgression = require(Creatures:WaitForChild("MoveProgression"))
+local StatProgression = require(Creatures:WaitForChild("StatProgression"))
 
 local CreatureRuntime = {}
 CreatureRuntime.__index = CreatureRuntime
@@ -31,6 +31,8 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 	self.innerCompositeKey = def.innerCompositeKey or def.compositeKey or "animal"
 	self.compositeKey = def.compositeKey or self.outerCompositeKey
 	self.baseStats = table.clone(def.baseStats)
+	self.rollStats = StatProgression.sanitizeLayer(opts.rollStats)
+	self.growthStats = StatProgression.sanitizeLayer(opts.growthStats)
 	self.modifiedStats = table.clone(def.baseStats)
 	self.level = opts.level or 1
 	self.morphPoints = opts.morphPoints or 0
@@ -108,13 +110,16 @@ function CreatureRuntime:SetWildProfile(tier, profile)
 end
 
 function CreatureRuntime:RebuildStats()
+	-- Layered stat rebuild order:
+	-- 1) species base stats
+	-- 2) permanent random rollStats
+	-- 3) permanent level-up growthStats
+	-- 4) structural/runtime multipliers (composite traits, wild profile, temporary runtime effects)
+	self.rollStats = StatProgression.sanitizeLayer(self.rollStats)
+	self.growthStats = StatProgression.sanitizeLayer(self.growthStats)
 	self.modifiedStats = table.clone(self.baseStats)
-	local family = FamilyConfig[self.familyKey]
-	if family and family.statMult then
-		for k, mult in pairs(family.statMult) do
-			if self.modifiedStats[k] then self.modifiedStats[k] *= mult end
-		end
-	end
+	StatProgression.mergeAdditiveLayer(self.modifiedStats, self.rollStats)
+	StatProgression.mergeAdditiveLayer(self.modifiedStats, self.growthStats)
 	local traits = (CompositeConfig[self.compositeKey] and CompositeConfig[self.compositeKey].traits) or CompositeConfig.animal.traits
 	self.modifiedStats.maxHP *= 1 + ((traits.toughness or 0) * 0.35)
 	self.modifiedStats.spd *= 1 + ((traits.mobilityBias or 0) * 0.25)
@@ -124,6 +129,12 @@ function CreatureRuntime:RebuildStats()
 			if self.modifiedStats[k] then self.modifiedStats[k] *= mult end
 		end
 	end
+	self.debugStatLayers = {
+		baseStats = table.clone(self.baseStats),
+		rollStats = table.clone(self.rollStats),
+		growthStats = table.clone(self.growthStats),
+		finalStats = table.clone(self.modifiedStats),
+	}
 	self.currentHP = math.min(self.currentHP, self.modifiedStats.maxHP)
 	self.currentStamina = math.min(self.currentStamina, self.modifiedStats.stamina)
 	self.currentEnergy = math.min(self.currentEnergy, self.modifiedStats.energy)

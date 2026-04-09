@@ -146,6 +146,16 @@ function CreatureService:updateModel(creature)
 			creature.effectFlags.wet and "1" or "0"
 		) or "")
 		creature.model:SetAttribute("LastReaction", tostring(creature.lastReactionTriggered or "-"))
+		if creature.debugStatLayers then
+			local base = creature.debugStatLayers.baseStats or {}
+			local roll = creature.debugStatLayers.rollStats or {}
+			local growth = creature.debugStatLayers.growthStats or {}
+			local final = creature.debugStatLayers.finalStats or {}
+			creature.model:SetAttribute("Stats_Base", string.format("HP:%s PA:%s EA:%s SPD:%s ST:%s EN:%s", tostring(base.maxHP or 0), tostring(base.pAtk or 0), tostring(base.eAtk or 0), tostring(base.spd or 0), tostring(base.stamina or 0), tostring(base.energy or 0)))
+			creature.model:SetAttribute("Stats_Roll", string.format("HP:+%s PA:+%s EA:+%s SPD:+%s ST:+%s EN:+%s", tostring(roll.maxHP or 0), tostring(roll.pAtk or 0), tostring(roll.eAtk or 0), tostring(roll.spd or 0), tostring(roll.stamina or 0), tostring(roll.energy or 0)))
+			creature.model:SetAttribute("Stats_Growth", string.format("HP:+%s PA:+%s EA:+%s SPD:+%s ST:+%s EN:+%s", tostring(growth.maxHP or 0), tostring(growth.pAtk or 0), tostring(growth.eAtk or 0), tostring(growth.spd or 0), tostring(growth.stamina or 0), tostring(growth.energy or 0)))
+			creature.model:SetAttribute("Stats_Final", string.format("HP:%s PA:%s EA:%s SPD:%s ST:%s EN:%s", tostring(final.maxHP or 0), tostring(final.pAtk or 0), tostring(final.eAtk or 0), tostring(final.spd or 0), tostring(final.stamina or 0), tostring(final.energy or 0)))
+		end
 		creature.model:SetAttribute("TerrainY", terrainY or creature.pos.Y)
 		creature.model:SetAttribute("ModelCenterY", modelCenterY)
 		creature.model:SetAttribute("VisualSizeY", body.Size.Y)
