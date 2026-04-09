@@ -302,7 +302,9 @@ function AIService:decide(creature, state, profile, facts)
 	local command = facts.command or { type = "follow" }
 	local commandMemory = command.type == "move" and 20 or COMMAND_INTENT_MEMORY
 	local commandOverrideActive = creature.mode == "pet" and facts.commandOverrideActive
+	state.lastCommandIgnoreReason = nil
 	if command and command.issuedAt and (now - command.issuedAt) > commandMemory and not commandOverrideActive then
+		state.lastCommandIgnoreReason = "command_expired"
 		command = { type = "follow", issuedAt = now }
 		creature.command = command
 	end
@@ -324,12 +326,21 @@ function AIService:decide(creature, state, profile, facts)
 				forcedState = "chase"
 				allowCommandOffense = true
 			else
-				creature.command = { type = facts.stance == "HOLD" and "hold" or "follow", issuedAt = now }
+				local fallbackType = "follow"
+				if facts.stance == "HOLD" then
+					fallbackType = "hold"
+				elseif facts.stance == "AGGRESSIVE" then
+					fallbackType = "aggressive"
+				end
+				state.lastCommandIgnoreReason = "attack_target_invalid"
+				creature.command = { type = fallbackType, issuedAt = now }
 				commandType = creature.command.type
-				forcedState = commandType == "hold" and "hold" or "follow"
+				forcedState = commandType
 			end
 		elseif command.type == "hold" or facts.stance == "HOLD" then
 			forcedState = "hold"
+		elseif command.type == "aggressive" or facts.stance == "AGGRESSIVE" then
+			forcedState = "aggressive"
 		elseif command.type == "follow" or facts.stance == "FOLLOW" then
 			forcedState = "follow"
 		elseif commandOverrideActive and command.type == "attackNearest" then
@@ -362,9 +373,9 @@ function AIService:decide(creature, state, profile, facts)
 			self:transition(state, "move")
 			return { state = "move", anchor = moveAnchor, forcedState = forcedState, commandType = commandType, suppressAutonomousOffense = suppressAutonomousOffense, allowCommandOffense = allowCommandOffense }
 		end
-		creature.command = { type = facts.stance == "HOLD" and "hold" or "follow", issuedAt = now }
+		creature.command = { type = "hold", issuedAt = now }
 		commandType = creature.command.type
-		forcedState = commandType == "hold" and "hold" or "follow"
+		forcedState = commandType
 	end
 
 	if forcedState == "hold" then
@@ -401,6 +412,28 @@ function AIService:decide(creature, state, profile, facts)
 		return { state = "follow", anchor = state.roamAnchor, forcedState = forcedState, commandType = commandType, suppressAutonomousOffense = suppressAutonomousOffense, allowCommandOffense = allowCommandOffense }
 	end
 
+	if forcedState == "aggressive" then
+		local anchorDist = flatDistance(creature.pos, state.roamAnchor)
+		if anchorDist > state.leashRadius then
+			self:transition(state, "return")
+			return { state = "return", anchor = state.roamAnchor, forcedState = forcedState, commandType = commandType, suppressAutonomousOffense = suppressAutonomousOffense, allowCommandOffense = allowCommandOffense }
+		end
+		if autonomousOffenseAllowed then
+			target = self:selectTarget(creature, state, profile, facts)
+			if target then
+				local d = flatDistance(creature.pos, target.pos)
+				if d <= profile.preferredRange then
+					self:transition(state, "attack")
+					return { state = "attack", target = target, forcedState = forcedState, commandType = commandType, suppressAutonomousOffense = suppressAutonomousOffense, allowCommandOffense = allowCommandOffense }
+				end
+				self:transition(state, "chase")
+				return { state = "chase", target = target, forcedState = forcedState, commandType = commandType, suppressAutonomousOffense = suppressAutonomousOffense, allowCommandOffense = allowCommandOffense }
+			end
+		end
+		self:transition(state, "follow")
+		return { state = "follow", anchor = state.roamAnchor, forcedState = forcedState, commandType = commandType, suppressAutonomousOffense = suppressAutonomousOffense, allowCommandOffense = allowCommandOffense }
+	end
+
 	if forcedState == "chase" and target then
 		if flatDistance(creature.pos, target.pos) <= profile.preferredRange then
 			self:transition(state, "attack")
@@ -409,8 +442,8 @@ function AIService:decide(creature, state, profile, facts)
 		self:transition(state, "chase")
 		return { state = "chase", target = target, forcedState = forcedState, commandType = commandType, suppressAutonomousOffense = suppressAutonomousOffense, allowCommandOffense = allowCommandOffense }
 	end
-	if creature.mode == "pet" and facts.commandOverrideActive and (command.type == "follow" or command.type == "hold") then
-		local commandState = command.type == "follow" and "follow" or "hold"
+	if creature.mode == "pet" and facts.commandOverrideActive and (command.type == "follow" or command.type == "hold" or command.type == "aggressive") then
+		local commandState = command.type == "hold" and "hold" or (command.type == "aggressive" and "aggressive" or "follow")
 		self:transition(state, commandState)
 		return { state = commandState, anchor = state.roamAnchor, forcedState = commandState, commandType = commandType, suppressAutonomousOffense = suppressAutonomousOffense, allowCommandOffense = allowCommandOffense }
 	end
@@ -589,6 +622,7 @@ function AIService:buildIntent(creature, state, profile, facts, decision)
 			designatedTargetId = facts.designatedTargetId,
 			suppressAutonomousOffense = decision.suppressAutonomousOffense == true,
 			allowCommandOffense = decision.allowCommandOffense == true,
+			commandIgnoreReason = state.lastCommandIgnoreReason,
 		},
 	}
 	local manualReq = creature.manualCastRequest
@@ -688,15 +722,18 @@ function AIService:applyIntent(creature, state, intent)
 		lastChosenAbility = state.lastChosenAbility,
 		abilityScoreSummary = state.lastAbilityScoreSummary,
 		controlMode = creature.ownerUserId and tostring((Players:GetPlayerByUserId(creature.ownerUserId) and Players:GetPlayerByUserId(creature.ownerUserId):GetAttribute("PetControlMode")) or "AUTO") or "-",
+		persistentStance = creature.ownerUserId and tostring((Players:GetPlayerByUserId(creature.ownerUserId) and Players:GetPlayerByUserId(creature.ownerUserId):GetAttribute("PetStance")) or "FOLLOW") or "-",
 		manualCastState = creature.manualCastState,
 		commandOverride = self.worldService.time <= (creature.commandOverrideUntil or 0),
 		commandOverrideUntil = creature.commandOverrideUntil or 0,
 		currentCommandType = intent.debugMeta and intent.debugMeta.commandType or "follow",
+		commandTargetId = creature.command and tonumber(creature.command.targetId) or nil,
 		forcedState = intent.debugMeta and intent.debugMeta.forcedState or "none",
 		decisionState = intent.debugMeta and intent.debugMeta.decisionState or state.behaviorState,
 		designatedTargetId = intent.debugMeta and intent.debugMeta.designatedTargetId or creature.designatedTargetId,
 		suppressAutonomousOffense = intent.debugMeta and intent.debugMeta.suppressAutonomousOffense or false,
 		allowCommandOffense = intent.debugMeta and intent.debugMeta.allowCommandOffense or false,
+		commandIgnoreReason = intent.debugMeta and tostring(intent.debugMeta.commandIgnoreReason or "-") or "-",
 		intendedMove = string.format("%.2f,%.2f,%.2f", creature.intent.move.X, creature.intent.move.Y, creature.intent.move.Z),
 		nextThinkAt = state.nextThinkAt or 0,
 		idleSleepUntil = state.idleSleepUntil or 0,

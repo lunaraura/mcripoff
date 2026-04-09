@@ -162,12 +162,13 @@ function UIController:sendCommandFromUi(kind)
 	if not self.command then return end
 	if kind == "follow" then
 		if self.party then self.party:setStance("FOLLOW") end
-		self.command:sendCommand({ type = "follow" })
+		self.command:sendCommand({ type = "setStance", stance = "FOLLOW" })
 	elseif kind == "hold" then
 		if self.party then self.party:setStance("HOLD") end
-		self.command:sendCommand({ type = "hold" })
+		self.command:sendCommand({ type = "setStance", stance = "HOLD" })
 	elseif kind == "attack" then
-		self.command:sendCommand({ type = "attackNearest" })
+		if self.party then self.party:setStance("AGGRESSIVE") end
+		self.command:sendCommand({ type = "setStance", stance = "AGGRESSIVE" })
 	end
 	self.activeCommand = kind
 	self:refreshCommandPanel()
@@ -602,37 +603,47 @@ function UIController:updatePetHud(payload)
 				local displayName = tostring(pet.name or speciesName)
 				local state = tostring(pet.state or "alive")
 				local cooldownSummary = self:buildCooldownSummary(pet.cooldowns)
-				if i == (self.activeSlot or 1) and pet.command then
-					if pet.command == "follow" or pet.command == "hold" then
-						self.activeCommand = pet.command
-					elseif pet.command == "attack" or pet.command == "attackNearest" then
-						self.activeCommand = "attack"
+					if i == (self.activeSlot or 1) then
+						local stance = tostring(self.stance or "FOLLOW")
+						if stance == "HOLD" then
+							self.activeCommand = "hold"
+						elseif stance == "AGGRESSIVE" then
+							self.activeCommand = "attack"
+						else
+							self.activeCommand = "follow"
+						end
 					end
-				end
-				if state == "alive" then
-					local cmd = pet.command or "auto"
-						local manual = tostring(pet.manualCastState or "idle")
-						local manualCode = tostring(pet.manualCastCode or "-")
-					local designated = tostring(pet.designatedTargetId or "-")
-					local override = pet.commandOverride and "Y" or "N"
-					label.Text = string.format(
-							"Slot %d: %s [%s] (Lv %d)\nHP %d/%d  ST %d  EN %d\nCmd: %s  Target: %s  Designated: %s\nManual:%s (%s)  Override:%s\nCD: %s",
-						i,
-						displayName,
-						speciesName,
+					if state == "alive" then
+						local cmd = pet.command or "auto"
+							local manual = tostring(pet.manualCastState or "idle")
+							local manualCode = tostring(pet.manualCastCode or "-")
+						local designated = tostring(pet.designatedTargetId or "-")
+						local cmdTarget = tostring(pet.commandTargetId or "-")
+						local forcedState = tostring(pet.forcedState or "-")
+						local ignored = tostring(pet.commandIgnoreReason or "-")
+						local override = pet.commandOverride and "Y" or "N"
+						label.Text = string.format(
+								"Slot %d: %s [%s] (Lv %d)\nHP %d/%d  ST %d  EN %d\nStance:%s  Cmd:%s  CmdTarget:%s\nTarget:%s  Designated:%s  Forced:%s\nManual:%s (%s)  Override:%s  Ignored:%s\nCD: %s",
+							i,
+							displayName,
+							speciesName,
 						tostring(pet.level or 1),
 						hp,
-						maxHp,
-						st,
-						en,
-						tostring(cmd),
-						tostring(pet.targetId or "-"),
-							designated,
-							manual,
-							manualCode,
-							override,
-						cooldownSummary
-					)
+							maxHp,
+							st,
+							en,
+							tostring(self.stance or "FOLLOW"),
+							tostring(cmd),
+							cmdTarget,
+							tostring(pet.targetId or "-"),
+								designated,
+								forcedState,
+								manual,
+								manualCode,
+								override,
+								ignored,
+							cooldownSummary
+						)
 				else
 					label.Text = string.format(
 						"Slot %d: %s [%s] (Lv %d)\nHP 0/%d  ST 0  EN 0\nDEFEATED\nCD: --",

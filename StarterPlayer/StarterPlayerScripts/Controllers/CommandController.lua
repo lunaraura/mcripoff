@@ -47,25 +47,58 @@ function CommandController:cast(abilityKey, targetId)
 end
 
 function CommandController:getTargetIdUnderMouse()
+	local function getIdFromInstance(inst)
+		if not inst then return nil end
+		local attrId = tonumber(inst:GetAttribute("CreatureId"))
+		if attrId then return attrId end
+		local id = string.match(inst.Name or "", "^C_(%d+)_")
+		if id then return tonumber(id) end
+		return nil
+	end
+
+	local function climbForId(inst)
+		local cur = inst
+		for _ = 1, 10 do
+			if not cur then return nil end
+			local id = getIdFromInstance(cur)
+			if id then return id end
+			local asModel = cur:IsA("Model") and cur or cur:FindFirstAncestorOfClass("Model")
+			if asModel then
+				local modelId = getIdFromInstance(asModel)
+				if modelId then return modelId end
+				local modelParent = asModel.Parent
+				if modelParent and modelParent:IsA("Model") then
+					local parentId = getIdFromInstance(modelParent)
+					if parentId then return parentId end
+				end
+			end
+			cur = cur.Parent
+		end
+		return nil
+	end
+
 	local target = self.mouse and self.mouse.Target
-	if not target then return nil end
-	local model = target:FindFirstAncestorOfClass("Model")
-	if not model and target.Parent and target.Parent:IsA("Model") then
-		model = target.Parent
+	local idFromTarget = climbForId(target)
+	if idFromTarget then return idFromTarget end
+
+	local hit = self.mouse and self.mouse.Hit
+	if not hit then return nil end
+	local modelsFolder = workspace:FindFirstChild("World") and workspace.World:FindFirstChild("CreatureModels")
+	if not modelsFolder then return nil end
+	local bestId, bestDist = nil, 7.5
+	for _, model in ipairs(modelsFolder:GetChildren()) do
+		if model:IsA("Model") and model.PrimaryPart then
+			local cid = getIdFromInstance(model)
+			if cid then
+				local d = (model.PrimaryPart.Position - hit.Position).Magnitude
+				if d <= bestDist then
+					bestDist = d
+					bestId = cid
+				end
+			end
+		end
 	end
-	if not model then return nil end
-	local attrId = tonumber(model:GetAttribute("CreatureId"))
-	if attrId then return attrId end
-	local id = string.match(model.Name, "^C_(%d+)_")
-	if id then return tonumber(id) end
-	local parentModel = model.Parent and model.Parent:IsA("Model") and model.Parent or nil
-	if parentModel then
-		local parentAttrId = tonumber(parentModel:GetAttribute("CreatureId"))
-		if parentAttrId then return parentAttrId end
-		local parentId = string.match(parentModel.Name, "^C_(%d+)_")
-		if parentId then return tonumber(parentId) end
-	end
-	return nil
+	return bestId
 end
 
 return CommandController

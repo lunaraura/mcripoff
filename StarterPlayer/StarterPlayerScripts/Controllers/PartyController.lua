@@ -30,7 +30,7 @@ function PartyController:toggleControlMode()
 end
 
 function PartyController:setStance(stance)
-	if stance == "FOLLOW" or stance == "HOLD" then
+	if stance == "FOLLOW" or stance == "HOLD" or stance == "AGGRESSIVE" then
 		self.stance = stance
 	end
 end
