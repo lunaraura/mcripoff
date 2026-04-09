@@ -158,7 +158,16 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 	local function sanitizeCommand(input)
 		if type(input) ~= "table" then return nil end
 		local t = input.type
-		if t == "follow" or t == "hold" or t == "attackNearest" then
+		if t == "follow" then
+			return { type = "setStance", stance = "FOLLOW", issuedAt = worldService.time }
+		end
+		if t == "hold" then
+			return { type = "setStance", stance = "HOLD", issuedAt = worldService.time }
+		end
+		if t == "setStance" and (input.stance == "FOLLOW" or input.stance == "HOLD" or input.stance == "AGGRESSIVE") then
+			return { type = "setStance", stance = input.stance, issuedAt = worldService.time }
+		end
+		if t == "attackNearest" then
 			return { type = t, issuedAt = worldService.time }
 		end
 		if t == "setActive" then
@@ -205,8 +214,10 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 			player:SetAttribute("ActiveDesignatedTargetId", tonumber(player:GetAttribute(getDesignatedAttrKey(slot))))
 			local pet = getPetBySlot(player, slot)
 			if pet then
+				local stance = tostring(player:GetAttribute("PetStance") or "FOLLOW")
+				local stanceCommandType = (stance == "HOLD" and "hold") or (stance == "AGGRESSIVE" and "aggressive") or "follow"
 				pet.commandOverrideUntil = worldService.time + COMMAND_OVERRIDE_SECONDS
-				pet.command = { type = "follow", issuedAt = worldService.time }
+				pet.command = { type = stanceCommandType, issuedAt = worldService.time }
 			end
 		end
 		return
@@ -214,6 +225,11 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 	if command.type == "setControlMode" then
 		player:SetAttribute("PetControlMode", command.mode)
 		worldService:pushEventLog(player, "Control mode: " .. tostring(command.mode), "#bfe2ff")
+		return
+	end
+	if command.type == "setStance" then
+		player:SetAttribute("PetStance", command.stance)
+		worldService:pushEventLog(player, "Stance: " .. tostring(command.stance), "#bfe2ff")
 		return
 	end
 	for _, c in ipairs(worldService.creatures) do
@@ -237,11 +253,6 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 				elseif command.type == "clearDesignatedTarget" then
 					setDesignatedTarget(player, c.partySlot, nil)
 					c.designatedTargetId = nil
-				end
-				if command.type == "follow" then
-					player:SetAttribute("PetStance", "FOLLOW")
-				elseif command.type == "hold" then
-					player:SetAttribute("PetStance", "HOLD")
 				end
 			end
 		end
@@ -413,7 +424,7 @@ local function pushPetHud()
 						cooldowns[moveKey] = math.max(0, pet.cooldowns[moveKey] or 0)
 					end
 				end
-				petPayload[i] = {
+					petPayload[i] = {
 					species = owned.speciesKey,
 					name = owned.nickname,
 					level = pet and pet.level or owned.level,
@@ -422,10 +433,13 @@ local function pushPetHud()
 					maxHP = (isAlive and pet.modifiedStats.maxHP) or (pet and pet.modifiedStats and pet.modifiedStats.maxHP) or 0,
 					stamina = isAlive and pet.currentStamina or 0,
 					energy = isAlive and pet.currentEnergy or 0,
-					command = isAlive and (pet.command and pet.command.type or "auto") or nil,
-					targetId = isAlive and (pet.intent and pet.intent.targetId or nil) or nil,
-					designatedTargetId = isAlive and (pet.designatedTargetId or nil) or nil,
-						manualCastState = isAlive and (pet.manualCastState or "idle") or "idle",
+						command = isAlive and (pet.command and pet.command.type or "auto") or nil,
+						commandTargetId = isAlive and (pet.command and tonumber(pet.command.targetId) or nil) or nil,
+						targetId = isAlive and (pet.intent and pet.intent.targetId or nil) or nil,
+						designatedTargetId = isAlive and (pet.designatedTargetId or nil) or nil,
+						forcedState = isAlive and (pet.debugAI and pet.debugAI.forcedState or nil) or nil,
+						commandIgnoreReason = isAlive and (pet.debugAI and pet.debugAI.commandIgnoreReason or nil) or nil,
+							manualCastState = isAlive and (pet.manualCastState or "idle") or "idle",
 						manualCastCode = isAlive and (pet.lastManualCastResult and pet.lastManualCastResult.code or pet.manualCastNote or "-") or "-",
 						commandOverride = isAlive and (worldService.time <= (pet.commandOverrideUntil or 0)) or false,
 					cooldowns = cooldowns,

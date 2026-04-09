@@ -85,4 +85,21 @@ function EcologyRules.getNodeCategory(nodeType)
 	return EcologyConfig.nodeCategories[nodeType] or "generic_node"
 end
 
+function EcologyRules.getNodeLifecyclePolicy(lifecycleClass)
+	local policies = EcologyConfig.nodeLifecyclePolicies or {}
+	return policies[lifecycleClass] or policies.natural_non_respawn or {
+		respawnPolicy = "none",
+		playerGrowable = false,
+		harvestable = true,
+	}
+end
+
+function EcologyRules.classifyNodeLifecycle(nodeType, nodeSource)
+	if nodeSource == "player" then
+		return "player_growable"
+	end
+	local map = EcologyConfig.nodeTypeLifecycleClass or {}
+	return map[nodeType] or "natural_non_respawn"
+end
+
 return EcologyRules

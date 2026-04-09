@@ -20,6 +20,32 @@ local EcologyConfig = {
 		Ore = "mineral_node",
 		Crystal = "energy_node",
 	},
+	nodeLifecyclePolicies = {
+		natural_non_respawn = {
+			respawnPolicy = "none",
+			playerGrowable = false,
+			harvestable = true,
+			description = "Natural runtime node; once depleted it does not auto-regrow.",
+		},
+		player_growable = {
+			respawnPolicy = "player_driven",
+			playerGrowable = true,
+			harvestable = true,
+			description = "Exists only from player planting/seeding/regrow actions.",
+		},
+		decorative = {
+			respawnPolicy = "n/a",
+			playerGrowable = false,
+			harvestable = false,
+			description = "Decorative, non-harvestable world element.",
+		},
+	},
+	nodeTypeLifecycleClass = {
+		Tree = "natural_non_respawn",
+		Rock = "natural_non_respawn",
+		Ore = "natural_non_respawn",
+		Crystal = "natural_non_respawn",
+	},
 	obstacleCategories = {
 		RockObstacle = "rock_obstacle",
 		TreeNode = "tree_obstacle",
@@ -52,6 +78,8 @@ local EcologyConfig = {
 		},
 	},
 	regen = {
+		-- Canonical v1 ecology policy: natural nodes are non-respawning.
+		-- Timer-based regrowth is reserved for explicit player-grown content only.
 		nodeMinSeconds = 20,
 		nodeDefaultSeconds = 30,
 	},

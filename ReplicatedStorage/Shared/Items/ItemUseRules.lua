@@ -41,9 +41,26 @@ function ItemUseRules.getDisplayItems()
 	return out
 end
 
+function ItemUseRules.shouldRouteToActivePet(def)
+	if not def then return false end
+	local effect = def.effect or {}
+	return effect.kind == "restore" or effect.kind == "effect"
+end
+
+function ItemUseRules.resolveTargetSlot(def, requestedSlot, activeSlot)
+	if ItemUseRules.shouldRouteToActivePet(def) then
+		return activeSlot
+	end
+	return requestedSlot
+end
+
 function ItemUseRules.computePreferredTargetSlot(def, pets, activeSlot)
 	activeSlot = activeSlot or 1
 	if not def then return nil end
+	if ItemUseRules.shouldRouteToActivePet(def) then
+		if pets[activeSlot] and pets[activeSlot].state == "alive" then return activeSlot end
+		return nil
+	end
 	if def.targeting == "ally_defeated" then
 		if pets[activeSlot] and pets[activeSlot].state == "defeated" then return activeSlot end
 		for slot = 1, 2 do

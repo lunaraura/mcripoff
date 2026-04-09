@@ -2,7 +2,7 @@ local BiomeConfig = {
 	plains = {
 		color = Color3.fromRGB(136, 170, 124),
 		rules = { temperature = 0.55, rainfall = 0.45, lithosphere = 0.45, barrenness = 0.35, arcane = 0.45, softness = 0.28, bias = 1.0 },
-		spawns = { { key = "dog", weight = 4 }, { key = "sheeplet", weight = 3 }, { key = "pebblit", weight = 2 }, { key = "boarox", weight = 1 } },
+		spawns = { { key = "dog", weight = 3 }, { key = "sheeplet", weight = 2 }, { key = "goat", weight = 2 }, { key = "boar", weight = 2 }, { key = "pebblit", weight = 2 }, { key = "elephant", weight = 1 }, { key = "boarox", weight = 1 } },
 		nodes = { { key = "berry_bush_red", weight = 12 }, { key = "energy_crystal", weight = 2 }, { key = "revive_berry_bush", weight = 1 }, { key = "replenish_berry_bush", weight = 1 } },
 	},
 	ocean = {
@@ -14,7 +14,7 @@ local BiomeConfig = {
 	forest = {
 		color = Color3.fromRGB(110, 154, 95),
 		rules = { temperature = 0.50, rainfall = 0.75, lithosphere = 0.42, barrenness = 0.15, arcane = 0.42, softness = 0.26, bias = 1.05 },
-		spawns = { { key = "dog", weight = 3 }, { key = "cinderpup", weight = 2 }, { key = "sheeplet", weight = 1 } },
+		spawns = { { key = "dog", weight = 3 }, { key = "goat", weight = 2 }, { key = "boar", weight = 2 }, { key = "cinderpup", weight = 2 }, { key = "sheeplet", weight = 1 } },
 		nodes = { { key = "berry_bush_red", weight = 22 }, { key = "bait_shrub", weight = 3 }, { key = "revive_berry_bush", weight = 1 }, { key = "replenish_berry_bush", weight = 1 } },
 	},
 	desert = {
@@ -38,7 +38,7 @@ local BiomeConfig = {
 	tundra = {
 		color = Color3.fromRGB(148, 166, 174),
 		rules = { temperature = 0.20, rainfall = 0.44, lithosphere = 0.52, barrenness = 0.55, arcane = 0.38, softness = 0.21, bias = 0.72 },
-		spawns = { { key = "dog", weight = 2 }, { key = "pebblit", weight = 3 }, { key = "sheeplet", weight = 1 } },
+		spawns = { { key = "dog", weight = 2 }, { key = "goat", weight = 1 }, { key = "pebblit", weight = 3 }, { key = "sheeplet", weight = 1 }, { key = "elephant", weight = 1 } },
 		nodes = { { key = "replenish_berry_bush", weight = 5 }, { key = "revive_berry_bush", weight = 3 }, { key = "energy_crystal", weight = 2 } },
 	},
 	polar = {
