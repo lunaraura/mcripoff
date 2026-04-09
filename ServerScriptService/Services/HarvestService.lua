@@ -2,6 +2,11 @@ local HarvestService = {}
 HarvestService.__index = HarvestService
 local CollectionService = game:GetService("CollectionService")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Ecology = Shared:WaitForChild("Ecology")
+local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
+local FloraSystem = require(script.Parent.Parent.Systems.FloraSystem)
 
 function HarvestService.new(worldService, inventoryService)
 	return setmetatable({ worldService = worldService, inventoryService = inventoryService }, HarvestService)
@@ -182,22 +187,49 @@ function HarvestService:setNodeVisualActive(node, active)
 end
 
 function HarvestService:depleteNode(node)
-	local regen = math.max(3, math.floor(tonumber(node:GetAttribute("NodeRegenSeconds")) or 20))
+	local nodeType = tostring(node:GetAttribute("NodeType") or "Unknown")
+	local nodeSource = tostring(node:GetAttribute("NodeSource") or "natural")
+	local lifecycleClass = tostring(node:GetAttribute("NodeLifecycleClass") or EcologyRules.classifyNodeLifecycle(nodeType, nodeSource))
+	local policy = EcologyRules.getNodeLifecyclePolicy(lifecycleClass)
+	local respawnPolicy = tostring(policy.respawnPolicy or "none")
+	local ecoId = tostring(node:GetAttribute("EcologyId") or "")
+
+	node:SetAttribute("NodeLifecycleClass", lifecycleClass)
+	node:SetAttribute("NodeRespawnPolicy", respawnPolicy)
+	node:SetAttribute("NodePlayerGrowable", policy.playerGrowable == true)
+	node:SetAttribute("NodeHarvestable", policy.harvestable ~= false)
+	node:SetAttribute("NodeNonRespawning", respawnPolicy == "none")
 	node:SetAttribute("Depleted", true)
-	node:SetAttribute("DepletedUntil", self.worldService.time + regen)
+	node:SetAttribute("DepletedAt", self.worldService.time)
 	node:SetAttribute("Durability", 0)
+	node:SetAttribute("DepletedUntil", 0)
 	self:setNodeVisualActive(node, false)
+	if respawnPolicy == "none" then
+		if nodeSource == "natural" and ecoId ~= "" then
+			FloraSystem.markNaturalNodeDepleted(ecoId)
+		end
+		node:SetAttribute("RemovedFromEcologyRuntime", true)
+	else
+		node:SetAttribute("RemovedFromEcologyRuntime", false)
+	end
 end
 
 function HarvestService:tickNodeRegrowth()
 	for _, node in ipairs(CollectionService:GetTagged("HarvestNode")) do
 		if node:IsA("BasePart") and node.Parent and node:GetAttribute("Depleted") then
+			local respawnPolicy = tostring(node:GetAttribute("NodeRespawnPolicy") or "none")
+			local playerGrowable = node:GetAttribute("NodePlayerGrowable") == true
+			local timerEnabled = node:GetAttribute("NodeAllowTimerRegrowth") == true
+			if respawnPolicy ~= "timer" or (not playerGrowable) or (not timerEnabled) then
+				continue
+			end
 			local untilT = tonumber(node:GetAttribute("DepletedUntil")) or 0
 			if self.worldService.time >= untilT then
 				local maxDur = math.max(1, math.floor(tonumber(node:GetAttribute("MaxDurability")) or 1))
 				node:SetAttribute("Depleted", false)
 				node:SetAttribute("Durability", maxDur)
 				node:SetAttribute("DepletedUntil", 0)
+				node:SetAttribute("RemovedFromEcologyRuntime", false)
 				self:setNodeVisualActive(node, true)
 			end
 		end
@@ -244,6 +276,11 @@ function HarvestService:tryUseBerryPlanterTool(player, payload)
 	bush:SetAttribute("BerryKind", berryKind)
 	bush:SetAttribute("Uses", 3)
 	bush:SetAttribute("PlantedByUserId", player.UserId)
+	bush:SetAttribute("NodeSource", "player")
+	bush:SetAttribute("NodeLifecycleClass", "player_growable")
+	bush:SetAttribute("NodeRespawnPolicy", "player_driven")
+	bush:SetAttribute("NodePlayerGrowable", true)
+	bush:SetAttribute("NodeHarvestable", true)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Pick Berry"
 	prompt.ObjectText = "Berry Bush"

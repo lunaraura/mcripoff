@@ -14,6 +14,9 @@ nodesFolder.Name = "Nodes"
 nodesFolder.Parent = workspace
 
 local instancesByChunk = {}
+-- Runtime-only depletion memory. This prevents natural nodes from reappearing when chunks unload/reload
+-- during the current server session. Full cross-server persistence is intentionally out-of-scope for v1.
+local depletedNaturalEcologyIds = {}
 
 local BIOME_TREES = {
 	plains = { base = 8, styles = { "oak", "birch" } },
@@ -83,6 +86,11 @@ local function mkBerryBush(x, yTop, z, itemKey)
 	bush.Parent = floraFolder
 	bush:SetAttribute("BerryKind", itemKey)
 	bush:SetAttribute("Uses", 3)
+	bush:SetAttribute("NodeSource", "natural")
+	bush:SetAttribute("NodeLifecycleClass", "natural_non_respawn")
+	bush:SetAttribute("NodeRespawnPolicy", "none")
+	bush:SetAttribute("NodePlayerGrowable", false)
+	bush:SetAttribute("NodeHarvestable", true)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Pick Berry"
 	prompt.ObjectText = "Berry Bush"
@@ -106,11 +114,20 @@ local function mkCylinder(x, yTop, z, radius, height, color, material, parentFol
 	return p
 end
 
-local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount)
+local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount, nodeSource)
 	if not part then return end
+	nodeSource = nodeSource or "natural"
+	local lifecycleClass = EcologyRules.classifyNodeLifecycle(nodeType, nodeSource)
+	local policy = EcologyRules.getNodeLifecyclePolicy(lifecycleClass)
 	part:SetAttribute("NodeType", nodeType)
 	part:SetAttribute("CollisionCategory", "node")
 	part:SetAttribute("NodeCategory", EcologyRules.getNodeCategory(nodeType))
+	part:SetAttribute("NodeSource", nodeSource)
+	part:SetAttribute("NodeLifecycleClass", lifecycleClass)
+	part:SetAttribute("NodeRespawnPolicy", tostring(policy.respawnPolicy or "none"))
+	part:SetAttribute("NodePlayerGrowable", policy.playerGrowable == true)
+	part:SetAttribute("NodeHarvestable", policy.harvestable ~= false)
+	part:SetAttribute("NodeNonRespawning", tostring(policy.respawnPolicy or "none") == "none")
 	part:SetAttribute("Durability", durability or 3)
 	part:SetAttribute("MaxDurability", durability or 3)
 	part:SetAttribute("DropKey", dropKey or "stone")
@@ -125,6 +142,16 @@ local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = part
 	CollectionService:AddTag(part, "HarvestNode")
+end
+
+function FloraSystem.markNaturalNodeDepleted(ecologyId)
+	if not ecologyId or ecologyId == "" then return end
+	depletedNaturalEcologyIds[tostring(ecologyId)] = true
+end
+
+function FloraSystem.isNaturalNodeDepleted(ecologyId)
+	if not ecologyId or ecologyId == "" then return false end
+	return depletedNaturalEcologyIds[tostring(ecologyId)] == true
 end
 
 local function build_pine(x, yTop, z, r)
@@ -214,7 +241,6 @@ function FloraSystem.scatterChunk(chunk)
 	local bushes = math.max(1, math.floor(spec.base * 0.35))
 	local obstacleSpec = BIOME_OBSTACLES[dominant] or BIOME_OBSTACLES.plains
 	local density = obstacleSpec.density or 1
-	local regenMult = obstacleSpec.regenMult or 1
 	local placed = {}
 	local function farEnough(x, z, min2)
 		for _, p in ipairs(placed) do
@@ -223,25 +249,31 @@ function FloraSystem.scatterChunk(chunk)
 		end
 		return true
 	end
+	local function ecologyIdFor(kind, x, z)
+		return string.format("%s:%s:%d:%d", chunk.key, tostring(kind), math.floor(x + 0.5), math.floor(z + 0.5))
+	end
 	for _ = 1, trees do
 		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
 		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
 		if cell and (not cell.water) and (not cell.blocked) and canNode then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
-			if farEnough(x, z, 9 * 9) then
-				local style = spec.styles[r:NextInteger(1, #spec.styles)]
-				local builder = BUILDERS[style]
-				if builder then
-					for _, inst in ipairs(builder(x, cell.yG, z, r)) do
-						addRef(chunk.key, inst)
-							if inst.Name == "Part" and inst.Material == Enum.Material.Wood then
-								inst.Name = "TreeNode"
-								attachHarvestNode(inst, "Tree", 4, "wood", 2)
-						inst:SetAttribute("EcologyId", string.format("%s:tree:%d:%d", chunk.key, math.floor(x+0.5), math.floor(z+0.5)))
-								inst:SetAttribute("NodeRegenSeconds", math.floor(22 * regenMult + 0.5))
-								end
-						end
+				if farEnough(x, z, 9 * 9) then
+					local ecoId = ecologyIdFor("tree", x, z)
+					if FloraSystem.isNaturalNodeDepleted(ecoId) then
+						continue
+					end
+					local style = spec.styles[r:NextInteger(1, #spec.styles)]
+					local builder = BUILDERS[style]
+					if builder then
+						for _, inst in ipairs(builder(x, cell.yG, z, r)) do
+							addRef(chunk.key, inst)
+								if inst.Name == "Part" and inst.Material == Enum.Material.Wood then
+									inst.Name = "TreeNode"
+									attachHarvestNode(inst, "Tree", 4, "wood", 2, "natural")
+									inst:SetAttribute("EcologyId", ecoId)
+									end
+							end
 					table.insert(placed, { x = x, z = z })
 				end
 			end
@@ -257,15 +289,18 @@ function FloraSystem.scatterChunk(chunk)
 		if cell and (not cell.water) and canNode then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
-			if farEnough(x, z, 6 * 6) then
-					local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock, nodesFolder)
-					rock.Name = "RockObstacle"
-					attachHarvestNode(rock, "Rock", 3, "stone", 2)
-					rock:SetAttribute("EcologyId", string.format("%s:rock:%d:%d", chunk.key, math.floor(x+0.5), math.floor(z+0.5)))
-					rock:SetAttribute("NodeRegenSeconds", math.floor(28 * regenMult + 0.5))
-					addRef(chunk.key, rock)
-				table.insert(placed, { x = x, z = z })
-			end
+				if farEnough(x, z, 6 * 6) then
+						local ecoId = ecologyIdFor("rock", x, z)
+						if FloraSystem.isNaturalNodeDepleted(ecoId) then
+							continue
+						end
+						local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock, nodesFolder)
+						rock.Name = "RockObstacle"
+						attachHarvestNode(rock, "Rock", 3, "stone", 2, "natural")
+						rock:SetAttribute("EcologyId", ecoId)
+						addRef(chunk.key, rock)
+					table.insert(placed, { x = x, z = z })
+				end
 		end
 	end
 	for _ = 1, oreCount do
@@ -274,15 +309,18 @@ function FloraSystem.scatterChunk(chunk)
 		if cell and (not cell.water) and canNode then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
-			if farEnough(x, z, 7 * 7) then
-					local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate, nodesFolder)
-					ore.Name = "OreNode"
-					attachHarvestNode(ore, "Ore", 4, "stone", 3)
-					ore:SetAttribute("EcologyId", string.format("%s:ore:%d:%d", chunk.key, math.floor(x+0.5), math.floor(z+0.5)))
-					ore:SetAttribute("NodeRegenSeconds", math.floor(34 * regenMult + 0.5))
-					addRef(chunk.key, ore)
-				table.insert(placed, { x = x, z = z })
-			end
+				if farEnough(x, z, 7 * 7) then
+						local ecoId = ecologyIdFor("ore", x, z)
+						if FloraSystem.isNaturalNodeDepleted(ecoId) then
+							continue
+						end
+						local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate, nodesFolder)
+						ore.Name = "OreNode"
+						attachHarvestNode(ore, "Ore", 4, "stone", 3, "natural")
+						ore:SetAttribute("EcologyId", ecoId)
+						addRef(chunk.key, ore)
+					table.insert(placed, { x = x, z = z })
+				end
 		end
 	end
 	for _ = 1, crystalCount do
@@ -291,15 +329,18 @@ function FloraSystem.scatterChunk(chunk)
 		if cell and (not cell.water) and canNode then
 			local x = cell.x + r:NextNumber(-3, 3)
 			local z = cell.z + r:NextNumber(-3, 3)
-			if farEnough(x, z, 8 * 8) then
-					local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass, nodesFolder)
-					crystal.Name = "CrystalNode"
-					attachHarvestNode(crystal, "Crystal", 5, "battery_seed", 2)
-					crystal:SetAttribute("EcologyId", string.format("%s:crystal:%d:%d", chunk.key, math.floor(x+0.5), math.floor(z+0.5)))
-					crystal:SetAttribute("NodeRegenSeconds", math.floor(42 * regenMult + 0.5))
-					addRef(chunk.key, crystal)
-				table.insert(placed, { x = x, z = z })
-			end
+				if farEnough(x, z, 8 * 8) then
+						local ecoId = ecologyIdFor("crystal", x, z)
+						if FloraSystem.isNaturalNodeDepleted(ecoId) then
+							continue
+						end
+						local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass, nodesFolder)
+						crystal.Name = "CrystalNode"
+						attachHarvestNode(crystal, "Crystal", 5, "battery_seed", 2, "natural")
+						crystal:SetAttribute("EcologyId", ecoId)
+						addRef(chunk.key, crystal)
+					table.insert(placed, { x = x, z = z })
+				end
 		end
 	end
 	for _ = 1, shrubs do
