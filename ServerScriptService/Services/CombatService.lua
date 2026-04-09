@@ -205,6 +205,46 @@ function CombatService:applyUtilityAbility(source, target, ability)
 	self:tryApplyStatuses(source, source, ability)
 end
 
+function CombatService:getAbilityTargetType(ability)
+	if not ability then return "none" end
+	if ability.targetType then return ability.targetType end
+	if ability.category == "barrier" then return "none" end
+	if ability.category == "utility" or ability.category == "utility_dash" then
+		if ability.targeting == "ally" then return "allyTarget" end
+		if ability.targeting == "enemy" then return "enemyTarget" end
+		if ability.targeting == "ground" then return "groundPoint" end
+		return "self"
+	end
+	if ability.category == "projectile" or ability.category == "aoe" or ability.category == "blink" or ability.category == "dash" or ability.category == "retreat" or ability.category == "melee" or ability.category == "hitscan" then
+		return "enemyTarget"
+	end
+	return "none"
+end
+
+function CombatService:validateTargetByType(source, ability, target, targetType)
+	if targetType == "self" or targetType == "none" then
+		return true, "ok"
+	end
+	if targetType == "groundPoint" then
+		return false, "ground_target_unimplemented"
+	end
+	if targetType == "enemyTarget" then
+		if not target then return false, "no_valid_enemy_target" end
+		if (not target.alive) or target.team == source.team then return false, "target_not_enemy" end
+		return true, "ok"
+	end
+	if targetType == "allyTarget" then
+		if not target then return false, "no_valid_ally_target" end
+		if target.team ~= source.team then return false, "target_not_ally" end
+		local allowDefeated = ability.allowDefeatedTarget == true
+		if not allowDefeated and not target.alive then
+			return false, "target_not_alive"
+		end
+		return true, "ok"
+	end
+	return false, "invalid_target_type"
+end
+
 function CombatService:evaluateAbility(source, abilityKey, target)
 	local ability = AbilityConfig[abilityKey]
 	if not ability then return false, "unknown" end
@@ -214,34 +254,32 @@ function CombatService:evaluateAbility(source, abilityKey, target)
 	if (source.cooldowns[abilityKey] or 0) > 0 then return false, "cooldown" end
 	if (ability.resourceUse.stamina or 0) > source.currentStamina then return false, "stamina" end
 	if (ability.resourceUse.energy or 0) > source.currentEnergy then return false, "energy" end
-	local category = ability.category
-	if category == "utility" or category == "utility_dash" then
-		local targeting = ability.targeting or "self"
-		if targeting == "ally" and target then
-			if not target.alive or target.team ~= source.team then return false, "target" end
-		elseif targeting == "enemy" and target then
-			if not target.alive or target.team == source.team then return false, "target" end
-		end
-	elseif category == "barrier" then
-		-- barrier has no strict target requirement
-	else
-		if not target or not target.alive or target.team == source.team then return false, "target" end
+
+	local targetType = self:getAbilityTargetType(ability)
+	local validTarget, targetReason = self:validateTargetByType(source, ability, target, targetType)
+	if not validTarget then
+		return false, targetReason, ability, targetType
 	end
-	if target then
+
+	if target and targetType ~= "self" and targetType ~= "none" then
 		local d = (Vector3.new(source.pos.X, 0, source.pos.Z) - Vector3.new(target.pos.X, 0, target.pos.Z)).Magnitude
-		if d > (ability.range or 20) then return false, "range" end
+		if d > (ability.range or 20) then return false, "range", ability, targetType end
 	end
-	return true, ability
+	return true, ability, targetType
 end
 
 function CombatService:validateManualCast(source, abilityKey, target)
-	local ok, abilityOrReason = self:evaluateAbility(source, abilityKey, target)
+	local ok, abilityOrReason, targetType = self:evaluateAbility(source, abilityKey, target)
 	if not ok then
+		local abilityDef = AbilityConfig[abilityKey]
+		local expectedTargetType = targetType or self:getAbilityTargetType(abilityDef)
 		return {
 			ok = false,
 			code = tostring(abilityOrReason or "invalid"),
 			abilityKey = abilityKey,
 			targetId = target and target.id or nil,
+			targetType = expectedTargetType,
+			targetResolution = target and "runtime_target" or "no_runtime_target",
 		}
 	end
 	return {
@@ -249,6 +287,8 @@ function CombatService:validateManualCast(source, abilityKey, target)
 		code = "accepted",
 		abilityKey = abilityKey,
 		targetId = target and target.id or nil,
+		targetType = targetType,
+		targetResolution = target and "runtime_target" or "self_or_none",
 		ability = abilityOrReason,
 	}
 end
@@ -268,7 +308,7 @@ function CombatService:tryUseAbility(source)
 	local key = source.intent.abilityKey
 	if not key then return end
 	local target = self.worldService:getCreatureById(source.intent.targetId)
-	local ok, abilityOrReason = self:evaluateAbility(source, key, target)
+	local ok, abilityOrReason, targetType = self:evaluateAbility(source, key, target)
 	source.intent.abilityKey = nil
 	source.intent.targetId = nil
 	if not ok then return end
@@ -279,11 +319,11 @@ function CombatService:tryUseAbility(source)
 	source.gcdUntil = self.worldService.time + (ability.gcd or 0.45)
 	source.castLockUntil = self.worldService.time + (ability.castLock or 0)
 	if ability.category == "utility" then
-		local utilTarget = self:resolveUtilityTarget(source, ability, target)
+		local utilTarget = (targetType == "self" or targetType == "none") and source or self:resolveUtilityTarget(source, ability, target)
 		self:applyUtilityAbility(source, utilTarget, ability)
 		return
 	elseif ability.category == "utility_dash" then
-		local utilTarget = self:resolveUtilityTarget(source, ability, target)
+		local utilTarget = (targetType == "self" or targetType == "none") and source or self:resolveUtilityTarget(source, ability, target)
 		if utilTarget then
 			local dir = (utilTarget.pos - source.pos)
 			local mag = math.max(0.01, dir.Magnitude)

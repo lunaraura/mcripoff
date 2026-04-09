@@ -28,30 +28,80 @@ function BerryService:getRuntimeAtSlot(player, slot)
 	return self.worldService:getRuntimeCreatureForOwnedId(player.UserId, owned.ownedId)
 end
 
+
+function BerryService:resolveAllyTarget(player, def, requestedSlot, requestedOwnedId)
+	local data = self.playerDataService:getOrCreate(player)
+	local activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1
+	local resolvedSlot = tonumber(requestedSlot)
+	local debug = {
+		targetType = ItemUseRules.getTargetType(def),
+		itemTargeting = tostring(def and def.targeting or "none"),
+		requestedSlot = tonumber(requestedSlot),
+		requestedOwnedId = tonumber(requestedOwnedId),
+		activeSlot = activeSlot,
+	}
+
+	if not resolvedSlot and requestedOwnedId then
+		for slot = 1, 2 do
+			local ownedId = data.partySlots[slot]
+			if ownedId and tonumber(ownedId) == tonumber(requestedOwnedId) then
+				resolvedSlot = slot
+				break
+			end
+		end
+	end
+
+	if not resolvedSlot then
+		local pets = {}
+		for slot = 1, 2 do
+			local ownedId = data.partySlots[slot]
+			local owned = ownedId and data.ownedCreatures[ownedId] or nil
+			if owned then
+				pets[slot] = {
+					state = owned.isDefeated and "defeated" or "alive",
+					ownedId = owned.ownedId,
+				}
+			end
+		end
+		resolvedSlot = ItemUseRules.computePreferredTargetSlot(def, pets, activeSlot)
+	end
+
+	debug.resolvedSlot = resolvedSlot
+	local owned = resolvedSlot and self:getOwnedAtSlot(player, resolvedSlot) or nil
+	local runtime = resolvedSlot and self:getRuntimeAtSlot(player, resolvedSlot) or nil
+	debug.resolvedOwnedId = owned and owned.ownedId or nil
+	debug.resolvedOwnedDefeated = owned and owned.isDefeated or nil
+	debug.resolvedRuntimeAlive = runtime and runtime.alive or nil
+	return resolvedSlot, owned, runtime, debug
+end
+
 function BerryService:emitResult(player, result)
 	local remote = self.worldService.remotes and self.worldService.remotes.ItemUseResult
 	if remote then remote:FireClient(player, result) end
+	local dbg = result.debug or {}
+	local debugSuffix = string.format(" tgtType=%s slot=%s owned=%s", tostring(dbg.targetType or "-"), tostring(dbg.resolvedSlot or "-"), tostring(dbg.resolvedOwnedId or "-"))
 	if result.ok then
-		self.worldService:pushEventLog(player, string.format("Item use ok [%s]", result.reasonCode), "#a8ffd7")
+		self.worldService:pushEventLog(player, string.format("Item use ok [%s]%s", result.reasonCode, debugSuffix), "#a8ffd7")
 	else
-		self.worldService:pushEventLog(player, string.format("Item use failed [%s]", result.reasonCode), "#ffb3b3")
+		self.worldService:pushEventLog(player, string.format("Item use failed [%s]%s", result.reasonCode, debugSuffix), "#ffb3b3")
 	end
 end
 
-function BerryService:validateServerTarget(player, def, slot)
-	if not slot then return false, ItemUseRules.Reason.NO_TARGET end
-	local owned = self:getOwnedAtSlot(player, slot)
-	if not owned then return false, ItemUseRules.Reason.TARGET_INVALID end
-	local runtime = self:getRuntimeAtSlot(player, slot)
+function BerryService:validateServerTarget(player, def, requestedSlot, requestedOwnedId)
+	local slot, owned, runtime, debug = self:resolveAllyTarget(player, def, requestedSlot, requestedOwnedId)
+	if not slot then return false, ItemUseRules.Reason.NO_VALID_ALLY, nil, nil, nil, debug end
+	if not owned then return false, ItemUseRules.Reason.TARGET_INVALID, slot, nil, nil, debug end
 	if def.targeting == "ally_defeated" then
-		if not owned.isDefeated then return false, ItemUseRules.Reason.TARGET_NOT_DEFEATED end
-		return true, slot, owned, runtime
+		if not owned.isDefeated then return false, ItemUseRules.Reason.TARGET_NOT_DEFEATED, slot, owned, runtime, debug end
+		debug.resolution = "ally_defeated_ok"
+		return true, ItemUseRules.Reason.OK, slot, owned, runtime, debug
 	end
-	if owned.isDefeated or not runtime or not runtime.alive then return false, ItemUseRules.Reason.TARGET_INVALID end
+	if owned.isDefeated or not runtime or not runtime.alive then return false, ItemUseRules.Reason.TARGET_INVALID, slot, owned, runtime, debug end
 	if def.effect.kind == "heal" and runtime.currentHP >= (runtime.modifiedStats.maxHP or runtime.currentHP) then
-		return false, ItemUseRules.Reason.TARGET_FULL_HP
+		return false, ItemUseRules.Reason.TARGET_FULL_HP, slot, owned, runtime, debug
 	end
-	return true, slot, owned, runtime
+	debug.resolution = "ally_alive_ok"
+	return true, ItemUseRules.Reason.OK, slot, owned, runtime, debug
 end
 
 function BerryService:applyEffect(player, def, owned, runtime, slot)
@@ -77,7 +127,7 @@ function BerryService:applyEffect(player, def, owned, runtime, slot)
 	end
 end
 
-function BerryService:tryUseBerry(player, rawKey, targetSlot)
+function BerryService:tryUseBerry(player, rawKey, targetSlot, targetOwnedId)
 	local canonical, def = ItemUseRules.getDef(rawKey)
 	if not canonical then
 		local r = { ok = false, reasonCode = ItemUseRules.Reason.INVALID, key = tostring(rawKey) }
@@ -101,9 +151,9 @@ function BerryService:tryUseBerry(player, rawKey, targetSlot)
 	end
 	local activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1
 	local resolvedTargetSlot = ItemUseRules.resolveTargetSlot(def, targetSlot, activeSlot)
-	local okTarget, slot, owned, runtime = self:validateServerTarget(player, def, resolvedTargetSlot)
+	local okTarget, reasonCode, slot, owned, runtime, runtimeDebug = self:validateServerTarget(player, def, resolvedTargetSlot, targetOwnedId)
 	if not okTarget then
-		local r = { ok = false, reasonCode = slot, key = canonical }
+		local r = { ok = false, reasonCode = reasonCode, key = canonical, debug = runtimeDebug }
 		self:emitResult(player, r)
 		return false, r
 	end
@@ -113,8 +163,8 @@ function BerryService:tryUseBerry(player, rawKey, targetSlot)
 		return false, r
 	end
 	byItem[canonical] = now
-	self:applyEffect(player, def, owned, runtime, slot)
-	local r = { ok = true, reasonCode = ItemUseRules.Reason.OK, key = canonical, targetSlot = resolvedTargetSlot }
+	self:applyEffect(player, def, owned, runtime or self:getRuntimeAtSlot(player, slot), slot)
+	local r = { ok = true, reasonCode = ItemUseRules.Reason.OK, key = canonical, targetSlot = slot, debug = runtimeDebug }
 	self:emitResult(player, r)
 	return true, r
 end

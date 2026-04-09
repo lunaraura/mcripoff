@@ -11,6 +11,7 @@ ItemUseRules.Reason = {
 	UNOWNED = "ITEM_UNOWNED",
 	NO_TARGET = "ITEM_NO_TARGET",
 	TARGET_INVALID = "ITEM_TARGET_INVALID",
+	NO_VALID_ALLY = "ITEM_NO_VALID_ALLY",
 	TARGET_NOT_DEFEATED = "ITEM_TARGET_NOT_DEFEATED",
 	TARGET_FULL_HP = "ITEM_TARGET_FULL_HP",
 	ON_COOLDOWN = "ITEM_ON_COOLDOWN",
@@ -39,6 +40,16 @@ function ItemUseRules.getDisplayItems()
 	end
 	table.sort(out, function(a, b) return a.key < b.key end)
 	return out
+end
+
+
+function ItemUseRules.getTargetType(def)
+	if not def then return "none" end
+	if def.targetType then return def.targetType end
+	if def.targeting == "ally_alive" or def.targeting == "ally_defeated" then
+		return "allyTarget"
+	end
+	return "none"
 end
 
 function ItemUseRules.shouldRouteToActivePet(def)
@@ -78,7 +89,9 @@ end
 function ItemUseRules.validateClientUse(def, count, targetSlot)
 	if not def then return false, ItemUseRules.Reason.INVALID end
 	if (count or 0) < 1 then return false, ItemUseRules.Reason.UNOWNED end
-	if not targetSlot then return false, ItemUseRules.Reason.NO_TARGET end
+	if not targetSlot and not (def.targeting == "ally_alive" or def.targeting == "ally_defeated") then
+		return false, ItemUseRules.Reason.NO_TARGET
+	end
 	return true, ItemUseRules.Reason.OK
 end
 

@@ -100,6 +100,8 @@ local function pushManualCastResult(player, pet, payload)
 		petId = pet and pet.id or nil,
 		abilityKey = payload.abilityKey,
 		targetId = payload.targetId,
+		targetType = payload.targetType,
+		targetResolution = payload.targetResolution,
 		t = worldService.time,
 	}
 	if pet then
@@ -299,7 +301,7 @@ remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
 	local result = combatService:validateManualCast(pet, abilityKey, chosenTarget)
 	if not result.ok then
 		pushManualCastResult(player, pet, result)
-		worldService:pushEventLog(player, string.format("Manual cast rejected [%s]", tostring(result.code)), "#ffb3b3")
+		worldService:pushEventLog(player, string.format("Manual cast rejected [%s type=%s res=%s]", tostring(result.code), tostring(result.targetType or "-"), tostring(result.targetResolution or "-")), "#ffb3b3")
 		return
 	end
 	pet.manualCastRequest = {
@@ -365,7 +367,8 @@ end)
 remotes.UseBerry.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
 	local targetSlot = tonumber(payload.targetSlot)
-	berryService:tryUseBerry(player, payload.kind, targetSlot)
+	local targetOwnedId = tonumber(payload.targetOwnedId)
+	berryService:tryUseBerry(player, payload.kind, targetSlot, targetOwnedId)
 end)
 
 remotes.RequestClientOption.OnServerEvent:Connect(function(player, payload)
