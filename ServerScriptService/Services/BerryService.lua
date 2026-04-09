@@ -99,7 +99,9 @@ function BerryService:tryUseBerry(player, rawKey, targetSlot)
 		self:emitResult(player, r)
 		return false, r
 	end
-	local okTarget, slot, owned, runtime = self:validateServerTarget(player, def, targetSlot)
+	local activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1
+	local resolvedTargetSlot = ItemUseRules.resolveTargetSlot(def, targetSlot, activeSlot)
+	local okTarget, slot, owned, runtime = self:validateServerTarget(player, def, resolvedTargetSlot)
 	if not okTarget then
 		local r = { ok = false, reasonCode = slot, key = canonical }
 		self:emitResult(player, r)
@@ -112,7 +114,7 @@ function BerryService:tryUseBerry(player, rawKey, targetSlot)
 	end
 	byItem[canonical] = now
 	self:applyEffect(player, def, owned, runtime, slot)
-	local r = { ok = true, reasonCode = ItemUseRules.Reason.OK, key = canonical, targetSlot = targetSlot }
+	local r = { ok = true, reasonCode = ItemUseRules.Reason.OK, key = canonical, targetSlot = resolvedTargetSlot }
 	self:emitResult(player, r)
 	return true, r
 end
