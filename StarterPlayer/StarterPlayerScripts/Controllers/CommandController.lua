@@ -1,3 +1,4 @@
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 
@@ -44,6 +45,29 @@ function CommandController:cast(abilityKey, targetId)
 		abilityKey = abilityKey,
 		targetId = targetId,
 	})
+end
+
+
+function CommandController:getNearestCreatureTargetId(maxDistance)
+	local localPlayer = Players.LocalPlayer
+	local root = localPlayer.Character and localPlayer.Character.PrimaryPart
+	if not root then return nil end
+	local modelsFolder = workspace:FindFirstChild("World") and workspace.World:FindFirstChild("CreatureModels")
+	if not modelsFolder then return nil end
+	local bestId, bestDist = nil, tonumber(maxDistance) or 140
+	for _, model in ipairs(modelsFolder:GetChildren()) do
+		if model:IsA("Model") and model.PrimaryPart then
+			local cid = tonumber(model:GetAttribute("CreatureId"))
+			if cid then
+				local d = (model.PrimaryPart.Position - root.Position).Magnitude
+				if d <= bestDist then
+					bestDist = d
+					bestId = cid
+				end
+			end
+		end
+	end
+	return bestId
 end
 
 function CommandController:getTargetIdUnderMouse()

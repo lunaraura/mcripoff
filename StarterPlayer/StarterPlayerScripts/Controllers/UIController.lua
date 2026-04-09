@@ -4,6 +4,9 @@ local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
 
 local UIController = {}
 UIController.__index = UIController
@@ -34,6 +37,9 @@ function UIController.new(buildController, itemController, partyController, comm
 		stance = "FOLLOW",
 		activeDesignatedTargetId = nil,
 		lastManualCast = nil,
+		activePetHud = nil,
+		hotbarSlots = {},
+		hotbarStatusLabel = nil,
 		commandPanelMode = "HIDDEN",
 		activeCommand = "follow",
 	}, UIController)
@@ -61,7 +67,8 @@ function UIController:bind()
 	self.manualCastResult.OnClientEvent:Connect(function(payload)
 		self.lastManualCast = payload
 		local color = payload and payload.ok and "#a8ffd7" or "#ffb3b3"
-		self:appendLog(string.format("ManualCast[%s] slot=%s ability=%s", tostring(payload and payload.code or "?"), tostring(payload and payload.slot or "-"), tostring(payload and payload.abilityKey or "-")), color)
+		self:appendLog(string.format("ManualCast[%s] slot=%s ability=%s type=%s", tostring(payload and payload.code or "?"), tostring(payload and payload.slot or "-"), tostring(payload and payload.abilityKey or "-"), tostring(payload and payload.targetType or "-")), color)
+		self:refreshAbilityHotbar()
 	end)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
@@ -142,6 +149,7 @@ function UIController:buildUi()
 	end
 	self:buildOptionsMenu(gui)
 	self:buildCommandPanel(gui)
+	self:buildAbilityHotbar(gui)
 	self:buildBuildAndToolMenu(gui)
 	self:buildItemBar(gui)
 end
@@ -657,7 +665,163 @@ function UIController:updatePetHud(payload)
 			end
 		end
 	end
+	self.activePetHud = pets[self.activeSlot or 1]
 	self:refreshCommandPanel()
+	self:refreshAbilityHotbar()
+end
+
+function UIController:buildAbilityHotbar(gui)
+	local panel = Instance.new("Frame")
+	panel.Name = "AbilityHotbar"
+	panel.Size = UDim2.fromOffset(420, 82)
+	panel.Position = UDim2.new(0.5, -210, 1, -178)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+	panel.BackgroundTransparency = 0.15
+	panel.Parent = gui
+	self.hotbarPanel = panel
+
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, -12, 0, 18)
+	title.Position = UDim2.fromOffset(8, 4)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 13
+	title.TextColor3 = Color3.fromRGB(235, 245, 255)
+	title.Text = "Abilities [1-4]  (Shift+1/2 or F1/F2 changes active pet)"
+	title.Parent = panel
+
+	for i = 1, 4 do
+		local slot = Instance.new("TextButton")
+		slot.Name = "AbilitySlot" .. i
+		slot.Size = UDim2.fromOffset(97, 42)
+		slot.Position = UDim2.fromOffset(8 + (i - 1) * 103, 24)
+		slot.Font = Enum.Font.Code
+		slot.TextSize = 12
+		slot.TextWrapped = true
+		slot.TextColor3 = Color3.fromRGB(230, 240, 255)
+		slot.BackgroundColor3 = Color3.fromRGB(35, 42, 54)
+		slot.Text = string.format("[%d] --", i)
+		slot.Parent = panel
+		slot.MouseButton1Click:Connect(function()
+			self:triggerHotbarSlot(i)
+		end)
+		self.hotbarSlots[i] = slot
+	end
+
+	local status = Instance.new("TextLabel")
+	status.BackgroundTransparency = 1
+	status.Size = UDim2.new(1, -12, 0, 12)
+	status.Position = UDim2.fromOffset(8, 68)
+	status.TextXAlignment = Enum.TextXAlignment.Left
+	status.Font = Enum.Font.Code
+	status.TextSize = 11
+	status.TextColor3 = Color3.fromRGB(200, 220, 235)
+	status.Text = "Ready"
+	status.Parent = panel
+	self.hotbarStatusLabel = status
+
+	task.spawn(function()
+		while panel.Parent do
+			self:refreshAbilityHotbar()
+			task.wait(0.12)
+		end
+	end)
+end
+
+function UIController:inferAbilityTargetType(ability)
+	if not ability then return "none" end
+	if ability.targetType then return ability.targetType end
+	if ability.category == "utility" or ability.category == "utility_dash" then
+		if ability.targeting == "ally" then return "allyTarget" end
+		if ability.targeting == "enemy" then return "enemyTarget" end
+		return "self"
+	end
+	if ability.category == "barrier" then return "none" end
+	return "enemyTarget"
+end
+
+function UIController:getAbilityResourceState(pet, ability)
+	if not pet or not ability then return true, nil end
+	local needStamina = (ability.resourceUse and ability.resourceUse.stamina) or 0
+	local needEnergy = (ability.resourceUse and ability.resourceUse.energy) or 0
+	if (tonumber(pet.stamina) or 0) < needStamina then
+		return false, "low_stamina"
+	end
+	if (tonumber(pet.energy) or 0) < needEnergy then
+		return false, "low_energy"
+	end
+	return true, nil
+end
+
+function UIController:refreshAbilityHotbar()
+	if not self.hotbarSlots then return end
+	local pet = self.activePetHud
+	local moveset = (pet and pet.moveset) or {}
+	for i = 1, 4 do
+		local slot = self.hotbarSlots[i]
+		if slot then
+			local key = moveset[i]
+			local ability = key and AbilityConfig[key] or nil
+			local cd = key and math.max(0, tonumber(pet and pet.cooldowns and pet.cooldowns[key]) or 0) or 0
+			local canCast, reason = self:getAbilityResourceState(pet, ability)
+			if not key then
+				slot.Text = string.format("[%d] --", i)
+				slot.BackgroundColor3 = Color3.fromRGB(40, 44, 52)
+			elseif cd > 0 then
+				slot.Text = string.format("[%d] %s\nCD %.1fs", i, tostring(ability and ability.name or key), cd)
+				slot.BackgroundColor3 = Color3.fromRGB(65, 50, 45)
+			elseif not canCast then
+				slot.Text = string.format("[%d] %s\n%s", i, tostring(ability and ability.name or key), tostring(reason))
+				slot.BackgroundColor3 = Color3.fromRGB(78, 44, 44)
+			else
+				slot.Text = string.format("[%d] %s", i, tostring(ability and ability.name or key))
+				slot.BackgroundColor3 = Color3.fromRGB(35, 62, 54)
+			end
+		end
+	end
+	if self.hotbarStatusLabel then
+		local cast = self.lastManualCast
+		if cast and (tonumber(cast.slot) == tonumber(self.activeSlot)) then
+			self.hotbarStatusLabel.Text = string.format("Last: %s / %s / %s", tostring(cast.code or "-"), tostring(cast.targetType or "-"), tostring(cast.targetResolution or "-"))
+		else
+			self.hotbarStatusLabel.Text = "Ready"
+		end
+	end
+end
+
+function UIController:triggerHotbarSlot(slotIndex)
+	local pet = self.activePetHud
+	if not pet or pet.state ~= "alive" then
+		self:appendLog("Hotbar: active pet unavailable", "#ffb3b3")
+		return
+	end
+	local moveset = pet.moveset or {}
+	local abilityKey = moveset[slotIndex]
+	if not abilityKey then
+		self:appendLog(string.format("Hotbar[%d]: empty", slotIndex), "#ffb3b3")
+		return
+	end
+	local ability = AbilityConfig[abilityKey]
+	local cd = math.max(0, tonumber(pet.cooldowns and pet.cooldowns[abilityKey]) or 0)
+	if cd > 0 then
+		self:appendLog(string.format("Hotbar[%d]: %s cooldown %.1fs", slotIndex, tostring(abilityKey), cd), "#ffb3b3")
+		return
+	end
+	local canCast, reason = self:getAbilityResourceState(pet, ability)
+	if not canCast then
+		self:appendLog(string.format("Hotbar[%d]: %s", slotIndex, tostring(reason)), "#ffb3b3")
+		return
+	end
+	local targetType = self:inferAbilityTargetType(ability)
+	local targetId = nil
+	if targetType == "enemyTarget" then
+		targetId = self.activeDesignatedTargetId or (self.command and self.command.getNearestCreatureTargetId and self.command:getNearestCreatureTargetId((ability and ability.range) or 140) or nil)
+	end
+	self:appendLog(string.format("Hotbar[%d] cast %s type=%s target=%s", slotIndex, tostring(abilityKey), tostring(targetType), tostring(targetId or "-")), "#d7fcb7")
+	if self.command then
+		self.command:cast(abilityKey, targetId)
+	end
 end
 
 function UIController:buildCooldownSummary(cooldowns)

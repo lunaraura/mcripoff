@@ -16,9 +16,17 @@ function InputController:bind()
 	UserInputService.InputBegan:Connect(function(input, gp)
 		if gp then return end
 		if input.KeyCode == Enum.KeyCode.One then
+			if self.ui and self.ui.triggerHotbarSlot then self.ui:triggerHotbarSlot(1) end
+		elseif input.KeyCode == Enum.KeyCode.Two then
+			if self.ui and self.ui.triggerHotbarSlot then self.ui:triggerHotbarSlot(2) end
+		elseif input.KeyCode == Enum.KeyCode.Three then
+			if self.ui and self.ui.triggerHotbarSlot then self.ui:triggerHotbarSlot(3) end
+		elseif input.KeyCode == Enum.KeyCode.Four then
+			if self.ui and self.ui.triggerHotbarSlot then self.ui:triggerHotbarSlot(4) end
+		elseif input.KeyCode == Enum.KeyCode.F1 or (input.KeyCode == Enum.KeyCode.One and (UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift))) then
 			self.party:selectSlot(1)
 			self.command:setActiveSlot(1)
-		elseif input.KeyCode == Enum.KeyCode.Two then
+		elseif input.KeyCode == Enum.KeyCode.F2 or (input.KeyCode == Enum.KeyCode.Two and (UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift))) then
 			self.party:selectSlot(2)
 			self.command:setActiveSlot(2)
 		elseif input.KeyCode == Enum.KeyCode.M then
@@ -35,8 +43,6 @@ function InputController:bind()
 			else
 				self.command:sendCommand({ type = "clearDesignatedTarget" })
 			end
-		elseif input.KeyCode == Enum.KeyCode.Q then
-			self.command:cast("ram", nil) -- TODO: add target picking
 		elseif input.KeyCode == Enum.KeyCode.E then
 			self.build:handlePrimaryAction()
 		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then

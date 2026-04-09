@@ -19,8 +19,11 @@ local function ensureRemote(name)
 	return evt
 end
 
-local remotes = {
-	RequestPetCommand = ensureRemote("RequestPetCommand"),
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
+
+local remotes = {	RequestPetCommand = ensureRemote("RequestPetCommand"),
 	RequestContextAction = ensureRemote("RequestContextAction"),
 	RequestManualCast = ensureRemote("RequestManualCast"),
 	RequestStarterChoice = ensureRemote("RequestStarterChoice"),
@@ -76,6 +79,21 @@ local function getPetBySlot(player, slot)
 		end
 	end
 	return nil
+end
+
+local function findNearestEnemyTarget(sourcePet, preferredRange)
+	if not sourcePet then return nil end
+	local best, bestDist = nil, math.max(20, tonumber(preferredRange) or 120)
+	for _, c in ipairs(worldService.creatures) do
+		if c.alive and c.team ~= sourcePet.team then
+			local d = (Vector3.new(sourcePet.pos.X, 0, sourcePet.pos.Z) - Vector3.new(c.pos.X, 0, c.pos.Z)).Magnitude
+			if d <= bestDist then
+				bestDist = d
+				best = c
+			end
+		end
+	end
+	return best
 end
 
 local function setDesignatedTarget(player, slot, targetId)
@@ -298,6 +316,15 @@ remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
 	local designatedTargetId = tonumber(player:GetAttribute(getDesignatedAttrKey(requestedSlot)))
 	local chosenTargetId = requestedTargetId or designatedTargetId
 	local chosenTarget = chosenTargetId and worldService:getCreatureById(chosenTargetId) or nil
+	local abilityDef = AbilityConfig[abilityKey]
+	local targetType = combatService:getAbilityTargetType(abilityDef)
+	if targetType == "enemyTarget" and not chosenTarget then
+		local nearest = findNearestEnemyTarget(pet, abilityDef and abilityDef.range)
+		if nearest then
+			chosenTarget = nearest
+			chosenTargetId = nearest.id
+		end
+	end
 	local result = combatService:validateManualCast(pet, abilityKey, chosenTarget)
 	if not result.ok then
 		pushManualCastResult(player, pet, result)
@@ -446,6 +473,7 @@ local function pushPetHud()
 						manualCastCode = isAlive and (pet.lastManualCastResult and pet.lastManualCastResult.code or pet.manualCastNote or "-") or "-",
 						commandOverride = isAlive and (worldService.time <= (pet.commandOverrideUntil or 0)) or false,
 					cooldowns = cooldowns,
+					moveset = table.clone((isAlive and pet.moveset) or (owned.moveset) or {}),
 				}
 			else
 				petPayload[i] = nil
