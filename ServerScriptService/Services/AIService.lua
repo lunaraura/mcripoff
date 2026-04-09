@@ -39,6 +39,13 @@ end
 local COMMAND_INTENT_MEMORY = 4.0
 local ACTIVE_ASSIST_RANGE = 90
 
+local function scaledMove(dir, stateKey, profile)
+	local mults = profile and profile.movementByState or nil
+	local scale = (mults and mults[stateKey]) or 1
+	if scale <= 0 then return Vector3.zero end
+	return dir * scale
+end
+
 function AIService.new(worldService)
 	return setmetatable({ worldService = worldService }, AIService)
 end
@@ -74,6 +81,9 @@ function AIService:ensureAIState(creature)
 		lastIntent = "idle",
 		lastChosenAbility = nil,
 		lastAbilityScoreSummary = nil,
+		retainedIntent = { kind = "idle", move = Vector3.zero, targetId = nil, abilityKey = nil },
+		isDormant = false,
+		idleSleepUntil = 0,
 	}
 	return creature.ai
 end
@@ -89,9 +99,6 @@ function AIService:applyProfileSettings(creature, state, profile)
 end
 
 function AIService:think(creature, dt)
-	creature.intent.move = Vector3.zero
-	creature.intent.abilityKey = nil
-	creature.intent.targetId = nil
 	if creature.manualCastState == "pending" and creature.manualCastRequest and self.worldService.time > ((creature.manualCastRequest.createdAt or 0) + 1.5) then
 		creature.manualCastState = "rejected"
 		creature.manualCastNote = "timeout"
@@ -100,14 +107,37 @@ function AIService:think(creature, dt)
 	local state = self:ensureAIState(creature)
 	local profile = self:getProfile(creature)
 	self:applyProfileSettings(creature, state, profile)
-	if self.worldService.time < (state.nextThinkAt or 0) then
-		self:applyIntent(creature, state, { kind = "idle" })
+	local now = self.worldService.time
+
+	if creature.mode == "wild" and state.isDormant and now < (state.idleSleepUntil or 0) then
+		local wakeRadius = profile.activityRadius or 36
+		local nearbyEnemy = self.worldService:findNearestEnemyOf(creature, wakeRadius)
+		if not nearbyEnemy then
+			self:applyIntent(creature, state, state.retainedIntent or { kind = "idle", move = Vector3.zero, targetId = nil, abilityKey = nil })
+			return
+		end
+		state.isDormant = false
+		state.idleSleepUntil = 0
+		state.nextThinkAt = now
+	end
+
+	if now < (state.nextThinkAt or 0) then
+		self:applyIntent(creature, state, state.retainedIntent or { kind = "idle", move = Vector3.zero, targetId = nil, abilityKey = nil })
 		return
 	end
-	state.nextThinkAt = self.worldService.time + (profile.thinkInterval or 0.2)
+	state.nextThinkAt = now + (profile.thinkInterval or 0.2)
 	local facts = self:sense(creature, state, profile, dt)
 	local decision = self:decide(creature, state, profile, facts)
 	local intent = self:buildIntent(creature, state, profile, facts, decision)
+	local engagedWindow = profile.engagedMemorySeconds or 2.5
+	local recentlyEngaged = (creature.lastEngagedAt and (now - creature.lastEngagedAt) <= engagedWindow) or false
+	if creature.mode == "wild" and (not recentlyEngaged) and (decision.state == "idle" or decision.state == "roam") and #facts.enemies == 0 then
+		state.isDormant = true
+		state.idleSleepUntil = now + (profile.idleSleepDuration or 1.5)
+		state.nextThinkAt = now + (profile.dormantThinkInterval or 1.0)
+	else
+		state.isDormant = false
+	end
 	self:applyIntent(creature, state, intent)
 end
 
@@ -533,13 +563,13 @@ function AIService:buildIntent(creature, state, profile, facts, decision)
 
 	if decision.state == "chase" then
 		local dir = unitFlat(creature.pos, decision.target.pos)
-		intent.move = dir
+		intent.move = scaledMove(dir, "chase", profile)
 		intent.kind = "chase"
 		return intent
 	end
 	if decision.state == "attack" then
 		local dir, d = unitFlat(creature.pos, decision.target.pos)
-		if d > profile.preferredRange then intent.move = dir end
+		if d > profile.preferredRange then intent.move = scaledMove(dir, "chase", profile) end
 		local abilityKey, summary = nil, nil
 		if manualReq and manualReq.abilityKey then
 			abilityKey = manualReq.abilityKey
@@ -558,7 +588,7 @@ function AIService:buildIntent(creature, state, profile, facts, decision)
 	end
 	if decision.state == "follow" or decision.state == "return" then
 		local dir, d = unitFlat(creature.pos, decision.anchor)
-		if d > 3 then intent.move = dir end
+		if d > 3 then intent.move = scaledMove(dir, decision.state, profile) end
 		return intent
 	end
 	if decision.state == "roam" then
@@ -571,15 +601,15 @@ function AIService:buildIntent(creature, state, profile, facts, decision)
 		local anchorDist = flatDistance(creature.pos, decision.anchor)
 		if anchorDist > profile.roamRadius then
 			local dir = unitFlat(creature.pos, decision.anchor)
-			intent.move = dir
+			intent.move = scaledMove(dir, "return", profile)
 		else
-			intent.move = Vector3.new(math.cos(angle), 0, math.sin(angle))
+			intent.move = scaledMove(Vector3.new(math.cos(angle), 0, math.sin(angle)), "roam", profile)
 		end
 		return intent
 	end
 	if decision.state == "flee" then
 		local away = unitFlat(decision.target.pos, creature.pos)
-		intent.move = away
+		intent.move = scaledMove(away, "flee", profile)
 		return intent
 	end
 	if decision.state == "hold" then
@@ -619,6 +649,15 @@ function AIService:applyIntent(creature, state, intent)
 		manualCastState = creature.manualCastState,
 		commandOverride = self.worldService.time <= (creature.commandOverrideUntil or 0),
 		intendedMove = string.format("%.2f,%.2f,%.2f", creature.intent.move.X, creature.intent.move.Y, creature.intent.move.Z),
+		nextThinkAt = state.nextThinkAt or 0,
+		idleSleepUntil = state.idleSleepUntil or 0,
+		isDormant = state.isDormant == true,
+	}
+	state.retainedIntent = {
+		kind = intent.kind or "idle",
+		move = intent.move or Vector3.zero,
+		targetId = intent.targetId,
+		abilityKey = nil,
 	}
 end
 

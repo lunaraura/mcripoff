@@ -115,6 +115,9 @@ function CreatureService:updateModel(creature)
 				creature.model:SetAttribute("AI_ControlMode", tostring(creature.debugAI and creature.debugAI.controlMode or "-"))
 				creature.model:SetAttribute("AI_CommandOverride", creature.debugAI and creature.debugAI.commandOverride and true or false)
 				creature.model:SetAttribute("AI_IntendedMove", tostring(creature.debugAI and creature.debugAI.intendedMove or "0,0,0"))
+				creature.model:SetAttribute("AI_NextThinkAt", tonumber(creature.debugAI and creature.debugAI.nextThinkAt) or 0)
+				creature.model:SetAttribute("AI_IdleSleepUntil", tonumber(creature.debugAI and creature.debugAI.idleSleepUntil) or 0)
+				creature.model:SetAttribute("AI_IsDormant", creature.debugAI and creature.debugAI.isDormant and true or false)
 			end
 		if creature.mode == "pet" and creature.ownerUserId then
 			local owner = Players:GetPlayerByUserId(creature.ownerUserId)
