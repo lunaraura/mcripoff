@@ -41,7 +41,7 @@ local SpeciesConfig = {
 		drop = { { key = "stone", amount = 1 } }, morphOptions = { { option = "boarox", pointsNeeded = 3 } },
 	},
 	boarox = {
-		name = "Boarox", familyKey = "ursine", compositeKey = "rock", outerCompositeKey = "rock", innerCompositeKey = "animal", role = "tank",
+		name = "Boarox", familyKey = "suine", compositeKey = "rock", outerCompositeKey = "rock", innerCompositeKey = "animal", role = "tank",
 		stage = 1,
 		baseStats = { pAtk = 13, eAtk = 1, range = 24, maxHP = 140, spd = 11, castSpd = 0.9, size = 5, stamina = 28, energy = 8, recoverStamina = 2.1, recoverEnergy = 0.9 },
 		abilities = { "bedrockPlates", "bristleGuard" },
@@ -89,7 +89,7 @@ local SpeciesConfig = {
 		drop = { { key = "water_glob", amount = 1 } }, morphOptions = {},
 	},
 	sheeplet = {
-		name = "Sheeplet", familyKey = "herd", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
+		name = "Sheeplet", familyKey = "ovine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
 		stage = 0,
 		baseStats = { pAtk = 3, eAtk = 0, range = 20, maxHP = 76, spd = 12, castSpd = 1.0, size = 3, stamina = 14, energy = 8, recoverStamina = 1.8, recoverEnergy = 1.0 },
 		abilities = { "woolyCoat", "grazer" },
@@ -97,7 +97,7 @@ local SpeciesConfig = {
 		harvestDrop = { { key = "fiber", amount = 2 } }, harvestCooldown = 20, drop = { { key = "meat", amount = 1 } }, morphOptions = {},
 	},
 	goat = {
-		name = "Goat", familyKey = "herd", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
+		name = "Goat", familyKey = "caprine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
 		stage = 0,
 		baseStats = { pAtk = 5, eAtk = 0, range = 22, maxHP = 88, spd = 13, castSpd = 1.0, size = 3.5, stamina = 18, energy = 9, recoverStamina = 2.0, recoverEnergy = 1.0 },
 		abilities = { "sureFooted", "forager" },
@@ -105,7 +105,7 @@ local SpeciesConfig = {
 		harvestDrop = { { key = "fiber", amount = 1 } }, harvestCooldown = 22, drop = { { key = "meat", amount = 1 } }, morphOptions = {},
 	},
 	got = {
-		name = "Got", familyKey = "herd", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
+		name = "Got", familyKey = "caprine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
 		stage = 0,
 		baseStats = { pAtk = 5, eAtk = 0, range = 22, maxHP = 88, spd = 13, castSpd = 1.0, size = 3.5, stamina = 18, energy = 9, recoverStamina = 2.0, recoverEnergy = 1.0 },
 		abilities = { "sureFooted", "forager" },
@@ -113,7 +113,7 @@ local SpeciesConfig = {
 		harvestDrop = { { key = "fiber", amount = 1 } }, harvestCooldown = 22, drop = { { key = "meat", amount = 1 } }, morphOptions = {},
 	},
 	elephant = {
-		name = "Elephant", familyKey = "ursine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "tank",
+		name = "Elephant", familyKey = "proboscidean", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "tank",
 		stage = 0,
 		baseStats = { pAtk = 14, eAtk = 1, range = 24, maxHP = 175, spd = 10, castSpd = 0.85, size = 7, stamina = 34, energy = 8, recoverStamina = 2.3, recoverEnergy = 0.8 },
 		abilities = { "thickHide", "earthshaker" },
@@ -121,7 +121,7 @@ local SpeciesConfig = {
 		drop = { { key = "meat", amount = 2 }, { key = "fiber", amount = 2 } }, morphOptions = {},
 	},
 	boar = {
-		name = "Boar", familyKey = "ursine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "fighter",
+		name = "Boar", familyKey = "suine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "fighter",
 		stage = 0,
 		baseStats = { pAtk = 11, eAtk = 0, range = 24, maxHP = 108, spd = 13, castSpd = 0.95, size = 4.5, stamina = 24, energy = 7, recoverStamina = 2.0, recoverEnergy = 0.9 },
 		abilities = { "recklessCharge", "ironTusks" },

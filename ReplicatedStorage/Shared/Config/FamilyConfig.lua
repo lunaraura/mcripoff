@@ -19,6 +19,23 @@ local FamilyConfig = {
 		aiTendency = { aggression = 0.4, engageRangeBias = 0.95 },
 		growthWeights = { maxHP = 1.15, pAtk = 0.85, eAtk = 1.05, spd = 0.85, stamina = 0.9, energy = 1.25 },
 	},
+	ovine = {
+		aiTendency = { aggression = 0.14, engageRangeBias = 0.88 },
+		growthWeights = { maxHP = 1.0, pAtk = 0.75, eAtk = 0.75, spd = 1.08, stamina = 1.28, energy = 0.95 },
+	},
+	caprine = {
+		aiTendency = { aggression = 0.26, engageRangeBias = 0.96 },
+		growthWeights = { maxHP = 1.05, pAtk = 0.95, eAtk = 0.75, spd = 1.12, stamina = 1.18, energy = 0.95 },
+	},
+	suine = {
+		aiTendency = { aggression = 0.52, engageRangeBias = 0.94 },
+		growthWeights = { maxHP = 1.18, pAtk = 1.18, eAtk = 0.72, spd = 0.92, stamina = 1.2, energy = 0.86 },
+	},
+	proboscidean = {
+		aiTendency = { aggression = 0.6, engageRangeBias = 0.86 },
+		growthWeights = { maxHP = 1.4, pAtk = 1.08, eAtk = 0.7, spd = 0.65, stamina = 1.35, energy = 0.82 },
+	},
+	-- Legacy fallback for older saves; new species should use the split families above.
 	herd = {
 		aiTendency = { aggression = 0.18, engageRangeBias = 0.9 },
 		growthWeights = { maxHP = 1.0, pAtk = 0.9, eAtk = 0.8, spd = 1.05, stamina = 1.2, energy = 0.95 },
