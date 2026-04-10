@@ -2,7 +2,9 @@ local FloraSystem = {}
 FloraSystem.__index = FloraSystem
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local BiomeConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("BiomeConfig"))
+local SharedConfig = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
+local BiomeConfig = require(SharedConfig:WaitForChild("BiomeConfig"))
+local HarvestConfig = require(SharedConfig:WaitForChild("HarvestConfig"))
 local Ecology = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Ecology")
 local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
 
@@ -117,6 +119,7 @@ end
 local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount, nodeSource)
 	if not part then return end
 	nodeSource = nodeSource or "natural"
+	local harvestDef = HarvestConfig.getObstacleDef(nodeType)
 	local lifecycleClass = EcologyRules.classifyNodeLifecycle(nodeType, nodeSource)
 	local policy = EcologyRules.getNodeLifecyclePolicy(lifecycleClass)
 	part:SetAttribute("NodeType", nodeType)
@@ -128,16 +131,17 @@ local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount
 	part:SetAttribute("NodePlayerGrowable", policy.playerGrowable == true)
 	part:SetAttribute("NodeHarvestable", policy.harvestable ~= false)
 	part:SetAttribute("NodeNonRespawning", tostring(policy.respawnPolicy or "none") == "none")
-	part:SetAttribute("Durability", durability or 3)
-	part:SetAttribute("MaxDurability", durability or 3)
-	part:SetAttribute("DropKey", dropKey or "stone")
-	part:SetAttribute("DropAmount", dropAmount or 1)
+	local finalDurability = durability or (harvestDef and harvestDef.defaultDurability) or 3
+	part:SetAttribute("Durability", finalDurability)
+	part:SetAttribute("MaxDurability", finalDurability)
+	part:SetAttribute("DropKey", dropKey or (harvestDef and harvestDef.dropKey) or "stone")
+	part:SetAttribute("DropAmount", dropAmount or (harvestDef and harvestDef.dropAmount) or 1)
 	part:SetAttribute("NodeVisualPart", true)
 	part:SetAttribute("RestoreCanCollide", part.CanCollide and true or false)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Gather"
-	prompt.ObjectText = nodeType
-	prompt.HoldDuration = 0.35
+	prompt.ObjectText = (harvestDef and harvestDef.label) or nodeType
+	prompt.HoldDuration = (harvestDef and harvestDef.gatherTime) or 0.35
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = part

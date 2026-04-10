@@ -6,6 +6,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Ecology = Shared:WaitForChild("Ecology")
 local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
+local Config = Shared:WaitForChild("Config")
+local HarvestConfig = require(Config:WaitForChild("HarvestConfig"))
 local FloraSystem = require(script.Parent.Parent.Systems.FloraSystem)
 
 function HarvestService.new(worldService, inventoryService)
@@ -94,7 +96,9 @@ end
 
 function HarvestService:tryHarvestNodeInstance(player, node, opts)
 	opts = opts or {}
-	if tostring(opts.toolKey or "") ~= "node_demolisher" then
+	local toolKey = tostring(opts.toolKey or "")
+	local toolDef = HarvestConfig.getToolDef(toolKey)
+	if not toolDef or toolDef.mode ~= "destroy" then
 		self.worldService:pushEventLog(player, "Need Node Demolisher tool to harvest nodes", "#ffb3b3")
 		return false, "tool_required_node_demolisher"
 	end
@@ -102,7 +106,13 @@ function HarvestService:tryHarvestNodeInstance(player, node, opts)
 	if node:GetAttribute("Depleted") then
 		return false, "depleted node"
 	end
-	local durability = math.max(0, tonumber(node:GetAttribute("Durability")) or 1)
+	local nodeType = tostring(node:GetAttribute("NodeType") or "resource")
+	local nodeDef = HarvestConfig.getObstacleDef(nodeType)
+	local nodeTypeKey = string.lower(nodeType)
+	if toolDef.allowedNodeTypes and not toolDef.allowedNodeTypes[nodeTypeKey] then
+		return false, "tool_cannot_harvest_node_type"
+	end
+	local durability = math.max(0, tonumber(node:GetAttribute("Durability")) or (nodeDef and nodeDef.defaultDurability) or 1)
 	if durability <= 0 then return false, "depleted node" end
 	durability -= 1
 	node:SetAttribute("Durability", durability)
@@ -110,10 +120,10 @@ function HarvestService:tryHarvestNodeInstance(player, node, opts)
 	if durability > 0 then
 		return true, { progress = true, durability = durability }
 	end
-	local dropKey = tostring(node:GetAttribute("DropKey") or "stone")
-	local dropAmount = math.max(1, math.floor(tonumber(node:GetAttribute("DropAmount")) or 1))
+	local dropKey = tostring(node:GetAttribute("DropKey") or (nodeDef and nodeDef.dropKey) or "stone")
+	local dropAmount = math.max(1, math.floor(tonumber(node:GetAttribute("DropAmount")) or (nodeDef and nodeDef.dropAmount) or 1))
 	local granted = self.inventoryService:grant(player, { { key = dropKey, amount = dropAmount } })
-	self.worldService:pushEventLog(player, string.format("Harvested %s node", tostring(node:GetAttribute("NodeType") or "resource")), "#d7fcb7")
+	self.worldService:pushEventLog(player, string.format("Harvested %s node", (nodeDef and nodeDef.label) or nodeType), "#d7fcb7")
 	self:depleteNode(node)
 	return true, granted
 end
@@ -241,13 +251,8 @@ function HarvestService:tryUseBerryPlanterTool(player, payload)
 	local root = player.Character and player.Character.PrimaryPart
 	if not root then return false, "no character" end
 	local berryKind = tostring(payload.kind or "berry_red")
-	local allowed = {
-		berry_red = true,
-		berry_yellow = true,
-		berry_blue = true,
-		revive_berry = true,
-		replenish_berry = true,
-	}
+	local planterDef = HarvestConfig.getToolDef("berry_planter")
+	local allowed = planterDef and planterDef.allowedBerryKinds or {}
 	if not allowed[berryKind] then
 		return false, "invalid berry kind"
 	end
@@ -297,12 +302,16 @@ end
 function HarvestService:tryUseTool(player, payload)
 	payload = payload or {}
 	local toolKey = tostring(payload.tool or "")
+	local toolDef = HarvestConfig.getToolDef(toolKey)
+	if not toolDef then
+		return false, "unknown tool"
+	end
 	if toolKey == "node_demolisher" then
 		return self:tryUseDemolishHarvestTool(player, payload)
 	elseif toolKey == "berry_planter" then
 		return self:tryUseBerryPlanterTool(player, payload)
 	end
-	return false, "unknown tool"
+	return false, "tool_mode_not_implemented"
 end
 
 function HarvestService:tryHarvestCreature(player, targetId)
