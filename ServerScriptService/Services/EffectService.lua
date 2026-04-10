@@ -2,7 +2,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local EffectConfig = require(Config:WaitForChild("EffectConfig"))
-local CompositeConfig = require(Config:WaitForChild("CompositeConfig"))
 
 local EffectService = {}
 EffectService.__index = EffectService
@@ -85,35 +84,6 @@ function EffectService:getContainer(creature)
 	return creature.statuses
 end
 
-function EffectService:getCompositeStatusHooks(creature)
-	local function readHooks(compositeKey)
-		local c = CompositeConfig[compositeKey]
-		return c and c.statusHooks or { tagScale = {}, immunities = {} }
-	end
-	local outer = readHooks(creature.outerCompositeKey or creature.compositeKey or "animal")
-	local inner = readHooks(creature.innerCompositeKey or creature.compositeKey or "animal")
-	return outer, inner
-end
-
-function EffectService:hasStatusImmunity(creature, statusKey)
-	local outer, inner = self:getCompositeStatusHooks(creature)
-	return (outer.immunities and outer.immunities[statusKey]) or (inner.immunities and inner.immunities[statusKey]) or false
-end
-
-function EffectService:getStatusDurationScalar(creature, statusKey)
-	local def = STATUS_DEFS[statusKey]
-	if not def then return 1 end
-	local outer, inner = self:getCompositeStatusHooks(creature)
-	local scalar = 1
-	for _, tag in ipairs(def.tags or {}) do
-		local o = outer.tagScale and outer.tagScale[tag]
-		local i = inner.tagScale and inner.tagScale[tag]
-		if o then scalar *= o end
-		if i then scalar *= i end
-	end
-	return math.clamp(scalar, 0.35, 2.4)
-end
-
 function EffectService:statusHasTag(statusKey, tag)
 	local def = STATUS_DEFS[statusKey]
 	if not def then return false end
@@ -150,15 +120,11 @@ function EffectService:applyStatus(creature, statusKey, source, params)
 	if not creature or not creature.alive then return false end
 	local def = STATUS_DEFS[statusKey]
 	if not def then return false end
-	if self:hasStatusImmunity(creature, statusKey) then
-		return false
-	end
 	local runtime = STATUS_RUNTIME[statusKey] or {}
 	local now = self.worldService and self.worldService.time or os.clock()
 	local container = self:getContainer(creature)
 	local inst = container[statusKey]
-	local baseDuration = (params and params.duration) or def.defaultDuration or 3
-	local duration = baseDuration * self:getStatusDurationScalar(creature, statusKey)
+	local duration = (params and params.duration) or def.defaultDuration or 3
 	local mode = def.stackMode or "refresh"
 
 	if def.cleansesTags then
@@ -166,23 +132,9 @@ function EffectService:applyStatus(creature, statusKey, source, params)
 			self:clearStatusesByTag(creature, tag)
 		end
 	end
-	for _, old in ipairs(def.overwrites or {}) do
-		self:expireStatus(creature, old)
-	end
-	for _, requiredMissingTag in ipairs(def.blockedByTags or {}) do
-		for activeKey, _ in pairs(container) do
-			if self:statusHasTag(activeKey, requiredMissingTag) then
-				return false
-			end
-		end
-	end
 
 	if inst then
-		if mode == "refresh" or mode == "stack" then
-			inst.expiresAt = math.max(inst.expiresAt, now + duration)
-		elseif mode == "replace" then
-			inst.expiresAt = now + duration
-		end
+		inst.expiresAt = math.max(inst.expiresAt, now + duration)
 		if mode == "stack" then
 			inst.stacks = math.min(def.maxStacks or 1, (inst.stacks or 1) + ((params and params.addStacks) or 1))
 		elseif mode == "replace" then
@@ -258,25 +210,18 @@ function EffectService:evaluateReactions(source, target, ability)
 	local container = self:getContainer(target)
 	if container.wet and self:abilityHasTag(ability, "electric") then
 		local wetStacks = container.wet.stacks or 1
-		local traits = CompositeConfig[target.outerCompositeKey or target.compositeKey or "animal"] and CompositeConfig[target.outerCompositeKey or target.compositeKey or "animal"].traits or {}
-		local conductivity = traits and traits.conductivity or 0.25
-		local scalar = math.clamp(1 + conductivity, REACTIONS.wet_electric.compositeScalarMin or 0.7, REACTIONS.wet_electric.compositeScalarMax or 1.7)
-		bonusDamage += (REACTIONS.wet_electric.bonusDamage or 0) * wetStacks * scalar
+		bonusDamage += (REACTIONS.wet_electric.bonusDamage or 0) * wetStacks
 		self:applyStatus(target, "shock", source, REACTIONS.wet_electric.applyStatus.params)
 		container.wet.stacks = math.max(0, wetStacks - (REACTIONS.wet_electric.consumeStatusStacks or 1))
 		if container.wet.stacks <= 0 then self:expireStatus(target, "wet") end
 		triggered = "wet_electric"
 	end
 	if container.burn and self:abilityHasTag(ability, "water") then
-		local reduced = REACTIONS.wet_cools_burn.reduceStacks or 1
-		container.burn.stacks = math.max(0, (container.burn.stacks or 1) - reduced)
-		if (container.burn.stacks or 0) <= 0 or REACTIONS.wet_cools_burn.expireIfNoStacks then
-			self:expireStatus(target, "burn")
-		end
+		self:expireStatus(target, "burn")
 		triggered = triggered and (triggered .. "+wet_cools_burn") or "wet_cools_burn"
 	end
 	if container.guard and self:abilityHasTag(ability, "impact") then
-		container.guard.expiresAt = math.max(self.worldService.time, container.guard.expiresAt - (REACTIONS.guard_impact.reduceDuration or 0.35))
+		container.guard.expiresAt = math.max(self.worldService.time, container.guard.expiresAt - 0.35)
 		triggered = triggered and (triggered .. "+guard_impact") or "guard_impact"
 	end
 	if triggered then
@@ -313,15 +258,6 @@ function EffectService:tickCreature(creature, dt)
 	creature.runtimeAtkMult = runtime.atkMult
 	creature.runtimeDmgReduction = runtime.dmgReduction
 	creature.runtimeMoveMult = runtime.moveMult
-	creature.effectFlags = {
-		burning = container.burn ~= nil,
-		bleeding = container.bleed ~= nil,
-		slowed = container.slow ~= nil,
-		shocked = container.shock ~= nil,
-		guarded = container.guard ~= nil,
-		hasted = container.haste ~= nil,
-		wet = container.wet ~= nil,
-	}
 	creature.effectSummary = self:buildStatusSummary(creature)
 end
 
