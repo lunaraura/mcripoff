@@ -112,14 +112,14 @@ function CreatureService:updateModel(creature)
 			creature.model:SetAttribute("AI_TargetId", tonumber(creature.ai.targetId) or -1)
 			creature.model:SetAttribute("AI_Intent", tostring(creature.ai.lastIntent or "idle"))
 			creature.model:SetAttribute("AI_Ability", tostring(creature.ai.lastChosenAbility or "-"))
-				creature.model:SetAttribute("AI_AbilityScore", tostring(creature.ai.lastAbilityScoreSummary or "-"))
-				creature.model:SetAttribute("AI_ControlMode", tostring(creature.debugAI and creature.debugAI.controlMode or "-"))
-				creature.model:SetAttribute("AI_CommandOverride", creature.debugAI and creature.debugAI.commandOverride and true or false)
-				creature.model:SetAttribute("AI_IntendedMove", tostring(creature.debugAI and creature.debugAI.intendedMove or "0,0,0"))
-				creature.model:SetAttribute("AI_NextThinkAt", tonumber(creature.debugAI and creature.debugAI.nextThinkAt) or 0)
-				creature.model:SetAttribute("AI_IdleSleepUntil", tonumber(creature.debugAI and creature.debugAI.idleSleepUntil) or 0)
-				creature.model:SetAttribute("AI_IsDormant", creature.debugAI and creature.debugAI.isDormant and true or false)
-			end
+			creature.model:SetAttribute("AI_AbilityScore", tostring(creature.ai.lastAbilityScoreSummary or "-"))
+			creature.model:SetAttribute("AI_ControlMode", tostring(creature.debugAI and creature.debugAI.controlMode or "-"))
+			creature.model:SetAttribute("AI_CommandOverride", creature.debugAI and creature.debugAI.commandOverride and true or false)
+			creature.model:SetAttribute("AI_IntendedMove", tostring(creature.debugAI and creature.debugAI.intendedMove or "0,0,0"))
+			creature.model:SetAttribute("AI_NextThinkAt", tonumber(creature.debugAI and creature.debugAI.nextThinkAt) or 0)
+			creature.model:SetAttribute("AI_IdleSleepUntil", tonumber(creature.debugAI and creature.debugAI.idleSleepUntil) or 0)
+			creature.model:SetAttribute("AI_IsDormant", creature.debugAI and creature.debugAI.isDormant and true or false)
+		end
 		if creature.mode == "pet" and creature.ownerUserId then
 			local owner = Players:GetPlayerByUserId(creature.ownerUserId)
 			if owner then
@@ -128,14 +128,14 @@ function CreatureService:updateModel(creature)
 			end
 		end
 		creature.model:SetAttribute("DesignatedTargetId", tonumber(creature.designatedTargetId) or -1)
-			creature.model:SetAttribute("ManualCastState", tostring(creature.manualCastState or "idle"))
-			creature.model:SetAttribute("ManualCastNote", tostring(creature.manualCastNote or "-"))
-			creature.model:SetAttribute("LastManualCastCode", tostring(creature.lastManualCastResult and creature.lastManualCastResult.code or "-"))
-			creature.model:SetAttribute("LastCmdType", tostring(creature.lastReceivedCommandType or (creature.command and creature.command.type) or "-"))
-			creature.model:SetAttribute("LastCmdTargetId", tonumber(creature.lastReceivedCommandTargetId) or -1)
-			creature.model:SetAttribute("LastCmdPoint", tostring(creature.lastReceivedCommandPoint or "-"))
-			creature.model:SetAttribute("LastSanitizedCmd", tostring(creature.lastSanitizedCommandType or "-"))
-			creature.model:SetAttribute("GroundY", creature.pos.Y)
+		creature.model:SetAttribute("ManualCastState", tostring(creature.manualCastState or "idle"))
+		creature.model:SetAttribute("ManualCastNote", tostring(creature.manualCastNote or "-"))
+		creature.model:SetAttribute("LastManualCastCode", tostring(creature.lastManualCastResult and creature.lastManualCastResult.code or "-"))
+		creature.model:SetAttribute("LastCmdType", tostring(creature.lastReceivedCommandType or (creature.command and creature.command.type) or "-"))
+		creature.model:SetAttribute("LastCmdTargetId", tonumber(creature.lastReceivedCommandTargetId) or -1)
+		creature.model:SetAttribute("LastCmdPoint", tostring(creature.lastReceivedCommandPoint or "-"))
+		creature.model:SetAttribute("LastSanitizedCmd", tostring(creature.lastSanitizedCommandType or "-"))
+		creature.model:SetAttribute("GroundY", creature.pos.Y)
 		creature.model:SetAttribute("EffectSummary", tostring(creature.effectSummary or ""))
 		creature.model:SetAttribute("EffectFlags", creature.effectFlags and string.format("b:%s bl:%s s:%s sh:%s g:%s h:%s w:%s",
 			creature.effectFlags.burning and "1" or "0",
@@ -145,7 +145,7 @@ function CreatureService:updateModel(creature)
 			creature.effectFlags.guarded and "1" or "0",
 			creature.effectFlags.hasted and "1" or "0",
 			creature.effectFlags.wet and "1" or "0"
-		) or "")
+			) or "")
 		creature.model:SetAttribute("LastReaction", tostring(creature.lastReactionTriggered or "-"))
 		if creature.debugStatLayers then
 			local base = creature.debugStatLayers.baseStats or {}
