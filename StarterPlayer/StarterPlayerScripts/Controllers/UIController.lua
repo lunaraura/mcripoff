@@ -13,6 +13,37 @@ local ItemUseRules = require(Items:WaitForChild("ItemUseRules"))
 local UIController = {}
 UIController.__index = UIController
 
+function UIController:setUtilityPanelsVisibility(opts)
+	opts = opts or {}
+	if self.optionsPanel then
+		self.optionsPanel.Visible = opts.options == true
+	end
+	if self.managementPanel then
+		self.managementState.open = opts.management == true
+		self.managementPanel.Visible = self.managementState.open
+	end
+	if self.managementState.open then
+		self.managementState.layer = self.managementState.layer or "root"
+		self:refreshCreatureManagementMenu()
+	end
+end
+
+function UIController:openOptionsFromUtilityPanel()
+	self:setUtilityPanelsVisibility({
+		options = true,
+		management = false,
+	})
+end
+
+function UIController:openCreatureManagementFromUtilityPanel()
+	self:setUtilityPanelsVisibility({
+		options = false,
+		management = true,
+	})
+	self.managementState.layer = "root"
+	self:refreshCreatureManagementMenu()
+end
+
 function UIController.new(buildController, itemController, partyController, commandController)
 	return setmetatable({
 		floatingTextEvent = remotes:WaitForChild("FloatingTextEvent"),
@@ -348,7 +379,11 @@ end
 
 function UIController:toggleOptionsMenu()
 	if not self.optionsPanel then return end
-	self.optionsPanel.Visible = not self.optionsPanel.Visible
+	local nextVisible = not self.optionsPanel.Visible
+	self:setUtilityPanelsVisibility({
+		options = nextVisible,
+		management = false,
+	})
 end
 
 function UIController:buildBuildAndToolMenu(gui)
@@ -371,16 +406,39 @@ function UIController:buildBuildAndToolMenu(gui)
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = panel
 
-	local rootActionButton = Instance.new("TextButton")
-	rootActionButton.Size = UDim2.fromOffset(302, 28)
-	rootActionButton.Position = UDim2.fromOffset(9, 28)
-	rootActionButton.Text = "Open Build / Action"
-	rootActionButton.Parent = panel
+	local hubTitle = Instance.new("TextLabel")
+	hubTitle.BackgroundTransparency = 1
+	hubTitle.Size = UDim2.fromOffset(302, 18)
+	hubTitle.Position = UDim2.fromOffset(9, 28)
+	hubTitle.TextXAlignment = Enum.TextXAlignment.Left
+	hubTitle.Font = Enum.Font.Code
+	hubTitle.TextSize = 12
+	hubTitle.TextColor3 = Color3.fromRGB(210, 225, 240)
+	hubTitle.Text = "Utilities"
+	hubTitle.Parent = panel
+
+	local openBuildHubButton = Instance.new("TextButton")
+	openBuildHubButton.Size = UDim2.fromOffset(302, 28)
+	openBuildHubButton.Position = UDim2.fromOffset(9, 48)
+	openBuildHubButton.Text = "Build / Action"
+	openBuildHubButton.Parent = panel
+
+	local openOptionsButton = Instance.new("TextButton")
+	openOptionsButton.Size = UDim2.fromOffset(302, 28)
+	openOptionsButton.Position = UDim2.fromOffset(9, 80)
+	openOptionsButton.Text = "Options"
+	openOptionsButton.Parent = panel
+
+	local openManagementButton = Instance.new("TextButton")
+	openManagementButton.Size = UDim2.fromOffset(302, 28)
+	openManagementButton.Position = UDim2.fromOffset(9, 112)
+	openManagementButton.Text = "Creature Management"
+	openManagementButton.Parent = panel
 
 	local levelTwo = Instance.new("Frame")
 	levelTwo.Name = "LevelTwo"
 	levelTwo.Size = UDim2.fromOffset(302, 138)
-	levelTwo.Position = UDim2.fromOffset(9, 62)
+	levelTwo.Position = UDim2.fromOffset(9, 146)
 	levelTwo.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	levelTwo.BackgroundTransparency = 0.15
 	levelTwo.Visible = false
@@ -424,7 +482,7 @@ function UIController:buildBuildAndToolMenu(gui)
 	local levelThree = Instance.new("Frame")
 	levelThree.Name = "LevelThree"
 	levelThree.Size = UDim2.fromOffset(302, 152)
-	levelThree.Position = UDim2.fromOffset(9, 62)
+	levelThree.Position = UDim2.fromOffset(9, 146)
 	levelThree.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	levelThree.BackgroundTransparency = 0.1
 	levelThree.Visible = false
@@ -508,15 +566,26 @@ function UIController:buildBuildAndToolMenu(gui)
 		local tool = self.build and self.build.selectedTool or "-"
 		local buildKey = self.build and self.build.selectedBuildKey or "-"
 		local placementReason = self.build and self.build.placement and (self.build.placement.reasonCode or self.build.placement.reason) or "-"
-		rootActionButton.Text = (levelTwo.Visible or levelThree.Visible) and "Close Build / Action" or "Open Build / Action"
+		openBuildHubButton.Text = (levelTwo.Visible or levelThree.Visible) and "Close Build / Action" or "Build / Action"
+		openOptionsButton.Text = self.optionsPanel and self.optionsPanel.Visible and "Options (Open)" or "Options"
+		openManagementButton.Text = (self.managementState and self.managementState.open) and "Creature Management (Open)" or "Creature Management"
 		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
-		selectedLabel.Text = string.format("tool=%s  build=%s  mode=%s\nreason=%s", tostring(tool), tostring(buildKey), buildMode and "BUILD" or "TOOL", tostring(placementReason))
 	end
 
-	rootActionButton.MouseButton1Click:Connect(function()
+	openBuildHubButton.MouseButton1Click:Connect(function()
 		local opening = not (levelTwo.Visible or levelThree.Visible)
 		levelTwo.Visible = opening
 		levelThree.Visible = false
+		refresh()
+	end)
+
+	openOptionsButton.MouseButton1Click:Connect(function()
+		self:openOptionsFromUtilityPanel()
+		refresh()
+	end)
+
+	openManagementButton.MouseButton1Click:Connect(function()
+		self:openCreatureManagementFromUtilityPanel()
 		refresh()
 	end)
 
@@ -586,7 +655,7 @@ function UIController:buildItemBar(gui)
 
 	local useBtn = Instance.new("TextButton")
 	useBtn.Size = UDim2.fromOffset(90, 28)
-	useBtn.Position = UDim2.fromOffset(106, 30)
+	useBtn.Position = UDim2.fromOffset(106, -30)
 	useBtn.Text = "Use Item"
 	useBtn.Parent = panel
 
@@ -672,32 +741,32 @@ function UIController:updatePetHud(payload)
 				local displayName = tostring(pet.name or speciesName)
 				local state = tostring(pet.state or "alive")
 				local cooldownSummary = self:buildCooldownSummary(pet.cooldowns)
-					if i == (self.activeSlot or 1) then
-						local stance = tostring(self.stance or "FOLLOW")
-						if stance == "HOLD" then
-							self.activeCommand = "hold"
-						elseif stance == "AGGRESSIVE" then
-							self.activeCommand = "attack"
-						else
-							self.activeCommand = "follow"
-						end
+				if i == (self.activeSlot or 1) then
+					local stance = tostring(self.stance or "FOLLOW")
+					if stance == "HOLD" then
+						self.activeCommand = "hold"
+					elseif stance == "AGGRESSIVE" then
+						self.activeCommand = "attack"
+					else
+						self.activeCommand = "follow"
 					end
-					if state == "alive" then
-						local hpPct = math.floor((hp / math.max(1, maxHp)) * 100)
-						local statusLine = string.format("Manual:%s  Cast:%s", tostring(pet.manualCastState or "idle"), tostring(pet.manualCastCode or "-"))
-						label.Text = string.format(
-							"Slot %d  %s  Lv %d\nHP %d/%d (%d%%)\nStamina %d  Energy %d\n%s\nCD: %s",
-							i,
-							displayName,
-							tostring(pet.level or 1),
-							hp,
-							maxHp,
-							hpPct,
-							st,
-							en,
-							statusLine,
-							cooldownSummary
-						)
+				end
+				if state == "alive" then
+					local hpPct = math.floor((hp / math.max(1, maxHp)) * 100)
+					local statusLine = string.format("Manual:%s  Cast:%s", tostring(pet.manualCastState or "idle"), tostring(pet.manualCastCode or "-"))
+					label.Text = string.format(
+						"Slot %d  %s  Lv %d\nHP %d/%d (%d%%)\nStamina %d  Energy %d\n%s\nCD: %s",
+						i,
+						displayName,
+						tostring(pet.level or 1),
+						hp,
+						maxHp,
+						hpPct,
+						st,
+						en,
+						statusLine,
+						cooldownSummary
+					)
 				else
 					label.Text = string.format(
 						"Slot %d  %s  Lv %d\nDEFEATED\nHP 0/%d\nUse revive on this slot",
@@ -934,11 +1003,12 @@ end
 
 
 function UIController:toggleCreatureManagementMenu()
-	self.managementState.open = not self.managementState.open
-	if self.managementPanel then
-		self.managementPanel.Visible = self.managementState.open
-	end
-	if self.managementState.open then
+	local nextOpen = not self.managementState.open
+	self:setUtilityPanelsVisibility({
+		options = false,
+		management = nextOpen,
+	})
+	if nextOpen then
 		self.managementState.layer = "root"
 	end
 	self:refreshCreatureManagementMenu()
