@@ -1,14 +1,125 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
 local CompositeConfig = require(Config:WaitForChild("CompositeConfig"))
 
+-- Visual sphere colors by effect tag
+local VISUAL_COLORS = {
+	electric = Color3.fromRGB(100, 200, 255),
+	fire = Color3.fromRGB(255, 150, 50),
+	impact = Color3.fromRGB(255, 200, 100),
+	physical = Color3.fromRGB(180, 180, 180),
+	defensive = Color3.fromRGB(100, 150, 255),
+	water = Color3.fromRGB(100, 180, 255),
+	utility = Color3.fromRGB(150, 255, 150),
+}
+
+local function getVisualColor(ability)
+	if not ability or not ability.effectTags then
+		return Color3.fromRGB(255, 200, 50)
+	end
+	for _, tag in ipairs(ability.effectTags) do
+		if VISUAL_COLORS[tag] then
+			return VISUAL_COLORS[tag]
+		end
+	end
+	return Color3.fromRGB(255, 200, 50)
+end
+
 local CombatService = {}
 CombatService.__index = CombatService
 
+-- Cast phase constants
+local CAST_PHASE = {
+	IDLE = "idle",
+	WINDUP = "windup",
+	RECOVERY = "recovery",
+}
+
+-- Visual ID counter
+local visualIdCounter = 0
+local function generateVisualId()
+	visualIdCounter = visualIdCounter + 1
+	return "visual_" .. tostring(visualIdCounter) .. "_" .. tostring(os.clock())
+end
+
+-- Helper functions for creature cast state
+local function isCasting(creature)
+	local cs = creature.castState
+	return cs and cs.phase == CAST_PHASE.WINDUP
+end
+
+local function isRecovering(creature)
+	local cs = creature.castState
+	return cs and cs.phase == CAST_PHASE.RECOVERY
+end
+
+local function canStartAbility(creature, worldTime)
+	if not creature.alive then return false, "dead" end
+	if isCasting(creature) then return false, "casting" end
+	if isRecovering(creature) then return false, "recovering" end
+	if (creature.gcdUntil or 0) > worldTime then return false, "gcd" end
+	return true, "ok"
+end
+
+local function getCastStateDebug(creature)
+	local cs = creature.castState
+	if not cs or cs.phase == CAST_PHASE.IDLE then
+		return { phase = "idle", abilityKey = nil, windupRemaining = 0, recoveryRemaining = 0 }
+	end
+	return {
+		phase = cs.phase,
+		abilityKey = cs.abilityKey,
+		windupRemaining = cs.windupRemaining or 0,
+		recoveryRemaining = cs.recoveryRemaining or 0,
+	}
+end
+
+-- Initialize cast state on a creature if not present
+local function ensureCastState(creature)
+	if not creature.castState then
+		creature.castState = {
+			phase = CAST_PHASE.IDLE,
+			abilityKey = nil,
+			targetId = nil,
+			targetPoint = nil,
+			windupRemaining = 0,
+			recoveryRemaining = 0,
+		}
+	end
+	return creature.castState
+end
+
+-- Clear cast state back to idle
+local function clearCastState(creature)
+	local cs = creature.castState
+	if cs then
+		cs.phase = CAST_PHASE.IDLE
+		cs.abilityKey = nil
+		cs.targetId = nil
+		cs.targetPoint = nil
+		cs.windupRemaining = 0
+		cs.recoveryRemaining = 0
+	end
+end
+
 function CombatService.new(worldService, effectService)
-	return setmetatable({ worldService = worldService, effectService = effectService, playerDataService = nil, morphService = nil }, CombatService)
+	local remotes = ReplicatedStorage:WaitForChild("Remotes")
+	return setmetatable({
+		worldService = worldService,
+		effectService = effectService,
+		playerDataService = nil,
+		morphService = nil,
+		remotes = {
+			projectileVisual = remotes:WaitForChild("ProjectileVisualEvent"),
+			aoeVisual = remotes:WaitForChild("AOEVisualEvent"),
+			barrierVisual = remotes:WaitForChild("BarrierVisualEvent"),
+			wallBarrierVisual = remotes:WaitForChild("WallBarrierVisualEvent"),
+			combatVisualUpdate = remotes:WaitForChild("CombatVisualUpdateEvent"),
+		},
+	}, CombatService)
 end
 
 function CombatService:configureProgression(playerDataService, morphService)
@@ -82,7 +193,7 @@ function CombatService:applyDamagePacket(source, target, ability)
 		if self.playerDataService and source and source.ownerUserId and source.ownedId then
 			local player = game:GetService("Players"):GetPlayerByUserId(source.ownerUserId)
 			if player then
-				local xpGain = math.max(5, math.floor((target.level or 1) * 6))
+				local xpGain = math.max(5, math.floor((target.level or 1) * 26))
 				local ok, gain = self.playerDataService:addOwnedXP(player, source.ownedId, xpGain)
 				if ok and self.morphService then self.morphService:awardPoints(player, source.ownedId, 1) end
 				local lvlUp = gain and gain.levelUps or 0
@@ -94,8 +205,12 @@ end
 
 function CombatService:spawnBarrier(source, ability)
 	local b = ability.barrier or {}
+	local visualColor = getVisualColor(ability)
+	local visualId = generateVisualId()
+
 	if b.kind == "wall" then
 		table.insert(self.worldService.wallBarriers, {
+			id = visualId,
 			ownerId = source.id,
 			team = source.team,
 			pos = source.pos,
@@ -105,8 +220,22 @@ function CombatService:spawnBarrier(source, ability)
 			blockMovement = b.blockMovement ~= false,
 			damageReduction = b.damageReduction or 0.15,
 		})
+		-- Send visual event to all players
+		self.remotes.wallBarrierVisual:FireAllClients("spawn", {
+			id = visualId,
+			x = source.pos.X,
+			y = source.pos.Y + 10,
+			z = source.pos.Z,
+			length = b.length or 50,
+			thickness = b.thickness or 8,
+			height = 20,
+			color = visualColor,
+			transparency = 0.4,
+			duration = b.duration or 4,
+		})
 	else
 		table.insert(self.worldService.barriers, {
+			id = visualId,
 			ownerId = source.id,
 			team = source.team,
 			pos = source.pos,
@@ -116,13 +245,29 @@ function CombatService:spawnBarrier(source, ability)
 			damageReduction = b.damageReduction or 0.18,
 			blockMovement = b.blockMovement ~= false,
 		})
+		-- Send visual event to all players
+		self.remotes.barrierVisual:FireAllClients("spawn", {
+			id = visualId,
+			x = source.pos.X,
+			y = source.pos.Y + 2,
+			z = source.pos.Z,
+			radius = b.radius or 48,
+			color = visualColor,
+			transparency = 0.5,
+			pulse = true,
+			duration = b.duration or 4.5,
+		})
 	end
 end
 
 function CombatService:spawnProjectile(source, target, ability)
 	local dir = (target.pos - source.pos)
 	local m = math.max(0.01, dir.Magnitude)
+	local visualId = generateVisualId()
+	local visualColor = getVisualColor(ability)
+
 	table.insert(self.worldService.projectiles, {
+		id = visualId,
 		sourceId = source.id,
 		team = source.team,
 		ability = ability,
@@ -132,11 +277,39 @@ function CombatService:spawnProjectile(source, target, ability)
 		radius = (ability.projectile and ability.projectile.radius) or 4,
 		timeLeft = (ability.projectile and ability.projectile.life) or 2,
 	})
+
+	-- Send visual event to all players
+	self.remotes.projectileVisual:FireAllClients("spawn", {
+		id = visualId,
+		x = source.pos.X,
+		y = source.pos.Y + 2,
+		z = source.pos.Z,
+		radius = (ability.projectile and ability.projectile.radius) or 4,
+		color = visualColor,
+		transparency = 0.2,
+	})
 end
 
 function CombatService:spawnAoe(source, target, ability)
 	local area = ability.area or {}
+	local visualColor = getVisualColor(ability)
+	local visualId = generateVisualId()
+
 	if area.mode == "instant" or not area.mode then
+		-- Instant AOE - show expanding sphere briefly
+		self.remotes.aoeVisual:FireAllClients("spawn", {
+			id = visualId,
+			x = target.pos.X,
+			y = target.pos.Y + 2,
+			z = target.pos.Z,
+			radius = area.radius or 24,
+			color = visualColor,
+			transparency = 0.6,
+			expanding = true,
+			expandDuration = 0.3,
+			duration = 0.5,
+		})
+
 		for _, other in ipairs(self.worldService.creatures) do
 			if other.alive and other.team ~= source.team then
 				local d = (other.pos - target.pos).Magnitude
@@ -144,7 +317,9 @@ function CombatService:spawnAoe(source, target, ability)
 			end
 		end
 	else
+		-- Lingering AOE
 		table.insert(self.worldService.areaEffects, {
+			id = visualId,
 			sourceId = source.id,
 			team = source.team,
 			ability = ability,
@@ -155,6 +330,20 @@ function CombatService:spawnAoe(source, target, ability)
 			timeLeft = area.duration or 1,
 			moveDir = area.moveDir,
 			speed = area.speed or 0,
+		})
+
+		-- Send visual event
+		self.remotes.aoeVisual:FireAllClients("spawn", {
+			id = visualId,
+			x = target.pos.X,
+			y = target.pos.Y + 2,
+			z = target.pos.Z,
+			radius = area.radius or 24,
+			color = visualColor,
+			transparency = 0.6,
+			expanding = true,
+			expandDuration = 0.3,
+			duration = area.duration or 1,
 		})
 	end
 end
@@ -249,9 +438,15 @@ function CombatService:evaluateAbility(source, abilityKey, target)
 	local ability = AbilityConfig[abilityKey]
 	if not ability then return false, "unknown" end
 	if not self:hasMoveEquipped(source, abilityKey) then return false, "not_learned" end
-	if (source.castLockUntil or 0) > self.worldService.time then return false, "cast_lock" end
-	if (source.gcdUntil or 0) > self.worldService.time then return false, "gcd" end
+
+	-- Check cast state using new helpers
+	local canStart, startReason = canStartAbility(source, self.worldService.time)
+	if not canStart then return false, startReason end
+
+	-- Check ability cooldown
 	if (source.cooldowns[abilityKey] or 0) > 0 then return false, "cooldown" end
+
+	-- Check resources
 	if (ability.resourceUse.stamina or 0) > source.currentStamina then return false, "stamina" end
 	if (ability.resourceUse.energy or 0) > source.currentEnergy then return false, "energy" end
 
@@ -304,24 +499,77 @@ function CombatService:performMobility(source, target, ability)
 	source.pos += norm * distance
 end
 
-function CombatService:tryUseAbility(source)
-	local key = source.intent.abilityKey
-	if not key then return end
-	local target = self.worldService:getCreatureById(source.intent.targetId)
-	local ok, abilityOrReason, targetType = self:evaluateAbility(source, key, target)
-	source.intent.abilityKey = nil
-	source.intent.targetId = nil
-	if not ok then return end
+-- Begin the cast of an ability (starts windup phase)
+-- Returns true if cast started, false otherwise
+function CombatService:beginAbilityCast(source, abilityKey, target)
+	local ok, abilityOrReason, targetType = self:evaluateAbility(source, abilityKey, target)
+	if not ok then
+		return false, tostring(abilityOrReason)
+	end
+
 	local ability = abilityOrReason
+
+	-- Spend resources upfront
 	source.currentStamina -= (ability.resourceUse.stamina or 0)
 	source.currentEnergy -= (ability.resourceUse.energy or 0)
-	source.cooldowns[key] = ability.cooldown or 1
-	source.gcdUntil = self.worldService.time + (ability.gcd or 0.45)
-	source.castLockUntil = self.worldService.time + (ability.castLock or 0)
+
+	-- Start ability cooldown
+	source.cooldowns[abilityKey] = ability.cooldown or 1
+
+	-- Start GCD
+	local gcdTime = ability.gcd or 0.45
+	source.gcdUntil = self.worldService.time + gcdTime
+
+	-- Initialize cast state
+	ensureCastState(source)
+	local cs = source.castState
+	cs.abilityKey = abilityKey
+	cs.targetId = target and target.id or nil
+	cs.targetPoint = nil -- For future ground targeting
+
+	-- Get timing values
+	local castTime = ability.castTime or 0
+	local recoveryTime = ability.recovery or 0
+
+	-- If no cast time, resolve immediately and go to recovery
+	if castTime <= 0 then
+		cs.phase = CAST_PHASE.RECOVERY
+		cs.recoveryRemaining = recoveryTime
+		cs.windupRemaining = 0
+
+		-- Resolve the ability immediately
+		local resolveTarget = self.worldService:getCreatureById(cs.targetId)
+		self:resolveAbilityCast(source, ability, resolveTarget, targetType)
+	else
+		-- Start windup phase
+		cs.phase = CAST_PHASE.WINDUP
+		cs.windupRemaining = castTime
+		cs.recoveryRemaining = recoveryTime
+	end
+
+	return true, "cast_started"
+end
+
+-- Resolve the actual ability effects (called when windup completes)
+function CombatService:resolveAbilityCast(source, ability, target, targetType)
+	-- Validate target still exists if needed
+	local needsTarget = ability.category == "projectile" or ability.category == "aoe" or
+		ability.category == "blink" or ability.category == "dash" or ability.category == "retreat"
+
+	if needsTarget and not target then
+		-- Fizzle - target lost during windup
+		return false, "target_lost"
+	end
+
+	if needsTarget and not target.alive then
+		-- Fizzle - target died during windup
+		return false, "target_dead"
+	end
+
+	-- Execute ability based on category
 	if ability.category == "utility" then
 		local utilTarget = (targetType == "self" or targetType == "none") and source or self:resolveUtilityTarget(source, ability, target)
 		self:applyUtilityAbility(source, utilTarget, ability)
-		return
 	elseif ability.category == "utility_dash" then
 		local utilTarget = (targetType == "self" or targetType == "none") and source or self:resolveUtilityTarget(source, ability, target)
 		if utilTarget then
@@ -331,28 +579,104 @@ function CombatService:tryUseAbility(source)
 			source.pos += Vector3.new(dir.X / mag, 0, dir.Z / mag) * dashDist
 			self:applyUtilityAbility(source, utilTarget, ability)
 		end
-		return
 	elseif ability.category == "barrier" then
 		self:spawnBarrier(source, ability)
-		return
 	elseif ability.category == "projectile" and target then
 		self:spawnProjectile(source, target, ability)
-		return
 	elseif ability.category == "aoe" and target then
 		self:spawnAoe(source, target, ability)
-		return
 	elseif ability.category == "blink" and target then
 		local dir = (target.pos - source.pos)
 		local mag = math.max(0.01, dir.Magnitude)
 		local behind = (ability.blink and ability.blink.behind) or 8
 		source.pos = target.pos - Vector3.new(dir.X / mag, 0, dir.Z / mag) * behind
+		if target then self:applyDamagePacket(source, target, ability) end
 	elseif (ability.category == "dash" or ability.category == "retreat") and target then
 		self:performMobility(source, target, ability)
+		if target then self:applyDamagePacket(source, target, ability) end
+	elseif ability.category == "melee" or ability.category == "hitscan" then
+		if target then self:applyDamagePacket(source, target, ability) end
 	end
-	if target then self:applyDamagePacket(source, target, ability) end
+
+	return true, "resolved"
+end
+
+-- Try to use ability from creature intent (AI or manual command)
+function CombatService:tryUseAbility(source)
+	local key = source.intent.abilityKey
+	if not key then return end
+
+	local target = self.worldService:getCreatureById(source.intent.targetId)
+
+	-- Clear intent regardless of outcome
+	source.intent.abilityKey = nil
+	source.intent.targetId = nil
+
+	-- Attempt to begin cast
+	local started, reason = self:beginAbilityCast(source, key, target)
+	if not started then
+		-- Could log the failure reason if needed
+		return false, reason
+	end
+
+	return true, reason
+end
+
+-- Update active casts for all creatures
+function CombatService:updateCasts(dt)
+	for _, creature in ipairs(self.worldService.creatures) do
+		if creature.alive and creature.castState then
+			local cs = creature.castState
+
+			if cs.phase == CAST_PHASE.WINDUP then
+				cs.windupRemaining = cs.windupRemaining - dt
+
+				if cs.windupRemaining <= 0 then
+					-- Windup complete, resolve ability
+					local ability = AbilityConfig[cs.abilityKey]
+					if ability then
+						local target = self.worldService:getCreatureById(cs.targetId)
+						local targetType = self:getAbilityTargetType(ability)
+						self:resolveAbilityCast(creature, ability, target, targetType)
+					end
+
+					-- Transition to recovery
+					cs.phase = CAST_PHASE.RECOVERY
+					cs.windupRemaining = 0
+				end
+
+			elseif cs.phase == CAST_PHASE.RECOVERY then
+				cs.recoveryRemaining = cs.recoveryRemaining - dt
+
+				if cs.recoveryRemaining <= 0 then
+					-- Recovery complete, back to idle
+					clearCastState(creature)
+				end
+			end
+		end
+	end
+end
+
+-- Get debug info for a creature's cast state
+function CombatService:getCastDebugInfo(creature)
+	local info = getCastStateDebug(creature)
+	info.gcdRemaining = math.max(0, (creature.gcdUntil or 0) - self.worldService.time)
+	info.lastCastResult = creature.lastCastResult or nil
+	return info
 end
 
 function CombatService:update(dt)
+	-- Update active casts first
+	self:updateCasts(dt)
+
+	local projectileUpdates = {}
+	local aoeUpdates = {}
+	local destroyProjectiles = {}
+	local destroyAOEs = {}
+	local destroyBarriers = {}
+	local destroyWallBarriers = {}
+
+	-- Update projectiles
 	for i = #self.worldService.projectiles, 1, -1 do
 		local p = self.worldService.projectiles[i]
 		p.timeLeft -= dt
@@ -366,6 +690,18 @@ function CombatService:update(dt)
 			end
 		end
 		p.pos += p.vel * dt
+
+		-- Track position update for visuals
+		if p.id then
+			table.insert(projectileUpdates, {
+				id = p.id,
+				x = p.pos.X,
+				y = p.pos.Y + 2,
+				z = p.pos.Z,
+			})
+		end
+
+		-- Check collision
 		for _, c in ipairs(self.worldService.creatures) do
 			if c.alive and c.team ~= p.team and (c.pos - p.pos).Magnitude <= (p.radius or 4) then
 				local s = self.worldService:getCreatureById(p.sourceId)
@@ -374,14 +710,33 @@ function CombatService:update(dt)
 				break
 			end
 		end
-		if p.timeLeft <= 0 then table.remove(self.worldService.projectiles, i) end
+
+		-- Remove expired projectiles
+		if p.timeLeft <= 0 then
+			if p.id then
+				table.insert(destroyProjectiles, p.id)
+			end
+			table.remove(self.worldService.projectiles, i)
+		end
 	end
 
+	-- Update area effects
 	for i = #self.worldService.areaEffects, 1, -1 do
 		local a = self.worldService.areaEffects[i]
 		a.timeLeft -= dt
 		a.tickTimer -= dt
 		if a.moveDir then a.pos += a.moveDir * (a.speed or 0) * dt end
+
+		-- Track position update for visuals
+		if a.id then
+			table.insert(aoeUpdates, {
+				id = a.id,
+				x = a.pos.X,
+				y = a.pos.Y + 2,
+				z = a.pos.Z,
+			})
+		end
+
 		if a.tickTimer <= 0 then
 			a.tickTimer = a.tickEvery or 0.5
 			for _, c in ipairs(self.worldService.creatures) do
@@ -391,9 +746,17 @@ function CombatService:update(dt)
 				end
 			end
 		end
-		if a.timeLeft <= 0 then table.remove(self.worldService.areaEffects, i) end
+
+		-- Remove expired AOEs
+		if a.timeLeft <= 0 then
+			if a.id then
+				table.insert(destroyAOEs, a.id)
+			end
+			table.remove(self.worldService.areaEffects, i)
+		end
 	end
 
+	-- Update barriers
 	for i = #self.worldService.barriers, 1, -1 do
 		local b = self.worldService.barriers[i]
 		b.timeLeft -= dt
@@ -414,9 +777,17 @@ function CombatService:update(dt)
 				end
 			end
 		end
-		if b.timeLeft <= 0 then table.remove(self.worldService.barriers, i) end
+
+		-- Remove expired barriers
+		if b.timeLeft <= 0 then
+			if b.id then
+				table.insert(destroyBarriers, b.id)
+			end
+			table.remove(self.worldService.barriers, i)
+		end
 	end
 
+	-- Update wall barriers
 	for i = #self.worldService.wallBarriers, 1, -1 do
 		local w = self.worldService.wallBarriers[i]
 		w.timeLeft -= dt
@@ -429,7 +800,26 @@ function CombatService:update(dt)
 				end
 			end
 		end
-		if w.timeLeft <= 0 then table.remove(self.worldService.wallBarriers, i) end
+
+		-- Remove expired wall barriers
+		if w.timeLeft <= 0 then
+			if w.id then
+				table.insert(destroyWallBarriers, w.id)
+			end
+			table.remove(self.worldService.wallBarriers, i)
+		end
+	end
+
+	-- Send batch visual updates to all players
+	if #projectileUpdates > 0 or #aoeUpdates > 0 or #destroyProjectiles > 0 or #destroyAOEs > 0 or #destroyBarriers > 0 or #destroyWallBarriers > 0 then
+		self.remotes.combatVisualUpdate:FireAllClients({
+			projectiles = projectileUpdates,
+			aoes = aoeUpdates,
+			destroyProjectiles = destroyProjectiles,
+			destroyAOEs = destroyAOEs,
+			destroyBarriers = destroyBarriers,
+			destroyWallBarriers = destroyWallBarriers,
+		})
 	end
 end
 
