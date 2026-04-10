@@ -7,6 +7,8 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
+local Items = Shared:WaitForChild("Items")
+local ItemUseRules = require(Items:WaitForChild("ItemUseRules"))
 
 local UIController = {}
 UIController.__index = UIController
@@ -19,6 +21,8 @@ function UIController.new(buildController, itemController, partyController, comm
 		manualCastResult = remotes:WaitForChild("ManualCastResult"),
 		requestClientOption = remotes:WaitForChild("RequestClientOption"),
 		requestContextAction = remotes:WaitForChild("RequestContextAction"),
+		requestCreatureManageRemote = remotes:WaitForChild("RequestCreatureManage"),
+		creatureManageResultRemote = remotes:WaitForChild("CreatureManageResult"),
 		build = buildController,
 		items = itemController,
 		party = partyController,
@@ -42,6 +46,8 @@ function UIController.new(buildController, itemController, partyController, comm
 		hotbarStatusLabel = nil,
 		commandPanelMode = "HIDDEN",
 		activeCommand = "follow",
+		managementData = { party = {}, reserve = {}, items = {} },
+		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
 	}, UIController)
 end
 
@@ -63,6 +69,14 @@ function UIController:bind()
 		self.stance = tostring(meta.stance or self.stance)
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
+		self.managementData = meta.management or self.managementData
+		self:refreshCreatureManagementMenu()
+	end)
+	self.creatureManageResultRemote.OnClientEvent:Connect(function(payload)
+		if payload and payload.reason then
+			local color = payload.ok and "#a8ffd7" or "#ffb3b3"
+			self:appendLog(string.format("Manage[%s]: %s", tostring(payload.action or "?"), tostring(payload.reason)), color)
+		end
 	end)
 	self.manualCastResult.OnClientEvent:Connect(function(payload)
 		self.lastManualCast = payload
@@ -74,6 +88,10 @@ function UIController:bind()
 		if gameProcessed then return end
 		if input.KeyCode == Enum.KeyCode.O then
 			self:toggleOptionsMenu()
+		elseif input.KeyCode == Enum.KeyCode.M then
+			self:toggleCreatureManagementMenu()
+		elseif input.KeyCode == Enum.KeyCode.Escape then
+			self:managementBack()
 		end
 	end)
 end
@@ -152,6 +170,7 @@ function UIController:buildUi()
 	self:buildAbilityHotbar(gui)
 	self:buildBuildAndToolMenu(gui)
 	self:buildItemBar(gui)
+	self:buildCreatureManagementMenu(gui)
 end
 
 function UIController:toggleCommandPanelMode()
@@ -911,6 +930,236 @@ function UIController:spawnFloatingWorldText(payload)
 		end
 	end)
 	Debris:AddItem(anchor, 1.1)
+end
+
+
+function UIController:toggleCreatureManagementMenu()
+	self.managementState.open = not self.managementState.open
+	if self.managementPanel then
+		self.managementPanel.Visible = self.managementState.open
+	end
+	if self.managementState.open then
+		self.managementState.layer = "root"
+	end
+	self:refreshCreatureManagementMenu()
+end
+
+function UIController:managementBack()
+	if not self.managementState.open then return end
+	if self.managementState.layer == "root" then
+		self.managementState.open = false
+		if self.managementPanel then self.managementPanel.Visible = false end
+		return
+	end
+	if self.managementState.layer == "swap" or self.managementState.layer == "items" or self.managementState.layer == "summary" then
+		self.managementState.layer = "actions"
+	elseif self.managementState.layer == "itemTarget" then
+		self.managementState.layer = "items"
+	else
+		self.managementState.layer = "root"
+	end
+	self:refreshCreatureManagementMenu()
+end
+
+function UIController:sendCreatureManageRequest(action, payload)
+	payload = payload or {}
+	payload.action = action
+	self.requestCreatureManageRemote:FireServer(payload)
+end
+
+function UIController:buildCreatureManagementMenu(gui)
+	local panel = Instance.new("Frame")
+	panel.Name = "CreatureManagementPanel"
+	panel.Size = UDim2.fromOffset(430, 330)
+	panel.Position = UDim2.new(0.5, -215, 0.5, -165)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+	panel.BackgroundTransparency = 0.12
+	panel.Visible = false
+	panel.Parent = gui
+	self.managementPanel = panel
+
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, -16, 0, 24)
+	title.Position = UDim2.fromOffset(8, 6)
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 16
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextColor3 = Color3.fromRGB(235, 245, 255)
+	title.Text = "Creature Management"
+	title.Parent = panel
+	self.managementTitle = title
+
+	local back = Instance.new("TextButton")
+	back.Size = UDim2.fromOffset(86, 22)
+	back.Position = UDim2.new(1, -94, 0, 8)
+	back.Text = "Back"
+	back.Parent = panel
+	back.MouseButton1Click:Connect(function() self:managementBack() end)
+
+	local rootList = Instance.new("ScrollingFrame")
+	rootList.Size = UDim2.fromOffset(412, 206)
+	rootList.Position = UDim2.fromOffset(9, 34)
+	rootList.CanvasSize = UDim2.fromOffset(0, 0)
+	rootList.ScrollBarThickness = 6
+	rootList.Parent = panel
+	self.managementRootList = rootList
+	local rootLayout = Instance.new("UIListLayout")
+	rootLayout.Padding = UDim.new(0, 4)
+	rootLayout.Parent = rootList
+
+	local actions = Instance.new("Frame")
+	actions.Size = UDim2.fromOffset(412, 206)
+	actions.Position = UDim2.fromOffset(9, 34)
+	actions.BackgroundTransparency = 1
+	actions.Visible = false
+	actions.Parent = panel
+	self.managementActionsFrame = actions
+
+	local actionLayout = Instance.new("UIListLayout")
+	actionLayout.Padding = UDim.new(0, 4)
+	actionLayout.Parent = actions
+
+	self.managementFooter = Instance.new("TextLabel")
+	self.managementFooter.BackgroundTransparency = 1
+	self.managementFooter.Size = UDim2.fromOffset(412, 78)
+	self.managementFooter.Position = UDim2.fromOffset(9, 246)
+	self.managementFooter.Font = Enum.Font.Code
+	self.managementFooter.TextXAlignment = Enum.TextXAlignment.Left
+	self.managementFooter.TextYAlignment = Enum.TextYAlignment.Top
+	self.managementFooter.TextWrapped = true
+	self.managementFooter.TextSize = 13
+	self.managementFooter.TextColor3 = Color3.fromRGB(210, 225, 240)
+	self.managementFooter.Parent = panel
+end
+
+function UIController:refreshCreatureManagementMenu()
+	if not self.managementPanel then return end
+	self.managementPanel.Visible = self.managementState.open
+	if not self.managementState.open then return end
+	local data = self.managementData or { party = {}, reserve = {}, items = {} }
+	local selected = self.managementState.selected
+	local function renderCreatureEntry(entry)
+		if not entry then return "(Empty Slot)" end
+		local hpText = (entry.maxHP or 0) > 0 and string.format("%d/%d", entry.hp or 0, entry.maxHP or 0) or "--"
+		return string.format("%s Lv.%d  HP:%s  [%s]", tostring(entry.name or entry.speciesKey), tonumber(entry.level) or 1, hpText, tostring(entry.state or "stored"))
+	end
+	for _, c in ipairs(self.managementRootList:GetChildren()) do
+		if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
+	end
+	local function addRootButton(text, entry)
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1, -8, 0, 24)
+		btn.TextXAlignment = Enum.TextXAlignment.Left
+		btn.Font = Enum.Font.Code
+		btn.TextSize = 13
+		btn.Text = text
+		btn.Parent = self.managementRootList
+		if entry and entry.ownedId then
+			btn.MouseButton1Click:Connect(function()
+				self.managementState.selected = entry
+				self.managementState.layer = "actions"
+				self:refreshCreatureManagementMenu()
+			end)
+		end
+	end
+	addRootButton("== Party ==", nil)
+	for slot = 1, 2 do
+		local entry = data.party and data.party[slot] or nil
+		addRootButton(string.format("Slot %d: %s", slot, renderCreatureEntry(entry)), entry)
+	end
+	addRootButton("== Reserve ==", nil)
+	for _, entry in ipairs(data.reserve or {}) do
+		addRootButton(string.format("[%d] %s", tonumber(entry.slotOrIndex) or 0, renderCreatureEntry(entry)), entry)
+	end
+	self.managementRootList.CanvasSize = UDim2.fromOffset(0, math.max(0, (#self.managementRootList:GetChildren() - 1) * 28))
+
+	self.managementRootList.Visible = self.managementState.layer == "root"
+	self.managementActionsFrame.Visible = self.managementState.layer ~= "root"
+	for _, c in ipairs(self.managementActionsFrame:GetChildren()) do
+		if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
+	end
+
+	if self.managementState.layer == "actions" and selected then
+		local actions = {
+			{ key = "summary", label = "Summary / Info" },
+			{ key = "move_to_party", label = "Move to Party" },
+			{ key = "move_to_reserve", label = "Move to Reserve" },
+			{ key = "swap_with_party", label = "Swap with Party Member" },
+			{ key = "use_item", label = "Use Item" },
+			{ key = "cancel", label = "Cancel" },
+		}
+		for _, action in ipairs(actions) do
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, -8, 0, 24)
+			btn.TextXAlignment = Enum.TextXAlignment.Left
+			btn.Font = Enum.Font.Gotham
+			btn.TextSize = 13
+			btn.Text = action.label
+			btn.Parent = self.managementActionsFrame
+			btn.MouseButton1Click:Connect(function()
+				if action.key == "cancel" then
+					self.managementState.layer = "root"
+				elseif action.key == "summary" then
+					self.managementState.layer = "summary"
+				elseif action.key == "move_to_party" then
+					self:sendCreatureManageRequest("move_to_party", { ownedId = selected.ownedId })
+				elseif action.key == "move_to_reserve" then
+					self:sendCreatureManageRequest("move_to_reserve", { ownedId = selected.ownedId })
+				elseif action.key == "swap_with_party" then
+					self.managementState.layer = "swap"
+				elseif action.key == "use_item" then
+					self.managementState.layer = "items"
+				end
+				self:refreshCreatureManagementMenu()
+			end)
+		end
+	elseif self.managementState.layer == "swap" and selected then
+		for slot = 1, 2 do
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, -8, 0, 24)
+			btn.Text = string.format("Swap into Party Slot %d", slot)
+			btn.Parent = self.managementActionsFrame
+			btn.MouseButton1Click:Connect(function()
+				self:sendCreatureManageRequest("swap_with_party", { ownedId = selected.ownedId, targetSlot = slot })
+				self.managementState.layer = "actions"
+				self:refreshCreatureManagementMenu()
+			end)
+		end
+	elseif self.managementState.layer == "items" and selected then
+		for _, item in ipairs(data.items or {}) do
+			local count = tonumber(item.count) or 0
+			local _, def = ItemUseRules.getDef(item.key)
+			local targetSlot = selected.location == "party" and selected.slotOrIndex or nil
+			local valid, _ = ItemUseRules.validateClientUse(def, count, targetSlot)
+			if valid then
+				local btn = Instance.new("TextButton")
+				btn.Size = UDim2.new(1, -8, 0, 24)
+				btn.Text = string.format("%s x%d", tostring(item.label or item.key), count)
+				btn.Parent = self.managementActionsFrame
+				btn.MouseButton1Click:Connect(function()
+					self:sendCreatureManageRequest("use_item", { ownedId = selected.ownedId, itemKey = item.key, targetSlot = targetSlot })
+				end)
+			end
+		end
+	elseif self.managementState.layer == "summary" and selected then
+		local info = Instance.new("TextLabel")
+		info.Size = UDim2.new(1, -8, 1, -8)
+		info.BackgroundTransparency = 1
+		info.TextXAlignment = Enum.TextXAlignment.Left
+		info.TextYAlignment = Enum.TextYAlignment.Top
+		info.Font = Enum.Font.Code
+		info.TextSize = 13
+		info.Text = string.format("Name: %s\nSpecies: %s\nLevel: %d\nState: %s\nHP: %d/%d\nLocation: %s", tostring(selected.name or "-"), tostring(selected.speciesKey or "-"), tonumber(selected.level) or 1, tostring(selected.state or "-"), tonumber(selected.hp) or 0, tonumber(selected.maxHP) or 0, tostring(selected.location or "-"))
+		info.Parent = self.managementActionsFrame
+	end
+
+	self.managementTitle.Text = string.format("Creature Management [%s]", tostring(self.managementState.layer))
+	if selected then
+		self.managementFooter.Text = string.format("Selected: %s Lv.%d (%s)\n[M] Toggle menu  [Esc] Back", tostring(selected.name or selected.speciesKey), tonumber(selected.level) or 1, tostring(selected.location or "-"))
+	else
+		self.managementFooter.Text = "Select a creature to open actions. [M] Toggle menu  [Esc] Back"
+	end
 end
 
 function UIController:hexToColor3(hex)

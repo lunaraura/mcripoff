@@ -175,6 +175,98 @@ function PlayerDataService:swapPartyWithReserve(player, partySlot, reserveIndex)
 	return true, "swapped"
 end
 
+
+local function compactReserve(data)
+	local cleaned = {}
+	for _, ownedId in ipairs(data.reserve or {}) do
+		if ownedId then
+			table.insert(cleaned, ownedId)
+		end
+	end
+	data.reserve = cleaned
+end
+
+function PlayerDataService:findOwnedLocation(player, ownedId)
+	local data = self:getOrCreate(player)
+	local id = tonumber(ownedId)
+	if not id then return nil, nil end
+	for slot = 1, 2 do
+		if tonumber(data.partySlots[slot]) == id then
+			return "party", slot
+		end
+	end
+	for reserveIndex, reserveId in ipairs(data.reserve) do
+		if tonumber(reserveId) == id then
+			return "reserve", reserveIndex
+		end
+	end
+	return nil, nil
+end
+
+function PlayerDataService:swapPartySlots(player, slotA, slotB)
+	local data = self:getOrCreate(player)
+	slotA = tonumber(slotA)
+	slotB = tonumber(slotB)
+	if slotA ~= 1 and slotA ~= 2 then return false, "invalid slotA" end
+	if slotB ~= 1 and slotB ~= 2 then return false, "invalid slotB" end
+	if slotA == slotB then return true, "noop" end
+	data.partySlots[slotA], data.partySlots[slotB] = data.partySlots[slotB], data.partySlots[slotA]
+	return true, "swapped"
+end
+
+function PlayerDataService:moveOwnedToReserve(player, ownedId)
+	local data = self:getOrCreate(player)
+	local location, idx = self:findOwnedLocation(player, ownedId)
+	if location ~= "party" then
+		return false, "owned not in party"
+	end
+	local movingId = data.partySlots[idx]
+	if not movingId then
+		return false, "party slot empty"
+	end
+	data.partySlots[idx] = nil
+	table.insert(data.reserve, movingId)
+	compactReserve(data)
+	return true, "moved_to_reserve", idx
+end
+
+function PlayerDataService:moveOwnedToParty(player, ownedId, targetSlot)
+	local data = self:getOrCreate(player)
+	local location, idx = self:findOwnedLocation(player, ownedId)
+	if not location then
+		return false, "owned not found"
+	end
+	if location == "party" then
+		if targetSlot and tonumber(targetSlot) and tonumber(targetSlot) ~= idx then
+			return self:swapPartySlots(player, idx, tonumber(targetSlot))
+		end
+		return true, "already_in_party", idx
+	end
+
+	local slot = tonumber(targetSlot)
+	if slot and slot ~= 1 and slot ~= 2 then
+		return false, "invalid target slot"
+	end
+	if not slot then
+		slot = self:getFirstOpenPartySlot(player)
+		if not slot then
+			return false, "party_full"
+		end
+	end
+	local movingId = data.reserve[idx]
+	if not movingId then
+		return false, "invalid reserve index"
+	end
+	local replacedId = data.partySlots[slot]
+	data.partySlots[slot] = movingId
+	table.remove(data.reserve, idx)
+	if replacedId then
+		table.insert(data.reserve, replacedId)
+	end
+	compactReserve(data)
+	return true, replacedId and "swapped_into_party" or "moved_to_party", slot
+end
+
 function PlayerDataService:getReserveList(player)
 	local data = self:getOrCreate(player)
 	local out = {}

@@ -22,6 +22,9 @@ end
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
+local ItemConfig = require(Config:WaitForChild("ItemConfig"))
+local Items = Shared:WaitForChild("Items")
+local ItemUseRules = require(Items:WaitForChild("ItemUseRules"))
 
 local remotes = {	RequestPetCommand = ensureRemote("RequestPetCommand"),
 	RequestContextAction = ensureRemote("RequestContextAction"),
@@ -34,6 +37,8 @@ local remotes = {	RequestPetCommand = ensureRemote("RequestPetCommand"),
 	PetHudUpdate = ensureRemote("PetHudUpdate"),
 	ManualCastResult = ensureRemote("ManualCastResult"),
 	ItemUseResult = ensureRemote("ItemUseResult"),
+	RequestCreatureManage = ensureRemote("RequestCreatureManage"),
+	CreatureManageResult = ensureRemote("CreatureManageResult"),
 }
 
 local WorldService = require(Services:WaitForChild("WorldService"))
@@ -279,6 +284,47 @@ remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
 	end
 end)
 
+
+
+remotes.RequestCreatureManage.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	local action = tostring(payload.action or "")
+	local ownedId = tonumber(payload.ownedId)
+	local ok, reason, indexOrSlot = false, "invalid_action", nil
+
+	if action == "move_to_party" then
+		ok, reason, indexOrSlot = playerDataService:moveOwnedToParty(player, ownedId, tonumber(payload.targetSlot))
+	elseif action == "move_to_reserve" then
+		ok, reason, indexOrSlot = playerDataService:moveOwnedToReserve(player, ownedId)
+	elseif action == "swap_party_slots" then
+		ok, reason = playerDataService:swapPartySlots(player, tonumber(payload.slotA), tonumber(payload.slotB))
+	elseif action == "swap_with_party" then
+		ok, reason, indexOrSlot = playerDataService:moveOwnedToParty(player, ownedId, tonumber(payload.targetSlot))
+	elseif action == "use_item" then
+		ok = berryService:tryUseBerry(player, payload.itemKey, tonumber(payload.targetSlot), ownedId)
+		reason = ok and "item_used" or "item_use_failed"
+	end
+
+	if action == "move_to_party" or action == "move_to_reserve" or action == "swap_party_slots" or action == "swap_with_party" then
+		if ok then
+			creatureService:respawnPartyFromOwned(player)
+		end
+	end
+	if ok then
+		worldService:pushEventLog(player, string.format("Manage: %s (%s)", action, tostring(reason)), "#bfe2ff")
+	else
+		worldService:pushEventLog(player, string.format("Manage failed: %s (%s)", action, tostring(reason)), "#ffb3b3")
+	end
+	if remotes.CreatureManageResult then
+		remotes.CreatureManageResult:FireClient(player, {
+			ok = ok,
+			action = action,
+			reason = tostring(reason),
+			indexOrSlot = indexOrSlot,
+			t = worldService.time,
+		})
+	end
+end)
 remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
 	payload = payload or {}
 	local requestedSlot = tonumber(payload.slot)
@@ -479,6 +525,50 @@ local function pushPetHud()
 				petPayload[i] = nil
 			end
 		end
+
+		local function buildManagedCreatureEntry(ownedId, location, slotOrIndex)
+			if not ownedId then return nil end
+			local owned = data.ownedCreatures[ownedId]
+			if not owned then return nil end
+			local runtime = worldService:getRuntimeCreatureForOwnedId(player.UserId, ownedId)
+			local alive = runtime and runtime.alive and not owned.isDefeated
+			return {
+				ownedId = owned.ownedId,
+				speciesKey = owned.speciesKey,
+				name = owned.nickname,
+				level = tonumber(owned.level) or 1,
+				state = alive and "alive" or (owned.isDefeated and "defeated" or "stored"),
+				hp = alive and math.floor((runtime.currentHP or 0) + 0.5) or 0,
+				maxHP = alive and math.floor(((runtime.modifiedStats and runtime.modifiedStats.maxHP) or 0) + 0.5) or 0,
+				stamina = alive and math.floor((runtime.currentStamina or 0) + 0.5) or 0,
+				energy = alive and math.floor((runtime.currentEnergy or 0) + 0.5) or 0,
+				compositeKey = owned.compositeKey,
+				location = location,
+				slotOrIndex = slotOrIndex,
+			}
+		end
+
+		local managedParty = {}
+		for slot = 1, 2 do
+			managedParty[slot] = buildManagedCreatureEntry(data.partySlots[slot], "party", slot)
+		end
+		local managedReserve = {}
+		for reserveIndex, reserveOwnedId in ipairs(data.reserve) do
+			local entry = buildManagedCreatureEntry(reserveOwnedId, "reserve", reserveIndex)
+			if entry then
+				table.insert(managedReserve, entry)
+			end
+		end
+		local managedItems = {}
+		for _, item in ipairs(ItemUseRules.getDisplayItems()) do
+			table.insert(managedItems, {
+				key = item.key,
+				label = item.label,
+				targeting = item.targeting,
+				count = tonumber(data.materials[item.key]) or 0,
+				targetType = (ItemConfig[item.key] and ItemConfig[item.key].targetType) or nil,
+			})
+		end
 		local summary = summarizeHudPayloadForReplication(petPayload)
 		local cache = hudReplicationCache[player.UserId]
 		local sameAsLast = cache and cache.summary == summary
@@ -492,6 +582,7 @@ local function pushPetHud()
 					stance = tostring(player:GetAttribute("PetStance") or "FOLLOW"),
 					activeDesignatedTargetId = tonumber(player:GetAttribute("ActiveDesignatedTargetId")),
 					starterChosen = player:GetAttribute("StarterChosen") == true,
+					management = { party = managedParty, reserve = managedReserve, items = managedItems },
 				},
 				t = worldService.time,
 			})
