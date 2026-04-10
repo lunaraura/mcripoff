@@ -80,6 +80,7 @@ function CreatureService:attachModel(creature)
 	tag.Size = UDim2.fromOffset(120, 28)
 	tag.StudsOffset = Vector3.new(0, mainPart.Size.Y * 0.85, 0)
 	tag.AlwaysOnTop = true
+	tag.MaxDistance = 70
 	tag.Parent = model
 
 	local text = Instance.new("TextLabel")
@@ -237,10 +238,14 @@ function CreatureService:getCreatureVisualSize(creature)
 end
 
 function CreatureService:getCreatureTagText(creature)
-	local tier = creature.mode == "wild" and (creature.wildTier or "normal") or "pet"
-	local passive = creature.role == "passive" and " passive" or ""
-	local arche = creature.mode == "wild" and creature.wildArchetype and ("/" .. creature.wildArchetype) or ""
-	return string.format("%s (%s%s%s)", creature.speciesKey, tier, arche, passive)
+	local level = math.max(1, math.floor(tonumber(creature.level) or 1))
+	if creature.mode == "pet" then
+		return string.format("%s Lv.%d", tostring(creature.speciesKey), level)
+	end
+	if creature.role == "passive" then
+		return string.format("%s (passive)", tostring(creature.speciesKey))
+	end
+	return string.format("%s Lv.%d", tostring(creature.speciesKey), level)
 end
 
 return CreatureService

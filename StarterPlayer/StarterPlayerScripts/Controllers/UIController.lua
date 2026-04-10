@@ -622,42 +622,26 @@ function UIController:updatePetHud(payload)
 						end
 					end
 					if state == "alive" then
-						local cmd = pet.command or "auto"
-							local manual = tostring(pet.manualCastState or "idle")
-							local manualCode = tostring(pet.manualCastCode or "-")
-						local designated = tostring(pet.designatedTargetId or "-")
-						local cmdTarget = tostring(pet.commandTargetId or "-")
-						local forcedState = tostring(pet.forcedState or "-")
-						local ignored = tostring(pet.commandIgnoreReason or "-")
-						local override = pet.commandOverride and "Y" or "N"
+						local hpPct = math.floor((hp / math.max(1, maxHp)) * 100)
+						local statusLine = string.format("Manual:%s  Cast:%s", tostring(pet.manualCastState or "idle"), tostring(pet.manualCastCode or "-"))
 						label.Text = string.format(
-								"Slot %d: %s [%s] (Lv %d)\nHP %d/%d  ST %d  EN %d\nStance:%s  Cmd:%s  CmdTarget:%s\nTarget:%s  Designated:%s  Forced:%s\nManual:%s (%s)  Override:%s  Ignored:%s\nCD: %s",
+							"Slot %d  %s  Lv %d\nHP %d/%d (%d%%)\nStamina %d  Energy %d\n%s\nCD: %s",
 							i,
 							displayName,
-							speciesName,
-						tostring(pet.level or 1),
-						hp,
+							tostring(pet.level or 1),
+							hp,
 							maxHp,
+							hpPct,
 							st,
 							en,
-							tostring(self.stance or "FOLLOW"),
-							tostring(cmd),
-							cmdTarget,
-							tostring(pet.targetId or "-"),
-								designated,
-								forcedState,
-								manual,
-								manualCode,
-								override,
-								ignored,
+							statusLine,
 							cooldownSummary
 						)
 				else
 					label.Text = string.format(
-						"Slot %d: %s [%s] (Lv %d)\nHP 0/%d  ST 0  EN 0\nDEFEATED\nCD: --",
+						"Slot %d  %s  Lv %d\nDEFEATED\nHP 0/%d\nUse revive on this slot",
 						i,
 						displayName,
-						speciesName,
 						tostring(pet.level or 1),
 						math.max(maxHp, 0)
 					)

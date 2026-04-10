@@ -1,6 +1,21 @@
 local Players = game:GetService("Players")
+local Terrain = workspace.Terrain
 local ChunkSystem = require(script.Parent.Parent.Systems.ChunkSystem)
 local BiomeSystem = require(script.Parent.Parent.Systems.BiomeSystem)
+
+
+local TERRAIN_RAY_PARAMS = RaycastParams.new()
+TERRAIN_RAY_PARAMS.FilterType = Enum.RaycastFilterType.Include
+TERRAIN_RAY_PARAMS.FilterDescendantsInstances = { Terrain }
+
+local function sampleTerrainGroundY(x, z, hintY)
+	local startY = math.max(96, (tonumber(hintY) or 0) + 128)
+	local result = workspace:Raycast(Vector3.new(x, startY, z), Vector3.new(0, -512, 0), TERRAIN_RAY_PARAMS)
+	if result then
+		return result.Position.Y
+	end
+	return nil
+end
 
 local WorldService = {}
 WorldService.__index = WorldService
@@ -88,8 +103,13 @@ end
 -- Canonical contract: creature.pos.Y is ALWAYS world ground-contact height (feet), never model center.
 function WorldService:resolveCreatureGroundY(x, z, fallbackY)
 	local cell = self:getChunkCellAtWorld(x, z)
-	if cell and (cell.yGround or cell.yG) then
-		return cell.yGround or cell.yG
+	local cellY = cell and (cell.yGround or cell.yG) or nil
+	local terrainY = sampleTerrainGroundY(x, z, cellY or fallbackY)
+	if terrainY then
+		return terrainY
+	end
+	if cellY then
+		return cellY
 	end
 	local env = BiomeSystem.sampleEnvironment(x, z)
 	if env and env.yGround then

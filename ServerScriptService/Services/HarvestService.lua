@@ -83,7 +83,7 @@ function HarvestService:bindHarvestNodePrompts()
 		if prompt:GetAttribute("BoundNodeHarvest") then return end
 		prompt:SetAttribute("BoundNodeHarvest", true)
 		prompt.Triggered:Connect(function(player)
-			self:tryHarvestNodeInstance(player, node)
+			self:tryHarvestNodeInstance(player, node, { source = "prompt" })
 		end)
 	end
 	for _, node in ipairs(CollectionService:GetTagged("HarvestNode")) do
@@ -92,7 +92,12 @@ function HarvestService:bindHarvestNodePrompts()
 	CollectionService:GetInstanceAddedSignal("HarvestNode"):Connect(hookNode)
 end
 
-function HarvestService:tryHarvestNodeInstance(player, node)
+function HarvestService:tryHarvestNodeInstance(player, node, opts)
+	opts = opts or {}
+	if tostring(opts.toolKey or "") ~= "node_demolisher" then
+		self.worldService:pushEventLog(player, "Need Node Demolisher tool to harvest nodes", "#ffb3b3")
+		return false, "tool_required_node_demolisher"
+	end
 	if not node or not node.Parent then return false, "missing node" end
 	if node:GetAttribute("Depleted") then
 		return false, "depleted node"
@@ -126,7 +131,7 @@ function HarvestService:tryHarvestNearbyNode(player, radius)
 		end
 	end
 	if not best then return false, "no node nearby" end
-	return self:tryHarvestNodeInstance(player, best)
+	return self:tryHarvestNodeInstance(player, best, { source = "nearby" })
 end
 
 function HarvestService:ensureFloraFolder()
@@ -154,12 +159,7 @@ function HarvestService:tryUseDemolishHarvestTool(player, payload)
 		end
 	end
 	if not best then return false, "no non-berry node nearby" end
-	local dropKey = tostring(best:GetAttribute("DropKey") or "stone")
-	local dropAmount = math.max(1, math.floor(tonumber(best:GetAttribute("DropAmount")) or 1))
-	local granted = self.inventoryService:grant(player, { { key = dropKey, amount = dropAmount } })
-	self.worldService:pushEventLog(player, string.format("Tool harvested %s", tostring(best:GetAttribute("NodeType") or "node")), "#d7fcb7")
-	self:depleteNode(best)
-	return true, granted
+	return self:tryHarvestNodeInstance(player, best, { source = "tool", toolKey = "node_demolisher" })
 end
 
 function HarvestService:setNodeVisualActive(node, active)
