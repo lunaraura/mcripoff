@@ -1,6 +1,20 @@
 local AbilityConfig = {
 	ram = {
-		name = "Ram", category = "melee", cooldown = 2.0,
+		name = "Ram", category = "dash", cooldown = 2.0,
+		resourceUse = { stamina = 5, energy = 0 },
+		flatDmg = { p = 6, e = 0 }, dmgScale = { p = 0.8, e = 0 },
+		damageProfile = { physical = { "impact" } }, range = 24,
+		effectTags = { "impact", "physical" },
+		statusOnHit = {
+			{ key = "bleed", chance = 0.2, params = { duration = 4, dps = 1.5 } },
+		},
+		-- Timing
+		castTime = 0, -- Instant
+		recovery = 0.3, -- Brief recovery after dash
+		gcd = 0.45,
+	},
+	headbutt = {
+		name = "Headbutt", category = "melee", cooldown = 2.0,
 		resourceUse = { stamina = 5, energy = 0 },
 		flatDmg = { p = 3, e = 0 }, dmgScale = { p = 0.8, e = 0 },
 		damageProfile = { physical = { "impact" } }, range = 24,
@@ -8,6 +22,10 @@ local AbilityConfig = {
 		statusOnHit = {
 			{ key = "bleed", chance = 0.2, params = { duration = 4, dps = 1.5 } },
 		},
+		-- Timing
+		castTime = 0,
+		recovery = 0.2,
+		gcd = 0.4,
 	},
 	zap = {
 		name = "Zap", category = "hitscan", cooldown = 4.2,
@@ -18,6 +36,10 @@ local AbilityConfig = {
 		statusOnHit = {
 			{ key = "slow", chance = 0.35, params = { duration = 3.5, mult = 0.72 } },
 		},
+		-- Timing
+		castTime = 0.5, -- Brief cast time for ranged spell
+		recovery = 0.3,
+		gcd = 0.5,
 	},
 	emberClaw = {
 		name = "Ember Claw", category = "melee", cooldown = 1.4,
@@ -28,6 +50,10 @@ local AbilityConfig = {
 		statusOnHit = {
 			{ key = "burn", chance = 0.4, params = { duration = 5, dps = 2.2 } },
 		},
+		-- Timing
+		castTime = 0,
+		recovery = 0.25,
+		gcd = 0.35,
 	},
 	pebbleShot = {
 		name = "Pebble Shot", category = "projectile", cooldown = 6.0,
@@ -36,6 +62,10 @@ local AbilityConfig = {
 		damageProfile = { physical = { "pierce" } }, range = 150,
 		projectile = { speed = 90, homing = false, radius = 4, life = 2.6 },
 		effectTags = { "physical", "impact" },
+		-- Timing
+		castTime = 0.4, -- Windup before throwing
+		recovery = 0.3,
+		gcd = 0.5,
 	},
 	staticBurst = {
 		name = "Static Burst", category = "aoe", cooldown = 5.2,
@@ -45,6 +75,10 @@ local AbilityConfig = {
 		area = { radius = 40, mode = "instant" },
 		statusOnHit = { { key = "slow", chance = 1, params = { duration = 1.5, mult = 0.65 } } },
 		effectTags = { "electric", "offensive" },
+		-- Timing
+		castTime = 0.8, -- Longer cast for big AOE
+		recovery = 0.4,
+		gcd = 0.6,
 	},
 	stomp = {
 		name = "Stomp", category = "aoe", cooldown = 5.2,
@@ -54,6 +88,10 @@ local AbilityConfig = {
 		area = { radius = 28, mode = "lingering", duration = 1.0, tick = 0.5 },
 		statusSelf = { { key = "guard", chance = 1, params = { duration = 2.5, reduction = 0.22 } } },
 		effectTags = { "impact", "offensive" },
+		-- Timing
+		castTime = 0.6, -- Stomp windup
+		recovery = 0.5,
+		gcd = 0.5,
 	},
 	dashBite = {
 		name = "Dash Bite", category = "dash", cooldown = 3.0,
@@ -63,6 +101,10 @@ local AbilityConfig = {
 		dash = { distance = 90, stopShort = 10 },
 		statusOnHit = { { key = "slow", chance = 0.35, params = { duration = 1.1, mult = 0.75 } } },
 		effectTags = { "impact", "mobility" },
+		-- Timing
+		castTime = 0.2, -- Brief windup before dash
+		recovery = 0.4,
+		gcd = 0.45,
 	},
 	staticBarrier = {
 		name = "Static Barrier", category = "barrier", cooldown = 10.5,
@@ -70,6 +112,10 @@ local AbilityConfig = {
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 120,
 		barrier = { kind = "zone", radius = 52, duration = 5.0, slow = 0.25, damageReduction = 0.22, blockMovement = true },
 		effectTags = { "electric", "defensive" },
+		-- Timing
+		castTime = 1.0, -- Longer cast for barrier
+		recovery = 0.3,
+		gcd = 0.6,
 	},
 	stoneWall = {
 		name = "Stone Wall", category = "barrier", cooldown = 12.0,
@@ -77,6 +123,10 @@ local AbilityConfig = {
 		flatDmg = { p = 0, e = 0 }, dmgScale = { p = 0, e = 0 }, range = 90,
 		barrier = { kind = "wall", duration = 4.0, length = 60, thickness = 8, blockMovement = true, damageReduction = 0.15 },
 		effectTags = { "physical", "defensive" },
+		-- Timing
+		castTime = 1.2, -- Long cast for wall
+		recovery = 0.4,
+		gcd = 0.6,
 	},
 
 	mendPulse = {
@@ -88,6 +138,10 @@ local AbilityConfig = {
 		heal = { flat = 12, scale = 0.35, maxPercent = 0.28 },
 		statusOnTarget = { { key = "guard", chance = 1, params = { duration = 2.5, reduction = 0.2 } }, { key = "wet", chance = 1, params = { duration = 4, stacks = 1 } } },
 		effectTags = { "water", "utility" },
+		-- Timing
+		castTime = 0.7, -- Cast time for heal
+		recovery = 0.3,
+		gcd = 0.5,
 	},
 	energize = {
 		name = "Energize", category = "utility", cooldown = 7.0,
@@ -98,6 +152,10 @@ local AbilityConfig = {
 		restore = { energy = 10, stamina = 6 },
 		statusOnTarget = { { key = "haste", chance = 1, params = { duration = 2.2, mult = 1.18 } }, { key = "wet", chance = 1, params = { duration = 3, stacks = 1 } } },
 		effectTags = { "water", "utility" },
+		-- Timing
+		castTime = 0.5,
+		recovery = 0.25,
+		gcd = 0.45,
 	},
 	guardianLeap = {
 		name = "Guardian Leap", category = "utility_dash", cooldown = 6.8,
@@ -108,6 +166,10 @@ local AbilityConfig = {
 		dash = { distance = 70, stopShort = 6 },
 		statusOnTarget = { { key = "guard", chance = 1, params = { duration = 3.0, reduction = 0.28 } } },
 		effectTags = { "defensive", "mobility" },
+		-- Timing
+		castTime = 0.3,
+		recovery = 0.35,
+		gcd = 0.45,
 	},
 	blinkStrike = {
 		name = "Blink Strike", category = "blink", cooldown = 6.2,
@@ -117,6 +179,10 @@ local AbilityConfig = {
 		range = 120, blink = { behind = 10 },
 		statusOnHit = { { key = "slow", chance = 0.5, params = { duration = 1.4, mult = 0.7 } } },
 		effectTags = { "electric", "mobility" },
+		-- Timing
+		castTime = 0.4, -- Brief windup before blink
+		recovery = 0.3,
+		gcd = 0.5,
 	},
 	rallyHowl = {
 		name = "Rally Howl", category = "utility", cooldown = 6.2,
@@ -125,6 +191,10 @@ local AbilityConfig = {
 		targetType = "self",
 		statusSelf = { { key = "haste", chance = 1, params = { duration = 4, mult = 1.2 } } },
 		effectTags = { "utility", "defensive" },
+		-- Timing
+		castTime = 0.6, -- Howl animation
+		recovery = 0.2,
+		gcd = 0.5,
 	},
 	disengage = {
 		name = "Disengage", category = "retreat", cooldown = 3.0,
@@ -133,6 +203,10 @@ local AbilityConfig = {
 		damageProfile = { physical = { "impact" } },
 		dash = { distance = 80, stopShort = 10 }, range = 20,
 		effectTags = { "impact", "mobility" },
+		-- Timing
+		castTime = 0.15, -- Quick reaction
+		recovery = 0.35,
+		gcd = 0.4,
 	},
 }
 
