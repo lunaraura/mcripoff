@@ -343,7 +343,7 @@ function UIController:buildBuildAndToolMenu(gui)
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Text = "Tools / Build"
+	title.Text = "Build / Action"
 	title.Font = Enum.Font.GothamBold
 	title.TextSize = 14
 	title.TextColor3 = Color3.fromRGB(235, 245, 255)
@@ -352,61 +352,80 @@ function UIController:buildBuildAndToolMenu(gui)
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = panel
 
-	local buildMenuToggle = Instance.new("TextButton")
-	buildMenuToggle.Size = UDim2.fromOffset(150, 24)
-	buildMenuToggle.Position = UDim2.fromOffset(10, 30)
-	buildMenuToggle.Text = "Open Build Menu"
-	buildMenuToggle.Parent = panel
+	local rootActionButton = Instance.new("TextButton")
+	rootActionButton.Size = UDim2.fromOffset(302, 28)
+	rootActionButton.Position = UDim2.fromOffset(9, 28)
+	rootActionButton.Text = "Open Build / Action"
+	rootActionButton.Parent = panel
 
-	local useButton = Instance.new("TextButton")
-	useButton.Size = UDim2.fromOffset(150, 24)
-	useButton.Position = UDim2.fromOffset(164, 30)
-	useButton.Text = "Use Selected"
-	useButton.Parent = panel
+	local levelTwo = Instance.new("Frame")
+	levelTwo.Name = "LevelTwo"
+	levelTwo.Size = UDim2.fromOffset(302, 138)
+	levelTwo.Position = UDim2.fromOffset(9, 62)
+	levelTwo.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+	levelTwo.BackgroundTransparency = 0.15
+	levelTwo.Visible = false
+	levelTwo.Parent = panel
 
-	local toolTitle = Instance.new("TextLabel")
-	toolTitle.BackgroundTransparency = 1
-	toolTitle.Size = UDim2.fromOffset(140, 18)
-	toolTitle.Position = UDim2.fromOffset(10, 58)
-	toolTitle.TextXAlignment = Enum.TextXAlignment.Left
-	toolTitle.Font = Enum.Font.GothamBold
-	toolTitle.TextSize = 12
-	toolTitle.TextColor3 = Color3.fromRGB(210, 225, 240)
-	toolTitle.Text = "Tools"
-	toolTitle.Parent = panel
-
-	local buildTitle = Instance.new("TextLabel")
-	buildTitle.BackgroundTransparency = 1
-	buildTitle.Size = UDim2.fromOffset(140, 18)
-	buildTitle.Position = UDim2.fromOffset(164, 58)
-	buildTitle.TextXAlignment = Enum.TextXAlignment.Left
-	buildTitle.Font = Enum.Font.GothamBold
-	buildTitle.TextSize = 12
-	buildTitle.TextColor3 = Color3.fromRGB(210, 225, 240)
-	buildTitle.Text = "Buildables"
-	buildTitle.Parent = panel
+	local levelTwoTitle = Instance.new("TextLabel")
+	levelTwoTitle.BackgroundTransparency = 1
+	levelTwoTitle.Size = UDim2.new(1, -12, 0, 20)
+	levelTwoTitle.Position = UDim2.fromOffset(8, 4)
+	levelTwoTitle.TextXAlignment = Enum.TextXAlignment.Left
+	levelTwoTitle.Font = Enum.Font.GothamBold
+	levelTwoTitle.TextSize = 12
+	levelTwoTitle.TextColor3 = Color3.fromRGB(210, 225, 240)
+	levelTwoTitle.Text = "Tools & Actions"
+	levelTwoTitle.Parent = levelTwo
 
 	local toolDemolisher = Instance.new("TextButton")
-	toolDemolisher.Size = UDim2.fromOffset(150, 22)
-	toolDemolisher.Position = UDim2.fromOffset(10, 76)
-	toolDemolisher.Text = "Demolisher"
-	toolDemolisher.Parent = panel
+	toolDemolisher.Size = UDim2.fromOffset(136, 24)
+	toolDemolisher.Position = UDim2.fromOffset(8, 28)
+	toolDemolisher.Text = "Equip Demolisher"
+	toolDemolisher.Parent = levelTwo
 
 	local toolPlanter = Instance.new("TextButton")
-	toolPlanter.Size = UDim2.fromOffset(150, 22)
-	toolPlanter.Position = UDim2.fromOffset(10, 102)
-	toolPlanter.Text = "Berry Planter"
-	toolPlanter.Parent = panel
+	toolPlanter.Size = UDim2.fromOffset(136, 24)
+	toolPlanter.Position = UDim2.fromOffset(156, 28)
+	toolPlanter.Text = "Equip Planter"
+	toolPlanter.Parent = levelTwo
+
+	local openBuildSelection = Instance.new("TextButton")
+	openBuildSelection.Size = UDim2.fromOffset(284, 24)
+	openBuildSelection.Position = UDim2.fromOffset(8, 58)
+	openBuildSelection.Text = "Open Build Selection"
+	openBuildSelection.Parent = levelTwo
+
+	local useButton = Instance.new("TextButton")
+	useButton.Size = UDim2.fromOffset(284, 24)
+	useButton.Position = UDim2.fromOffset(8, 88)
+	useButton.Text = "Use Selected Action"
+	useButton.Parent = levelTwo
+
+	local levelThree = Instance.new("Frame")
+	levelThree.Name = "LevelThree"
+	levelThree.Size = UDim2.fromOffset(302, 152)
+	levelThree.Position = UDim2.fromOffset(9, 62)
+	levelThree.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+	levelThree.BackgroundTransparency = 0.1
+	levelThree.Visible = false
+	levelThree.Parent = panel
+
+	local backToLevelTwo = Instance.new("TextButton")
+	backToLevelTwo.Size = UDim2.fromOffset(284, 22)
+	backToLevelTwo.Position = UDim2.fromOffset(8, 6)
+	backToLevelTwo.Text = "Back to Tools & Actions"
+	backToLevelTwo.Parent = levelThree
 
 	local buildList = Instance.new("ScrollingFrame")
-	buildList.Size = UDim2.fromOffset(150, 132)
-	buildList.Position = UDim2.fromOffset(164, 76)
+	buildList.Size = UDim2.fromOffset(284, 118)
+	buildList.Position = UDim2.fromOffset(8, 30)
 	buildList.CanvasSize = UDim2.fromOffset(0, 0)
 	buildList.ScrollBarThickness = 6
-	buildList.Visible = false
+	buildList.Visible = true
 	buildList.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	buildList.BackgroundTransparency = 0.15
-	buildList.Parent = panel
+	buildList.Parent = levelThree
 
 	local layout = Instance.new("UIListLayout")
 	layout.Padding = UDim.new(0, 4)
@@ -414,12 +433,14 @@ function UIController:buildBuildAndToolMenu(gui)
 
 	local selectedLabel = Instance.new("TextLabel")
 	selectedLabel.BackgroundTransparency = 1
-	selectedLabel.Size = UDim2.new(1, -12, 0, 20)
-	selectedLabel.Position = UDim2.fromOffset(8, 218)
+	selectedLabel.Size = UDim2.new(1, -12, 0, 40)
+	selectedLabel.Position = UDim2.fromOffset(8, 206)
 	selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
+	selectedLabel.TextYAlignment = Enum.TextYAlignment.Top
 	selectedLabel.Font = Enum.Font.Code
 	selectedLabel.TextSize = 13
 	selectedLabel.TextColor3 = Color3.fromRGB(220, 235, 255)
+	selectedLabel.TextWrapped = true
 	selectedLabel.Parent = panel
 
 	local refresh
@@ -454,6 +475,8 @@ function UIController:buildBuildAndToolMenu(gui)
 					self.build:selectBuildable(entry.key)
 					self.build:setBuildMode(true)
 				end
+				levelThree.Visible = false
+				levelTwo.Visible = true
 				refresh()
 			end)
 			yCount += 28
@@ -466,14 +489,30 @@ function UIController:buildBuildAndToolMenu(gui)
 		local tool = self.build and self.build.selectedTool or "-"
 		local buildKey = self.build and self.build.selectedBuildKey or "-"
 		local placementReason = self.build and self.build.placement and (self.build.placement.reasonCode or self.build.placement.reason) or "-"
-		buildMenuToggle.Text = buildList.Visible and "Close Build Menu" or "Open Build Menu"
-		selectedLabel.Text = string.format("tool=%s  build=%s  mode=%s  reason=%s", tostring(tool), tostring(buildKey), buildMode and "BUILD" or "TOOL", tostring(placementReason))
+		rootActionButton.Text = (levelTwo.Visible or levelThree.Visible) and "Close Build / Action" or "Open Build / Action"
+		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
+		selectedLabel.Text = string.format("tool=%s  build=%s  mode=%s\nreason=%s", tostring(tool), tostring(buildKey), buildMode and "BUILD" or "TOOL", tostring(placementReason))
 	end
 
-	buildMenuToggle.MouseButton1Click:Connect(function()
-		buildList.Visible = not buildList.Visible
+	rootActionButton.MouseButton1Click:Connect(function()
+		local opening = not (levelTwo.Visible or levelThree.Visible)
+		levelTwo.Visible = opening
+		levelThree.Visible = false
 		refresh()
 	end)
+
+	openBuildSelection.MouseButton1Click:Connect(function()
+		levelTwo.Visible = false
+		levelThree.Visible = true
+		refresh()
+	end)
+
+	backToLevelTwo.MouseButton1Click:Connect(function()
+		levelThree.Visible = false
+		levelTwo.Visible = true
+		refresh()
+	end)
+
 	useButton.MouseButton1Click:Connect(function()
 		if self.build then
 			self.build:handlePrimaryAction()
@@ -481,18 +520,21 @@ function UIController:buildBuildAndToolMenu(gui)
 			self.requestContextAction:FireServer({ action = "context" })
 		end
 	end)
+
 	toolDemolisher.MouseButton1Click:Connect(function()
 		if self.build then
 			self.build:selectTool("node_demolisher")
 		end
 		refresh()
 	end)
+
 	toolPlanter.MouseButton1Click:Connect(function()
 		if self.build then
 			self.build:selectTool("berry_planter")
 		end
 		refresh()
 	end)
+
 	rebuildBuildMenu()
 	refresh()
 end
