@@ -104,14 +104,6 @@ local SpeciesConfig = {
 		learnset = { { level = 1, move = "ram" } },
 		harvestDrop = { { key = "fiber", amount = 1 } }, harvestCooldown = 22, drop = { { key = "meat", amount = 1 } }, morphOptions = {},
 	},
-	got = {
-		name = "Got", familyKey = "caprine", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "passive",
-		stage = 0,
-		baseStats = { pAtk = 5, eAtk = 0, range = 22, maxHP = 88, spd = 13, castSpd = 1.0, size = 3.5, stamina = 18, energy = 9, recoverStamina = 2.0, recoverEnergy = 1.0 },
-		abilities = { "sureFooted", "forager" },
-		learnset = { { level = 1, move = "ram" } },
-		harvestDrop = { { key = "fiber", amount = 1 } }, harvestCooldown = 22, drop = { { key = "meat", amount = 1 } }, morphOptions = {},
-	},
 	elephant = {
 		name = "Elephant", familyKey = "proboscidean", compositeKey = "animal", outerCompositeKey = "animal", innerCompositeKey = "animal", role = "tank",
 		stage = 0,
