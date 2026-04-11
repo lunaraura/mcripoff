@@ -623,7 +623,8 @@ function CombatService:resolveAbilityCast(source, ability, target, targetType)
 		source.pos = target.pos - Vector3.new(dir.X / mag, 0, dir.Z / mag) * behind
 		if target then self:applyDamagePacket(source, target, ability) end
 	elseif (ability.category == "dash" or ability.category == "retreat") and target then
-		self:performMobility(source, target, ability)
+		-- Movement is now handled during windup phase in updateCasts
+		-- Just apply damage at resolve
 		if target then self:applyDamagePacket(source, target, ability) end
 	elseif ability.category == "melee" or ability.category == "hitscan" then
 		if target then self:applyDamagePacket(source, target, ability) end
@@ -662,9 +663,32 @@ function CombatService:updateCasts(dt)
 			if cs.phase == CAST_PHASE.WINDUP then
 				cs.windupRemaining = cs.windupRemaining - dt
 
+				-- Handle movement during windup for dash abilities
+				local ability = AbilityConfig[cs.abilityKey]
+				if ability and (ability.category == "dash" or ability.category == "retreat") then
+					local target = self.worldService:getCreatureById(cs.targetId)
+					if target and target.alive then
+						-- Calculate movement during windup
+						local dash = ability.dash or {}
+						local totalDistance = dash.distance or 60
+						local castTime = ability.castTime or 0
+						local totalWindup = castTime > 0 and castTime or 0.1 -- Minimum windup for movement
+						local movementProgress = dt / totalWindup
+						
+						-- Direction toward target (or away for retreat)
+						local dir = (target.pos - creature.pos)
+						local mag = math.max(0.01, dir.Magnitude)
+						local norm = Vector3.new(dir.X / mag, 0, dir.Z / mag)
+						if ability.category == "retreat" then norm = norm * -1 end
+						
+						-- Move creature during windup
+						local moveDistance = totalDistance * movementProgress
+						creature.pos = creature.pos + norm * moveDistance
+					end
+				end
+
 				if cs.windupRemaining <= 0 then
 					-- Windup complete, resolve ability
-					local ability = AbilityConfig[cs.abilityKey]
 					if ability then
 						local target = self.worldService:getCreatureById(cs.targetId)
 						-- Use stored targetType instead of recomputing
