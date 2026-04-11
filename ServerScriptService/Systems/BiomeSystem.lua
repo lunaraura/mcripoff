@@ -4,15 +4,17 @@ local Config = Shared:WaitForChild("Config")
 local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
 
 local BiomeSystem = {}
-BiomeSystem.GLOBAL_HEIGHT_AMPLIFY = 2.35
-BiomeSystem.MOUNTAIN_AMPLIFY = 6.45
+BiomeSystem.GLOBAL_HEIGHT_AMPLIFY = 2.6
+BiomeSystem.MOUNTAIN_AMPLIFY = 1.4
 BiomeSystem.OCEAN_FLOOR_AMPLIFY = 1.2
 
 local HEIGHT_PROFILE = {
-	ocean = { baseOffset = -6, ampScale = 0.72, oceanCapOffset = -1 },
-	volcanic = { baseOffset = 4, ampScale = 1.25, ridgeBoost = 1.35 },
+	ocean = { baseOffset = -12, ampScale = 0.72, oceanCapOffset = -1 },
+	volcanic = { baseOffset = 4, ampScale = 3.25, ridgeBoost = 1.35 },
 	polar = { baseOffset = 2, ampScale = 1.12, ridgeBoost = 1.18 },
 	tundra = { baseOffset = 2, ampScale = 1.1, ridgeBoost = 1.1 },
+	smallMountains = { baseOffset = 2, ampScale = 1.1, ridgeBoost = 0.9 },
+	highMountains = { baseOffset = 2, ampScale = 3.1, ridgeBoost = 0.7 },
 }
 
 local BIOME_KEYS = {}
@@ -113,8 +115,8 @@ function BiomeSystem.sampleEnvironment(x, z)
 	local lithoPeak = math.pow(climate.lithosphere, 1.65)
 	local mountainLift = math.max(0, climate.lithosphere - 0.55)
 	mountainLift = (mountainLift * mountainLift) * 46 * BiomeSystem.MOUNTAIN_AMPLIFY
-	local baseHeight = -50 + ((climate.lithosphere-0.5) * 28) - (climate.barrenness * 2) + (globalMacro - 0.5) * 10 + (profile.baseOffset or 0)
-	local ampHeight = (14 + (lithoPeak * 36) + ((1 - climate.softness) * 8) + globalRidge * 14 * (profile.ridgeBoost or 1)) * BiomeSystem.GLOBAL_HEIGHT_AMPLIFY * (profile.ampScale or 1)
+	local baseHeight = -14 + ((climate.lithosphere-0.5) * 32) - (climate.barrenness * 2) + (globalMacro - 0.5) * 10 + (profile.baseOffset or 0)
+	local ampHeight = (14 + (lithoPeak * 24) + ((1 - climate.softness) * 8) + globalRidge * 14 * (profile.ridgeBoost or 1)) * BiomeSystem.GLOBAL_HEIGHT_AMPLIFY * (profile.ampScale or 1)
 	local yGround = math.max(2, math.floor(baseHeight + ampHeight * heightNoise + mountainLift + 0.5))
 	local yWater = math.max(2, math.floor(10 + climate.rainfall * 4 - climate.barrenness * 2 + 0.5))
 	if biomeKey == "ocean" then
