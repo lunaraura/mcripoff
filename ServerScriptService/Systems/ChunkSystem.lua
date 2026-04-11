@@ -9,9 +9,9 @@ local Ecology = Shared:WaitForChild("Ecology")
 local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
 
 local ChunkSystem = {}
-ChunkSystem.CHUNK_SIZE = 64
+ChunkSystem.CHUNK_SIZE = 32
 ChunkSystem.CELL_SIZE = 8
-ChunkSystem.LOAD_RADIUS = 2
+ChunkSystem.LOAD_RADIUS = 17
 
 local ORTHOGONAL_STEP = ChunkSystem.CELL_SIZE
 local DIAGONAL_STEP = ChunkSystem.CELL_SIZE * math.sqrt(2)
@@ -57,64 +57,64 @@ function ChunkSystem.generateChunk(cx, cz)
 			for biomeKey, weight in pairs(biomeMix) do
 				biomeMixTotals[biomeKey] = (biomeMixTotals[biomeKey] or 0) + weight
 			end
-				local cell = {
-					x = wx,
-					z = wz,
-					dominantBiome = biome,
-					biomeMix = biomeMix,
-					climate = env.climate,
-					blocked = blocked,
-					water = water,
-					terrainClass = terrainClass,
-					tags = (BiomeConfig[biome] and BiomeConfig[biome].tags) or {},
-					reasonCode = EcologyRules.Reason.SPAWN_TERRAIN,
-					heightNoise = env.heightNoise,
-					yGround = env.yGround,
-					yWater = env.yWater,
-					yG = env.yGround,
-					yW = env.yWater,
-					slope = 0,
-					moveCost = water and 2.2 or (blocked and math.huge or 1),
-					spawnable = (not blocked and not water),
-					nodeable = (not blocked),
-				}
-				cells[iz * cellsPerAxis + ix + 1] = EcologyRules.normalizeCell(cell)
-				local canSpawn = EcologyRules.canHostSpawn(cells[iz * cellsPerAxis + ix + 1])
-				if canSpawn then
-					local biomeKey = BiomeConfig[biome] and biome or "plains"
-					local elevation = env.yGround or 0
-					local litho = (env.climate and env.climate.lithosphere) or 0.5
-					local levelBias = math.clamp(((elevation - 8) / 18) + (litho - 0.5) * 0.35, -0.6, 1.05)
-					local spawnWeights = {}
-					local mix = biomeMix
-					for mixBiomeKey, mixWeight in pairs(mix) do
-						local biomeCfg = BiomeConfig[mixBiomeKey]
-						if biomeCfg and biomeCfg.spawns then
-							for _, entry in ipairs(biomeCfg.spawns) do
-								local w = (entry.weight or 0) * mixWeight
-								if w > 0 then
-									spawnWeights[entry.key] = (spawnWeights[entry.key] or 0) + w
-								end
+			local cell = {
+				x = wx,
+				z = wz,
+				dominantBiome = biome,
+				biomeMix = biomeMix,
+				climate = env.climate,
+				blocked = blocked,
+				water = water,
+				terrainClass = terrainClass,
+				tags = (BiomeConfig[biome] and BiomeConfig[biome].tags) or {},
+				reasonCode = EcologyRules.Reason.SPAWN_TERRAIN,
+				heightNoise = env.heightNoise,
+				yGround = env.yGround,
+				yWater = env.yWater,
+				yG = env.yGround,
+				yW = env.yWater,
+				slope = 0,
+				moveCost = water and 2.2 or (blocked and math.huge or 1),
+				spawnable = (not blocked and not water),
+				nodeable = (not blocked),
+			}
+			cells[iz * cellsPerAxis + ix + 1] = EcologyRules.normalizeCell(cell)
+			local canSpawn = EcologyRules.canHostSpawn(cells[iz * cellsPerAxis + ix + 1])
+			if canSpawn then
+				local biomeKey = BiomeConfig[biome] and biome or "plains"
+				local elevation = env.yGround or 0
+				local litho = (env.climate and env.climate.lithosphere) or 0.5
+				local levelBias = math.clamp(((elevation - 8) / 18) + (litho - 0.5) * 0.35, -0.6, 1.05)
+				local spawnWeights = {}
+				local mix = biomeMix
+				for mixBiomeKey, mixWeight in pairs(mix) do
+					local biomeCfg = BiomeConfig[mixBiomeKey]
+					if biomeCfg and biomeCfg.spawns then
+						for _, entry in ipairs(biomeCfg.spawns) do
+							local w = (entry.weight or 0) * mixWeight
+							if w > 0 then
+								spawnWeights[entry.key] = (spawnWeights[entry.key] or 0) + w
 							end
 						end
 					end
-					if next(spawnWeights) == nil then
-						spawnWeights["dog"] = 1
-					end
-					table.insert(spawnPoints, {
-						x = wx,
-						z = wz,
-						y = elevation,
-						biomeKey = biomeKey,
-						spawnWeights = spawnWeights,
-						levelBias = levelBias,
-						terrainClass = terrainClass,
+				end
+				if next(spawnWeights) == nil then
+					spawnWeights["dog"] = 1
+				end
+				table.insert(spawnPoints, {
+					x = wx,
+					z = wz,
+					y = elevation,
+					biomeKey = biomeKey,
+					spawnWeights = spawnWeights,
+					levelBias = levelBias,
+					terrainClass = terrainClass,
 					tags = (BiomeConfig[biome] and BiomeConfig[biome].tags) or {},
 					reasonCode = EcologyRules.Reason.SPAWN_TERRAIN,
-					})
-				end
+				})
 			end
 		end
+	end
 
 	local function getCell(ix, iz)
 		if ix < 0 or iz < 0 or ix >= cellsPerAxis or iz >= cellsPerAxis then
@@ -239,14 +239,14 @@ function ChunkSystem.ensureLoaded(world, centerX, centerZ, radiusOverride)
 		for dx = -radius, radius do
 			local cx, cz = ccx + dx, ccz + dz
 			local key = chunkKey(cx, cz)
-				if not world.chunks[key] then
-					local chunk = ChunkSystem.generateChunk(cx, cz)
-					world.chunks[key] = chunk
-					ChunkSystem.writeChunkTerrain(chunk)
-					FloraSystem.scatterChunk(chunk)
-				end
+			if not world.chunks[key] then
+				local chunk = ChunkSystem.generateChunk(cx, cz)
+				world.chunks[key] = chunk
+				ChunkSystem.writeChunkTerrain(chunk)
+				FloraSystem.scatterChunk(chunk)
 			end
 		end
+	end
 end
 
 function ChunkSystem.collectSpawnableCells(world)
