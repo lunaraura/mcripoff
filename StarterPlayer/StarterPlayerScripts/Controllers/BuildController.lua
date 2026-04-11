@@ -9,13 +9,18 @@ local Build = Shared:WaitForChild("Build")
 local PlacementRules = require(Build:WaitForChild("PlacementRules"))
 local Config = Shared:WaitForChild("Config")
 local BuildableConfig = require(Config:WaitForChild("BuildableConfig"))
+local HarvestConfig = require(Config:WaitForChild("HarvestConfig"))
 local PlacementPreviewHelper = require(script.Parent:WaitForChild("PlacementPreviewHelper"))
 
 local BuildController = {}
 BuildController.__index = BuildController
 
+-- Interaction prompt settings
+local INTERACTION_RANGE = 20
+local PROMPT_UPDATE_RATE = 0.1
+
 function BuildController.new()
-	return setmetatable({
+	local self = setmetatable({
 		requestContextAction = remotes:WaitForChild("RequestContextAction"),
 		selectedTool = "node_demolisher",
 		buildMode = false,
@@ -23,11 +28,172 @@ function BuildController.new()
 		selectedRotationY = 0,
 		placement = { valid = false, worldPos = nil, reasonCode = PlacementRules.Reason.INVALID_ACTION, yGround = nil },
 		preview = PlacementPreviewHelper.new(),
+		-- Interaction prompt state
+		currentTarget = nil,
+		currentTargetType = nil,
+		currentPromptText = "",
+		lastPromptUpdate = 0,
+		promptGui = nil,
 	}, BuildController)
+	self:createInteractionPrompt()
+	return self
+end
+
+-- Create the world interaction prompt GUI
+function BuildController:createInteractionPrompt()
+	local player = Players.LocalPlayer
+	local gui = player:WaitForChild("PlayerGui")
+	
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "InteractionPromptGui"
+	screenGui.ResetOnSpawn = false
+	screenGui.Parent = gui
+	self.promptGui = screenGui
+	
+	local promptFrame = Instance.new("Frame")
+	promptFrame.Name = "PromptFrame"
+	promptFrame.Size = UDim2.fromOffset(300, 50)
+	promptFrame.Position = UDim2.new(0.5, -150, 0.7, 0)
+	promptFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+	promptFrame.BackgroundTransparency = 0.3
+	promptFrame.BorderSizePixel = 0
+	promptFrame.Parent = screenGui
+	
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = promptFrame
+	
+	local promptLabel = Instance.new("TextLabel")
+	promptLabel.Name = "PromptLabel"
+	promptLabel.Size = UDim2.fromScale(1, 1)
+	promptLabel.BackgroundTransparency = 1
+	promptLabel.Font = Enum.Font.GothamBold
+	promptLabel.TextSize = 16
+	promptLabel.TextColor3 = Color3.fromRGB(235, 245, 255)
+	promptLabel.Text = ""
+	promptLabel.TextWrapped = true
+	promptLabel.Parent = promptFrame
+	self.promptLabel = promptLabel
+	
+	promptFrame.Visible = false
 end
 
 function BuildController:sendContext(payload)
 	self.requestContextAction:FireServer(payload)
+end
+
+-- Get the current interaction target and type
+function BuildController:getInteractionTarget()
+	local player = Players.LocalPlayer
+	local character = player.Character
+	if not character then return nil, nil end
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return nil, nil end
+	
+	local playerPos = hrp.Position
+	local nearestTarget = nil
+	local nearestDist = INTERACTION_RANGE
+	local targetType = nil
+	
+	-- Check for nodes (trees, rocks, etc.)
+	local nodes = Workspace:FindFirstChild("Nodes")
+	if nodes then
+		for _, node in ipairs(nodes:GetChildren()) do
+			if node:IsA("BasePart") or node:IsA("Model") then
+				local nodePos = node:IsA("Model") and node:GetPivot().Position or node.Position
+				local dist = (playerPos - nodePos).Magnitude
+				if dist < nearestDist then
+					nearestDist = dist
+					nearestTarget = node
+					targetType = "node"
+				end
+			end
+		end
+	end
+	
+	-- Check for berry bushes and harvestable objects
+	local flora = Workspace:FindFirstChild("Flora")
+	if flora then
+		for _, plant in ipairs(flora:GetChildren()) do
+			if plant:IsA("BasePart") then
+				local dist = (playerPos - plant.Position).Magnitude
+				if dist < nearestDist then
+					if plant.Name:find("BerryBush") then
+						nearestDist = dist
+						nearestTarget = plant
+						targetType = "berry_bush"
+					elseif HarvestConfig.getObstacleDef(plant:GetAttribute("NodeType") or plant.Name:lower()) then
+						nearestDist = dist
+						nearestTarget = plant
+						targetType = "node"
+					end
+				end
+			end
+		end
+	end
+	
+	return nearestTarget, targetType
+end
+
+-- Generate prompt text based on current tool and target
+function BuildController:getPromptText()
+	local target, targetType = self:getInteractionTarget()
+	self.currentTarget = target
+	self.currentTargetType = targetType
+	
+	if not target then
+		return ""
+	end
+	
+	local toolDef = HarvestConfig.getToolDef(self.selectedTool)
+	if not toolDef then
+		return ""
+	end
+	
+	-- Generate context-appropriate prompt
+	if targetType == "node" then
+		local nodeType = target:GetAttribute("NodeType") or target.Name:lower()
+		local obstacleDef = HarvestConfig.getObstacleDef(nodeType)
+		
+		if toolDef.mode == "destroy" and toolDef.allowedNodeTypes[nodeType] then
+			return string.format("[E] Harvest %s with %s", obstacleDef and obstacleDef.label or nodeType, toolDef.label)
+		else
+			return string.format("[E] Interact with %s", obstacleDef and obstacleDef.label or nodeType)
+		end
+		
+	elseif targetType == "berry_bush" then
+		local berryType = target.Name:match("BerryBush_(.+)") or "berry"
+		
+		if toolDef.mode == "gather_tool" then
+			return string.format("[E] Gather %s with %s", berryType:gsub("_", " "), toolDef.label)
+		else
+			return string.format("[E] Interact with %s bush", berryType:gsub("_", " "))
+		end
+	end
+	
+	return "[E] Interact"
+end
+
+-- Update the interaction prompt display
+function BuildController:updateInteractionPrompt()
+	if not self.promptLabel or not self.promptGui then return end
+	
+	local now = tick()
+	if now - self.lastPromptUpdate < PROMPT_UPDATE_RATE then return end
+	self.lastPromptUpdate = now
+	
+	local promptText = self:getPromptText()
+	self.currentPromptText = promptText
+	
+	local promptFrame = self.promptGui:FindFirstChild("PromptFrame")
+	if promptFrame then
+		if promptText ~= "" and not self.buildMode then
+			self.promptLabel.Text = promptText
+			promptFrame.Visible = true
+		else
+			promptFrame.Visible = false
+		end
+	end
 end
 
 function BuildController:selectTool(toolKey)
@@ -68,6 +234,7 @@ function BuildController:getBuildableEntries()
 	return entries
 end
 
+-- Unified action execution - called by both E key and UI button
 function BuildController:handlePrimaryAction()
 	if self.buildMode then
 		if self.placement.valid and self.placement.worldPos then
@@ -75,8 +242,30 @@ function BuildController:handlePrimaryAction()
 		end
 		return false
 	end
-	if self.selectedTool then return self:sendContext({ action = "useTool", tool = self.selectedTool }) end
+	
+	-- Use the selected tool on the current target
+	if self.selectedTool then
+		return self:sendContext({ action = "useTool", tool = self.selectedTool })
+	end
+	
 	return self:sendContext({ action = "context" })
+end
+
+-- Get current tool info for UI display
+function BuildController:getCurrentToolInfo()
+	local toolDef = HarvestConfig.getToolDef(self.selectedTool)
+	if not toolDef then
+		return {
+			key = self.selectedTool,
+			label = self.selectedTool,
+			mode = "unknown",
+		}
+	end
+	return {
+		key = self.selectedTool,
+		label = toolDef.label,
+		mode = toolDef.mode,
+	}
 end
 
 
@@ -87,7 +276,10 @@ end
 
 function BuildController:bind(mouse)
 	self.mouse = mouse
-	self.renderConn = RunService.RenderStepped:Connect(function() self:updatePreview() end)
+	self.renderConn = RunService.RenderStepped:Connect(function()
+		self:updatePreview()
+		self:updateInteractionPrompt()
+	end)
 	UserInputService.InputBegan:Connect(function(input, gp)
 		if gp then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.X then
