@@ -73,6 +73,21 @@ local hudReplicationCache = {}
 local HUD_KEEPALIVE_SECONDS = 1.0
 local COMMAND_OVERRIDE_SECONDS = 2.5
 
+local PlayerSpawnService = require(Services:WaitForChild("PlayerSpawnService"))
+
+local playerSpawnService = PlayerSpawnService.new(worldService, {
+	spawnX = 0,
+	spawnZ = 0,
+	fallbackY = 128,
+	spawnHeightOffset = 6,
+	chunkRadius = 2,
+	maxGroundRetries = 30,
+	groundRetryDelay = 0.1,
+	anchorDuringPlacement = true,
+})
+
+playerSpawnService:init()
+
 local function getDesignatedAttrKey(slot)
 	return string.format("PetDesignatedTargetSlot%d", tonumber(slot) or 1)
 end
