@@ -500,7 +500,7 @@ local function pushPetHud()
 						cooldowns[moveKey] = math.max(0, pet.cooldowns[moveKey] or 0)
 					end
 				end
-					petPayload[i] = {
+				petPayload[i] = {
 					species = owned.speciesKey,
 					name = owned.nickname,
 					level = pet and pet.level or owned.level,
@@ -509,15 +509,15 @@ local function pushPetHud()
 					maxHP = (isAlive and pet.modifiedStats.maxHP) or (pet and pet.modifiedStats and pet.modifiedStats.maxHP) or 0,
 					stamina = isAlive and pet.currentStamina or 0,
 					energy = isAlive and pet.currentEnergy or 0,
-						command = isAlive and (pet.command and pet.command.type or "auto") or nil,
-						commandTargetId = isAlive and (pet.command and tonumber(pet.command.targetId) or nil) or nil,
-						targetId = isAlive and (pet.intent and pet.intent.targetId or nil) or nil,
-						designatedTargetId = isAlive and (pet.designatedTargetId or nil) or nil,
-						forcedState = isAlive and (pet.debugAI and pet.debugAI.forcedState or nil) or nil,
-						commandIgnoreReason = isAlive and (pet.debugAI and pet.debugAI.commandIgnoreReason or nil) or nil,
-							manualCastState = isAlive and (pet.manualCastState or "idle") or "idle",
-						manualCastCode = isAlive and (pet.lastManualCastResult and pet.lastManualCastResult.code or pet.manualCastNote or "-") or "-",
-						commandOverride = isAlive and (worldService.time <= (pet.commandOverrideUntil or 0)) or false,
+					command = isAlive and (pet.command and pet.command.type or "auto") or nil,
+					commandTargetId = isAlive and (pet.command and tonumber(pet.command.targetId) or nil) or nil,
+					targetId = isAlive and (pet.intent and pet.intent.targetId or nil) or nil,
+					designatedTargetId = isAlive and (pet.designatedTargetId or nil) or nil,
+					forcedState = isAlive and (pet.debugAI and pet.debugAI.forcedState or nil) or nil,
+					commandIgnoreReason = isAlive and (pet.debugAI and pet.debugAI.commandIgnoreReason or nil) or nil,
+					manualCastState = isAlive and (pet.manualCastState or "idle") or "idle",
+					manualCastCode = isAlive and (pet.lastManualCastResult and pet.lastManualCastResult.code or pet.manualCastNote or "-") or "-",
+					commandOverride = isAlive and (worldService.time <= (pet.commandOverrideUntil or 0)) or false,
 					cooldowns = cooldowns,
 					moveset = table.clone((isAlive and pet.moveset) or (owned.moveset) or {}),
 				}
@@ -613,19 +613,19 @@ RunService.Heartbeat:Connect(function(dt)
 			local targetId = tonumber(player:GetAttribute(attrKey))
 			if targetId then
 				local target = worldService:getCreatureById(targetId)
-					if not target or not target.alive then
-						player:SetAttribute(attrKey, nil)
-						local pet = getPetBySlot(player, slot)
-						if pet then
-							pet.designatedTargetId = nil
-						end
-						if slot == (tonumber(player:GetAttribute("ActivePetSlot")) or 1) then
-							player:SetAttribute("ActiveDesignatedTargetId", nil)
-						end
+				if not target or not target.alive then
+					player:SetAttribute(attrKey, nil)
+					local pet = getPetBySlot(player, slot)
+					if pet then
+						pet.designatedTargetId = nil
+					end
+					if slot == (tonumber(player:GetAttribute("ActivePetSlot")) or 1) then
+						player:SetAttribute("ActiveDesignatedTargetId", nil)
 					end
 				end
 			end
 		end
+	end
 	for _, creature in ipairs(worldService.creatures) do
 		if (not creature.alive) and creature.mode == "pet" and creature.ownerUserId and creature.ownedId then
 			local owner = Players:GetPlayerByUserId(creature.ownerUserId)
