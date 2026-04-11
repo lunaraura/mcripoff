@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -13,18 +14,51 @@ local ItemUseRules = require(Items:WaitForChild("ItemUseRules"))
 local UIController = {}
 UIController.__index = UIController
 
+-- UI visibility state
+local UI_HIDDEN = false
+local HIDEABLE_PANELS = {}
+
 function UIController:setUtilityPanelsVisibility(opts)
 	opts = opts or {}
 	if self.optionsPanel then
-		self.optionsPanel.Visible = opts.options == true
+		self.optionsPanel.Visible = opts.options == true and not UI_HIDDEN
 	end
 	if self.managementPanel then
-		self.managementState.open = opts.management == true
+		self.managementState.open = opts.management == true and not UI_HIDDEN
 		self.managementPanel.Visible = self.managementState.open
 	end
 	if self.managementState.open then
 		self.managementState.layer = self.managementState.layer or "root"
 		self:refreshCreatureManagementMenu()
+	end
+end
+
+function UIController:toggleUIHidden()
+	UI_HIDDEN = not UI_HIDDEN
+	self:updateAllPanelVisibility()
+	if self.hideButton then
+		self.hideButton.Text = UI_HIDDEN and "Show UI" or "Hide UI"
+	end
+end
+
+function UIController:updateAllPanelVisibility()
+	local visible = not UI_HIDDEN
+	-- Update hideable panels
+	for _, panel in ipairs(HIDEABLE_PANELS) do
+		if panel then
+			-- Special handling for management panel
+			if panel == self.managementPanel then
+				panel.Visible = visible and self.managementState.open
+			elseif panel == self.optionsPanel then
+				panel.Visible = visible and self.optionsOpen
+			else
+				panel.Visible = visible
+			end
+		end
+	end
+	-- Always show hide button
+	if self.hideButton and self.hideButton.Parent then
+		self.hideButton.Parent.Visible = true
 	end
 end
 
@@ -130,80 +164,128 @@ end
 function UIController:buildUi()
 	local player = Players.LocalPlayer
 	local gui = Instance.new("ScreenGui")
-	gui.Name = "PetDebugHud"
+	gui.Name = "PetHud"
 	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = false
 	gui.Parent = player:WaitForChild("PlayerGui")
 	self.gui = gui
 
-	local root = Instance.new("Frame")
-	root.Name = "Root"
-	root.BackgroundTransparency = 0.3
-	root.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
-	root.Size = UDim2.fromOffset(420, 250)
-	root.Position = UDim2.fromOffset(12, 12)
-	root.Parent = gui
+	self.hiddenUi = false
+	self.mainHudFrames = {}
 
-	local title = Instance.new("TextLabel")
-	title.BackgroundTransparency = 1
-	title.Text = "Pet HUD (Debug)"
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 16
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.TextColor3 = Color3.fromRGB(235, 245, 255)
-	title.Size = UDim2.new(1, -12, 0, 24)
-	title.Position = UDim2.fromOffset(8, 4)
-	title.Parent = root
-	self.titleLabel = title
+	-- Hide UI button
+	local hideBtn = Instance.new("TextButton")
+	hideBtn.Name = "HideUIButton"
+	hideBtn.AnchorPoint = Vector2.new(1, 0)
+	hideBtn.Size = UDim2.fromOffset(96, 30)
+	hideBtn.Position = UDim2.new(1, -6, 0, -22)
+	hideBtn.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+	hideBtn.TextColor3 = Color3.fromRGB(235, 245, 255)
+	hideBtn.Font = Enum.Font.GothamBold
+	hideBtn.TextSize = 12
+	hideBtn.Text = "Hide UI"
+	hideBtn.Parent = gui
+	self.hideUiButton = hideBtn
 
-	for i = 1, 2 do
-		local petCard = Instance.new("TextLabel")
-		petCard.Name = "Pet" .. i
-		petCard.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-		petCard.BackgroundTransparency = 0.15
-		petCard.Font = Enum.Font.Code
-		petCard.TextSize = 14
-		petCard.TextXAlignment = Enum.TextXAlignment.Left
-		petCard.TextYAlignment = Enum.TextYAlignment.Top
-		petCard.TextColor3 = Color3.fromRGB(220, 235, 255)
-		petCard.Size = UDim2.fromOffset(196, 90)
-		petCard.Position = UDim2.fromOffset(8 + (i - 1) * 204, 32)
-		petCard.Text = string.format("Slot %d: --", i)
-		petCard.Parent = root
-		self.hudLabels[i] = petCard
-	end
+	hideBtn.MouseButton1Click:Connect(function()
+		self.hiddenUi = not self.hiddenUi
+		self:setUiHidden(self.hiddenUi)
+	end)
 
-	local logTitle = Instance.new("TextLabel")
-	logTitle.BackgroundTransparency = 1
-	logTitle.Text = "Recent Events"
-	logTitle.Font = Enum.Font.GothamBold
-	logTitle.TextSize = 14
-	logTitle.TextXAlignment = Enum.TextXAlignment.Left
-	logTitle.TextColor3 = Color3.fromRGB(235, 245, 255)
-	logTitle.Size = UDim2.new(1, -12, 0, 20)
-	logTitle.Position = UDim2.fromOffset(8, 130)
-	logTitle.Parent = root
+	-- Active pet combat HUD (replaces old debug panel)
+	local activeHud = Instance.new("Frame")
+	activeHud.Name = "ActivePetHud"
+	activeHud.AnchorPoint = Vector2.new(0.5, 1)
+	activeHud.Size = UDim2.new(0.32, 0, 0, 96)
+	activeHud.Position = UDim2.new(0.5, 0, 1, -96)
+	activeHud.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+	activeHud.BackgroundTransparency = 0.12
+	activeHud.Parent = gui
+	self.activePetFrame = activeHud
+	table.insert(self.mainHudFrames, activeHud)
 
-	for i = 1, self.maxLogLines do
-		local line = Instance.new("TextLabel")
-		line.BackgroundTransparency = 1
-		line.Font = Enum.Font.Code
-		line.TextSize = 13
-		line.TextXAlignment = Enum.TextXAlignment.Left
-		line.TextColor3 = Color3.fromRGB(200, 220, 235)
-		line.Size = UDim2.new(1, -16, 0, 16)
-		line.Position = UDim2.fromOffset(8, 134 + i * 17)
-		line.Text = ""
-		line.Parent = root
-		self.logLabels[i] = line
-	end
+	local petName = Instance.new("TextLabel")
+	petName.Name = "PetName"
+	petName.BackgroundTransparency = 1
+	petName.Size = UDim2.new(1, -12, 0, 18)
+	petName.Position = UDim2.fromOffset(6, 4)
+	petName.Font = Enum.Font.GothamBold
+	petName.TextSize = 15
+	petName.TextXAlignment = Enum.TextXAlignment.Left
+	petName.TextColor3 = Color3.fromRGB(235, 245, 255)
+	petName.Text = "Active Pet"
+	petName.Parent = activeHud
+	self.activePetNameLabel = petName
+
+	local petStats = Instance.new("TextLabel")
+	petStats.Name = "PetStats"
+	petStats.BackgroundTransparency = 1
+	petStats.Size = UDim2.new(1, -12, 0, 18)
+	petStats.Position = UDim2.fromOffset(6, 22)
+	petStats.Font = Enum.Font.Code
+	petStats.TextSize = 12
+	petStats.TextXAlignment = Enum.TextXAlignment.Left
+	petStats.TextYAlignment = Enum.TextYAlignment.Top
+	petStats.TextColor3 = Color3.fromRGB(220, 235, 255)
+	petStats.TextWrapped = false
+	petStats.Text = "Lv -- | HP --/-- | ST -- | EN --"
+	petStats.Parent = activeHud
+	self.activePetStatsLabel = petStats
+
+	self:buildAbilityHotbar(activeHud)
 	self:buildOptionsMenu(gui)
 	self:buildCommandPanel(gui)
-	self:buildAbilityHotbar(gui)
 	self:buildBuildAndToolMenu(gui)
 	self:buildItemBar(gui)
 	self:buildCreatureManagementMenu(gui)
-end
 
+	-- utility/build menu should be top-right compact
+	if self.buildToolPanel then
+		self.buildToolPanel.AnchorPoint = Vector2.new(1, 0)
+		self.buildToolPanel.Position = UDim2.new(1, -12, 0, 48)
+	end
+
+	-- keep item bar visible for now
+	if self.itemBarPanel then
+		table.insert(self.mainHudFrames, self.itemBarPanel)
+	end
+	if self.buildToolPanel then
+		table.insert(self.mainHudFrames, self.buildToolPanel)
+	end
+	if self.commandPanel then
+		table.insert(self.mainHudFrames, self.commandPanel)
+	end
+	if self.commandModeLabel then
+		table.insert(self.mainHudFrames, self.commandModeLabel)
+	end
+end
+function UIController:setUiHidden(hidden)
+	local show = not hidden
+
+	for _, obj in ipairs(self.mainHudFrames or {}) do
+		if obj then
+			obj.Visible = show
+		end
+	end
+
+	if self.optionsPanel then
+		self.optionsPanel.Visible = show and self.optionsPanel.Visible
+	end
+	if self.managementPanel then
+		self.managementPanel.Visible = show and self.managementState.open
+	end
+	if self.optionsPanel then
+		self.optionsPanel.Visible = show and self.optionsPanel.Visible
+	end
+	if self.optionsPanel then
+		self.optionsPanel.Visible = show and self.optionsPanel.Visible
+	end
+
+	if self.hideUiButton then
+		self.hideUiButton.Text = hidden and "Show UI" or "Hide UI"
+		self.hideUiButton.Visible = true
+	end
+end
 function UIController:toggleCommandPanelMode()
 	if self.commandPanelMode == "HIDDEN" then
 		self.commandPanelMode = "VISIBLE"
@@ -234,16 +316,16 @@ end
 
 function UIController:refreshCommandPanel()
 	if not self.commandModeLabel then return end
-	self.commandModeLabel.Text = string.format(
-		"Command Panel [C]: %s  ActiveSlot:%s  Mode:%s  Stance:%s",
-		self.commandPanelMode,
-		tostring(self.activeSlot or 1),
-		tostring(self.controlMode or "AUTO"),
-		tostring(self.stance or "FOLLOW")
-	)
-	for key, btn in pairs(self.commandButtons or {}) do
-		btn.BackgroundColor3 = (self.activeCommand == key) and Color3.fromRGB(70, 105, 145) or Color3.fromRGB(40, 45, 58)
-	end
+	--self.commandModeLabel.Text = string.format(
+	--	"Command Panel [C]: %s  ActiveSlot:%s  Mode:%s  Stance:%s",
+	--	self.commandPanelMode,
+	--	tostring(self.activeSlot or 1),
+	--	tostring(self.controlMode or "AUTO"),
+	--	tostring(self.stance or "FOLLOW")
+	--)
+	--for key, btn in pairs(self.commandButtons or {}) do
+	--	btn.BackgroundColor3 = (self.activeCommand == key) and Color3.fromRGB(70, 105, 145) or Color3.fromRGB(40, 45, 58)
+	--end
 end
 
 function UIController:buildCommandPanel(gui)
@@ -289,6 +371,7 @@ function UIController:buildCommandPanel(gui)
 		hold = makeButton("Hold", 140, "hold"),
 		attack = makeButton("Attack", 274, "attack"),
 	}
+
 	self:refreshCommandPanel()
 end
 
@@ -509,15 +592,17 @@ function UIController:buildBuildAndToolMenu(gui)
 	layout.Parent = buildList
 
 	local selectedLabel = Instance.new("TextLabel")
+	selectedLabel.Name = "SelectedLabel"
 	selectedLabel.BackgroundTransparency = 1
-	selectedLabel.Size = UDim2.new(1, -12, 0, 40)
-	selectedLabel.Position = UDim2.fromOffset(8, 206)
+	selectedLabel.Size = UDim2.new(1, -12, 0, 18)
+	selectedLabel.Position = UDim2.fromOffset(8, 226)
 	selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
 	selectedLabel.TextYAlignment = Enum.TextYAlignment.Top
 	selectedLabel.Font = Enum.Font.Code
-	selectedLabel.TextSize = 13
-	selectedLabel.TextColor3 = Color3.fromRGB(220, 235, 255)
-	selectedLabel.TextWrapped = true
+	selectedLabel.TextSize = 12
+	selectedLabel.TextColor3 = Color3.fromRGB(200, 220, 235)
+	selectedLabel.TextWrapped = false
+	selectedLabel.Text = "Mode:-  Tool:-  Build:-  Status:-"
 	selectedLabel.Parent = panel
 
 	local refresh
@@ -570,6 +655,7 @@ function UIController:buildBuildAndToolMenu(gui)
 		openOptionsButton.Text = self.optionsPanel and self.optionsPanel.Visible and "Options (Open)" or "Options"
 		openManagementButton.Text = (self.managementState and self.managementState.open) and "Creature Management (Open)" or "Creature Management"
 		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
+		selectedLabel.Text = string.format("Mode:%s  Tool:%s  Build:%s  Status:%s", tostring(buildMode or "-"), tostring(tool), tostring(buildKey), tostring(placementReason))
 	end
 
 	openBuildHubButton.MouseButton1Click:Connect(function()
@@ -580,11 +666,15 @@ function UIController:buildBuildAndToolMenu(gui)
 	end)
 
 	openOptionsButton.MouseButton1Click:Connect(function()
+		levelTwo.Visible = false
+		levelThree.Visible = false
 		self:openOptionsFromUtilityPanel()
 		refresh()
 	end)
 
 	openManagementButton.MouseButton1Click:Connect(function()
+		levelTwo.Visible = false
+		levelThree.Visible = false
 		self:openCreatureManagementFromUtilityPanel()
 		refresh()
 	end)
@@ -655,7 +745,7 @@ function UIController:buildItemBar(gui)
 
 	local useBtn = Instance.new("TextButton")
 	useBtn.Size = UDim2.fromOffset(90, 28)
-	useBtn.Position = UDim2.fromOffset(106, -30)
+	useBtn.Position = UDim2.fromOffset(106, 30)
 	useBtn.Text = "Use Item"
 	useBtn.Parent = panel
 
@@ -687,6 +777,7 @@ function UIController:buildItemBar(gui)
 		local status = self.items.lastUseResult and self.items.lastUseResult.reasonCode or ""
 		info.Text = string.format("%s x%d [%s]", label, count, status)
 	end
+	
 	prevBtn.MouseButton1Click:Connect(function()
 		if self.items then self.items:cycle(-1) end
 		refresh()
@@ -701,6 +792,7 @@ function UIController:buildItemBar(gui)
 	if self.items then
 		self.items:setChangedCallback(refresh)
 	end
+	
 	refresh()
 	task.spawn(function()
 		while panel.Parent do
@@ -712,15 +804,7 @@ end
 
 function UIController:updatePetHud(payload)
 	local pets = payload and payload.pets or {}
-	if self.titleLabel then
-		self.titleLabel.Text = string.format(
-			"Pet HUD (Debug)  Active:%d  Mode:%s  Stance:%s  ActiveTarget:%s",
-			self.activeSlot or 1,
-			self.controlMode or "AUTO",
-			self.stance or "FOLLOW",
-			tostring(self.activeDesignatedTargetId or "-")
-		)
-	end
+
 	for i = 1, 2 do
 		local label = self.hudLabels[i]
 		if label then
@@ -779,39 +863,57 @@ function UIController:updatePetHud(payload)
 			end
 		end
 	end
+	local activePet = pets[self.activeSlot or 1]
+	self.activePetHud = activePet
+
+	if self.activePetNameLabel and self.activePetStatsLabel then
+		if not activePet then
+			self.activePetNameLabel.Text = "Active Pet: (empty)"
+			self.activePetStatsLabel.Text = "Lv -- | HP --/-- | ST -- | EN --"
+		else
+			local hp = math.floor((activePet.hp or 0) + 0.5)
+			local maxHp = math.floor((activePet.maxHP or 0) + 0.5)
+			local st = math.floor((activePet.stamina or 0) + 0.5)
+			local en = math.floor((activePet.energy or 0) + 0.5)
+			local displayName = tostring(activePet.name or activePet.species or "?")
+			local level = tonumber(activePet.level) or 1
+			local state = tostring(activePet.state or "alive")
+			self.activePetNameLabel.Text = string.format("%s  Lv %d  [%s]", displayName, level, state)
+			self.activePetStatsLabel.Text = string.format(
+				"HP %d/%d    ST %d    EN %d    Mode:%s    Stance:%s",
+				hp, maxHp, st, en,
+				tostring(self.controlMode or "AUTO"),
+				tostring(self.stance or "FOLLOW")
+			)
+		end
+	end
 	self.activePetHud = pets[self.activeSlot or 1]
 	self:refreshCommandPanel()
 	self:refreshAbilityHotbar()
 end
 
-function UIController:buildAbilityHotbar(gui)
+function UIController:buildAbilityHotbar(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "AbilityHotbar"
-	panel.Size = UDim2.fromOffset(420, 82)
-	panel.Position = UDim2.new(0.5, -210, 1, -178)
-	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
-	panel.BackgroundTransparency = 0.15
-	panel.Parent = gui
+	panel.Size = UDim2.new(1, -12, 0, 42)
+	panel.Position = UDim2.fromOffset(6, 44)
+	panel.BackgroundTransparency = 1
+	panel.Parent = parent
 	self.hotbarPanel = panel
-
+	
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Size = UDim2.new(1, -12, 0, 18)
-	title.Position = UDim2.fromOffset(8, 4)
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 13
-	title.TextColor3 = Color3.fromRGB(235, 245, 255)
-	title.Text = "Abilities [1-4]  (Shift+1/2 or F1/F2 changes active pet)"
+	title.Size = UDim2.new(1, 0, 0, 0)
+	title.Visible = false
 	title.Parent = panel
 
 	for i = 1, 4 do
 		local slot = Instance.new("TextButton")
 		slot.Name = "AbilitySlot" .. i
-		slot.Size = UDim2.fromOffset(97, 42)
-		slot.Position = UDim2.fromOffset(8 + (i - 1) * 103, 24)
+		slot.Size = UDim2.new(0.245, -4, 0, 42)
+		slot.Position = UDim2.new((i - 1) * 0.25, 0, 0, 0)
 		slot.Font = Enum.Font.Code
-		slot.TextSize = 12
+		slot.TextSize = 11
 		slot.TextWrapped = true
 		slot.TextColor3 = Color3.fromRGB(230, 240, 255)
 		slot.BackgroundColor3 = Color3.fromRGB(35, 42, 54)
@@ -825,8 +927,9 @@ function UIController:buildAbilityHotbar(gui)
 
 	local status = Instance.new("TextLabel")
 	status.BackgroundTransparency = 1
-	status.Size = UDim2.new(1, -12, 0, 12)
-	status.Position = UDim2.fromOffset(8, 68)
+	status.Size = UDim2.new(1, 0, 0, 12)
+	status.Position = UDim2.fromOffset(0, 44)
+	status.Visible = false
 	status.TextXAlignment = Enum.TextXAlignment.Left
 	status.Font = Enum.Font.Code
 	status.TextSize = 11
@@ -951,15 +1054,18 @@ function UIController:buildCooldownSummary(cooldowns)
 end
 
 function UIController:appendLog(text, colorHex)
-	if not text then return end
+	if not text or not self.logLabels or #self.logLabels == 0 then return end
 	for i = self.maxLogLines, 2, -1 do
-		self.logLabels[i].Text = self.logLabels[i - 1].Text
-		self.logLabels[i].TextColor3 = self.logLabels[i - 1].TextColor3
+		if self.logLabels[i] and self.logLabels[i - 1] then
+			self.logLabels[i].Text = self.logLabels[i - 1].Text
+			self.logLabels[i].TextColor3 = self.logLabels[i - 1].TextColor3
+		end
 	end
-	self.logLabels[1].Text = text
-	self.logLabels[1].TextColor3 = self:hexToColor3(colorHex) or Color3.fromRGB(200, 220, 235)
+	if self.logLabels[1] then
+		self.logLabels[1].Text = text
+		self.logLabels[1].TextColor3 = self:hexToColor3(colorHex) or Color3.fromRGB(200, 220, 235)
+	end
 end
-
 function UIController:spawnFloatingWorldText(payload)
 	if not payload then return end
 	local fxFolder = workspace:FindFirstChild("World") and workspace.World:FindFirstChild("FX")
