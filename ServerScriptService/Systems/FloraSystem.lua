@@ -1,262 +1,402 @@
-local BiomeSystem = require(script.Parent.BiomeSystem)
+local FloraSystem = {}
+FloraSystem.__index = FloraSystem
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Terrain = workspace.Terrain
-local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = Shared:WaitForChild("Config")
-local FloraSystem = require(script.Parent.FloraSystem)
-local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
-local Ecology = Shared:WaitForChild("Ecology")
+local SharedConfig = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
+local BiomeConfig = require(SharedConfig:WaitForChild("BiomeConfig"))
+local HarvestConfig = require(SharedConfig:WaitForChild("HarvestConfig"))
+local Ecology = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Ecology")
 local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
 
-local ChunkSystem = {}
-ChunkSystem.CHUNK_SIZE = 32
-ChunkSystem.CELL_SIZE = 8
-ChunkSystem.LOAD_RADIUS = 17
+local floraFolder = workspace:FindFirstChild("Flora") or Instance.new("Folder")
+floraFolder.Name = "Flora"
+floraFolder.Parent = workspace
+local nodesFolder = workspace:FindFirstChild("Nodes") or Instance.new("Folder")
+nodesFolder.Name = "Nodes"
+nodesFolder.Parent = workspace
 
-local ORTHOGONAL_STEP = ChunkSystem.CELL_SIZE
-local DIAGONAL_STEP = ChunkSystem.CELL_SIZE * math.sqrt(2)
+local instancesByChunk = {}
+-- Runtime-only depletion memory. This prevents natural nodes from reappearing when chunks unload/reload
+-- during the current server session. Full cross-server persistence is intentionally out-of-scope for v1.
+local depletedNaturalEcologyIds = {}
 
-function ChunkSystem.worldToChunk(x, z)
-	return math.floor(x / ChunkSystem.CHUNK_SIZE), math.floor(z / ChunkSystem.CHUNK_SIZE)
-end
-
-local function chunkKey(cx, cz)
-	return string.format("%d:%d", cx, cz)
-end
-
-function ChunkSystem.key(cx, cz)
-	return chunkKey(cx, cz)
-end
-
-local BIOME_MATS = {
-	ocean = { ground = Enum.Material.Sand, high = Enum.Material.Rock },
-	desert = { ground = Enum.Material.Sand, high = Enum.Material.Rock },
-	forest = { ground = Enum.Material.Grass, high = Enum.Material.Ground },
-	plains = { ground = Enum.Material.Grass, high = Enum.Material.Ground },
-	stormfield = { ground = Enum.Material.Slate, high = Enum.Material.Rock },
-	volcanic = { ground = Enum.Material.Basalt, high = Enum.Material.Rock },
-	tundra = { ground = Enum.Material.Snow, high = Enum.Material.Ice },
-	polar = { ground = Enum.Material.Snow, high = Enum.Material.Ice },
+local BIOME_TREES = {
+	plains = { base = 8, styles = { "oak", "birch" } },
+	forest = { base = 10, styles = { "oak", "birch" } },
+	ocean = { base = 5, styles = { "palm" } },
+	desert = { base = 3, styles = { "palm" } },
+	stormfield = { base = 6, styles = { "pine", "spruce" } },
+	volcanic = { base = 4, styles = { "cypress" } },
+	tundra = { base = 7, styles = { "pine", "fir" } },
+	polar = { base = 5, styles = { "pine", "fir" } },
 }
 
-function ChunkSystem.generateChunk(cx, cz)
-	local cells = {}
-	local spawnPoints = {}
-	local biomeMixTotals = {}
-	local cellsPerAxis = ChunkSystem.CHUNK_SIZE / ChunkSystem.CELL_SIZE
-	for iz = 0, cellsPerAxis - 1 do
-		for ix = 0, cellsPerAxis - 1 do
-			local wx = cx * ChunkSystem.CHUNK_SIZE + ix * ChunkSystem.CELL_SIZE
-			local wz = cz * ChunkSystem.CHUNK_SIZE + iz * ChunkSystem.CELL_SIZE
-			local env = BiomeSystem.sampleEnvironment(wx, wz)
-			local biome = env.biomeKey
-			local terrainClass = env.terrainClass
-			local blocked = terrainClass == "rock"
-			local water = terrainClass == "water"
-			local biomeMix = env.biomeMix or { [biome] = 1 }
-			for biomeKey, weight in pairs(biomeMix) do
-				biomeMixTotals[biomeKey] = (biomeMixTotals[biomeKey] or 0) + weight
-			end
-			local cell = {
-				x = wx,
-				z = wz,
-				dominantBiome = biome,
-				biomeMix = biomeMix,
-				climate = env.climate,
-				blocked = blocked,
-				water = water,
-				terrainClass = terrainClass,
-				tags = (BiomeConfig[biome] and BiomeConfig[biome].tags) or {},
-				reasonCode = EcologyRules.Reason.SPAWN_TERRAIN,
-				heightNoise = env.heightNoise,
-				yGround = env.yGround,
-				yWater = env.yWater,
-				yG = env.yGround,
-				yW = env.yWater,
-				slope = 0,
-				moveCost = water and 2.2 or (blocked and math.huge or 1),
-				spawnable = (not blocked and not water),
-				nodeable = (not blocked),
-			}
-			cells[iz * cellsPerAxis + ix + 1] = EcologyRules.normalizeCell(cell)
-			local canSpawn = EcologyRules.canHostSpawn(cells[iz * cellsPerAxis + ix + 1])
-			if canSpawn then
-				local biomeKey = BiomeConfig[biome] and biome or "plains"
-				local elevation = env.yGround or 0
-				local litho = (env.climate and env.climate.lithosphere) or 0.5
-				local levelBias = math.clamp(((elevation - 8) / 18) + (litho - 0.5) * 0.35, -0.6, 1.05)
-				local spawnWeights = {}
-				local mix = biomeMix
-				for mixBiomeKey, mixWeight in pairs(mix) do
-					local biomeCfg = BiomeConfig[mixBiomeKey]
-					if biomeCfg and biomeCfg.spawns then
-						for _, entry in ipairs(biomeCfg.spawns) do
-							local w = (entry.weight or 0) * mixWeight
-							if w > 0 then
-								spawnWeights[entry.key] = (spawnWeights[entry.key] or 0) + w
-							end
+local BERRY_COLORS = {
+	berry_red = Color3.fromRGB(200, 40, 40),
+	berry_yellow = Color3.fromRGB(240, 200, 60),
+	berry_blue = Color3.fromRGB(60, 140, 230),
+	revive_berry = Color3.fromRGB(123, 62, 29),
+	replenish_berry = Color3.fromRGB(70, 190, 235),
+}
+
+local BERRY_NODE_TO_ITEM = {
+	berry_bush_red = "berry_red",
+	berry_bush_yellow = "berry_yellow",
+	berry_bush_blue = "berry_blue",
+	revive_berry_bush = "revive_berry",
+	replenish_berry_bush = "replenish_berry",
+}
+
+local function addRef(chunkKey, inst)
+	if not inst then return end
+	instancesByChunk[chunkKey] = instancesByChunk[chunkKey] or {}
+	table.insert(instancesByChunk[chunkKey], inst)
+end
+
+local function mkTrunk(x, y, z, h, rad, color, parentFolder)
+	local p = Instance.new("Part")
+	p.Anchored, p.CanCollide = true, true
+	p.Material = Enum.Material.Wood
+	p.Color = color
+	p.Size = Vector3.new(rad * 2, h, rad * 2)
+	p.CFrame = CFrame.new(x, y + h * 0.5, z)
+	p.Parent = parentFolder or floraFolder
+	return p
+end
+
+local function mkBall(x, y, z, r, color, mat, parentFolder)
+	local p = Instance.new("Part")
+	p.Shape = Enum.PartType.Ball
+	p.Anchored, p.CanCollide = true, true
+	p.Material = mat or Enum.Material.Grass
+	p.Color = color
+	p.Size = Vector3.new(r * 2, r * 2, r * 2)
+	p.CFrame = CFrame.new(x, y + r, z)
+	p.Parent = parentFolder or floraFolder
+	return p
+end
+
+local function mkBerryBush(x, yTop, z, itemKey)
+	local bush = Instance.new("Part")
+	bush.Name = "BerryBush_" .. tostring(itemKey)
+	bush.Shape = Enum.PartType.Ball
+	bush.Anchored, bush.CanCollide = true, false
+	bush.Material = Enum.Material.Grass
+	bush.Color = BERRY_COLORS[itemKey] or Color3.fromRGB(180, 80, 80)
+	bush.Size = Vector3.new(5, 5, 5)
+	bush.CFrame = CFrame.new(x, yTop + 2.5, z)
+	bush.Parent = floraFolder
+	bush:SetAttribute("BerryKind", itemKey)
+	bush:SetAttribute("Uses", 3)
+	bush:SetAttribute("NodeSource", "natural")
+	bush:SetAttribute("NodeLifecycleClass", "natural_non_respawn")
+	bush:SetAttribute("NodeRespawnPolicy", "none")
+	bush:SetAttribute("NodePlayerGrowable", false)
+	bush:SetAttribute("NodeHarvestable", true)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Pick Berry"
+	prompt.ObjectText = "Berry Bush"
+	prompt.HoldDuration = 0.2
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = bush
+	CollectionService:AddTag(bush, "BerryBush")
+	return bush
+end
+
+local function mkCylinder(x, yTop, z, radius, height, color, material, parentFolder)
+	local p = Instance.new("Part")
+	p.Shape = Enum.PartType.Cylinder
+	p.Anchored, p.CanCollide = true, true
+	p.Material = material or Enum.Material.Slate
+	p.Color = color
+	p.Size = Vector3.new(radius * 2, height, radius * 2)
+	p.CFrame = CFrame.new(x, yTop + radius, z) * CFrame.Angles(0, 0, math.rad(90))
+	p.Parent = parentFolder or floraFolder
+	return p
+end
+
+local function attachHarvestNode(part, nodeType, durability, dropKey, dropAmount, nodeSource)
+	if not part then return end
+	nodeSource = nodeSource or "natural"
+	local harvestDef = HarvestConfig.getObstacleDef(nodeType)
+	local lifecycleClass = EcologyRules.classifyNodeLifecycle(nodeType, nodeSource)
+	local policy = EcologyRules.getNodeLifecyclePolicy(lifecycleClass)
+	part:SetAttribute("NodeType", nodeType)
+	part:SetAttribute("CollisionCategory", "node")
+	part:SetAttribute("NodeCategory", EcologyRules.getNodeCategory(nodeType))
+	part:SetAttribute("NodeSource", nodeSource)
+	part:SetAttribute("NodeLifecycleClass", lifecycleClass)
+	part:SetAttribute("NodeRespawnPolicy", tostring(policy.respawnPolicy or "none"))
+	part:SetAttribute("NodePlayerGrowable", policy.playerGrowable == true)
+	part:SetAttribute("NodeHarvestable", policy.harvestable ~= false)
+	part:SetAttribute("NodeNonRespawning", tostring(policy.respawnPolicy or "none") == "none")
+	local finalDurability = durability or (harvestDef and harvestDef.defaultDurability) or 3
+	part:SetAttribute("Durability", finalDurability)
+	part:SetAttribute("MaxDurability", finalDurability)
+	part:SetAttribute("DropKey", dropKey or (harvestDef and harvestDef.dropKey) or "stone")
+	part:SetAttribute("DropAmount", dropAmount or (harvestDef and harvestDef.dropAmount) or 1)
+	part:SetAttribute("NodeVisualPart", true)
+	part:SetAttribute("RestoreCanCollide", part.CanCollide and true or false)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Gather"
+	prompt.ObjectText = (harvestDef and harvestDef.label) or nodeType
+	prompt.HoldDuration = (harvestDef and harvestDef.gatherTime) or 0.35
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = part
+	CollectionService:AddTag(part, "HarvestNode")
+end
+
+function FloraSystem.markNaturalNodeDepleted(ecologyId)
+	if not ecologyId or ecologyId == "" then return end
+	depletedNaturalEcologyIds[tostring(ecologyId)] = true
+end
+
+function FloraSystem.isNaturalNodeDepleted(ecologyId)
+	if not ecologyId or ecologyId == "" then return false end
+	return depletedNaturalEcologyIds[tostring(ecologyId)] == true
+end
+
+local function build_pine(x, yTop, z, r)
+	local h = r:NextNumber(14, 22)
+	local tr = r:NextNumber(0.6, 1.0)
+	local trunk = mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(90, 70, 50), nodesFolder)
+	local leaves = mkBall(x, yTop + h * 0.8, z, r:NextNumber(3.5, 4.8), Color3.fromRGB(40, 100, 60), nil, trunk)
+	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
+	return { trunk }
+end
+
+local function build_oak(x, yTop, z, r)
+	local h = r:NextNumber(10, 16)
+	local tr = r:NextNumber(0.9, 1.4)
+	local trunk = mkTrunk(x, yTop, z, h, tr, Color3.fromRGB(110, 85, 60), nodesFolder)
+	local leaves = mkBall(x, yTop + h, z, r:NextNumber(4.8, 6.2), Color3.fromRGB(70, 120, 60), nil, trunk)
+	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
+	return { trunk }
+end
+
+local function build_birch(x, yTop, z, r)
+	local h = r:NextNumber(10, 14)
+	local trunk = mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(235, 235, 235), nodesFolder)
+	trunk.Material = Enum.Material.Sand
+	local leaves = mkBall(x, yTop + h, z, r:NextNumber(4.2, 5.4), Color3.fromRGB(90, 160, 90), nil, trunk)
+	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
+	return { trunk }
+end
+
+local function build_palm(x, yTop, z, r)
+	local h = r:NextNumber(9, 13)
+	local trunk = mkTrunk(x, yTop, z, h, 0.7, Color3.fromRGB(140, 110, 80), nodesFolder)
+	local leaves = mkBall(x, yTop + h, z, r:NextNumber(3.8, 5.0), Color3.fromRGB(60, 110, 80), nil, trunk)
+	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
+	return { trunk }
+end
+
+local function build_cypress(x, yTop, z, r)
+	local h = r:NextNumber(12, 18)
+	local trunk = mkTrunk(x, yTop, z, h, 0.8, Color3.fromRGB(70, 60, 50), nodesFolder)
+	local leaves = mkBall(x, yTop + h * 0.9, z, r:NextNumber(3.8, 4.8), Color3.fromRGB(50, 90, 60), nil, trunk)
+	leaves.CanCollide = false
+	leaves:SetAttribute("NodeVisualPart", true)
+	leaves:SetAttribute("RestoreCanCollide", false)
+	return { trunk }
+end
+
+local BUILDERS = {
+	pine = build_pine,
+	fir = build_pine,
+	spruce = build_pine,
+	oak = build_oak,
+	birch = build_birch,
+	palm = build_palm,
+	cypress = build_cypress,
+	mangrove = build_cypress,
+	willow = build_oak,
+}
+
+local BIOME_OBSTACLES = {
+	plains = { rocks = 6, ore = 1, crystal = 0, density = 1.0, regenMult = 1.0 },
+	forest = { rocks = 5, ore = 1, crystal = 1, density = 1.1, regenMult = 0.9 },
+	ocean = { rocks = 3, ore = 0, crystal = 2, density = 0.8, regenMult = 1.0 },
+	desert = { rocks = 7, ore = 2, crystal = 0, density = 0.95, regenMult = 1.15 },
+	stormfield = { rocks = 6, ore = 2, crystal = 2, density = 1.0, regenMult = 1.0 },
+	volcanic = { rocks = 8, ore = 4, crystal = 1, density = 1.15, regenMult = 1.2 },
+	tundra = { rocks = 6, ore = 1, crystal = 2, density = 0.9, regenMult = 1.05 },
+	polar = { rocks = 5, ore = 1, crystal = 3, density = 0.85, regenMult = 1.1 },
+}
+
+function FloraSystem.scatterChunk(chunk)
+	if not chunk or not chunk.cells or #chunk.cells == 0 then return end
+	local seed = (chunk.cx * 92821) + (chunk.cz * 52361) + 1335
+	local r = Random.new(seed)
+	local dominant = chunk.dominantBiome or chunk.cells[1].dominantBiome or "plains"
+	local spec = BIOME_TREES[dominant] or BIOME_TREES.plains
+	local trees = spec.base
+	local shrubs = math.floor(spec.base * 1.2)
+	local bushes = math.max(1, math.floor(spec.base * 0.35))
+	local obstacleSpec = BIOME_OBSTACLES[dominant] or BIOME_OBSTACLES.plains
+	local density = obstacleSpec.density or 1
+	local placed = {}
+	local function farEnough(x, z, min2)
+		for _, p in ipairs(placed) do
+			local dx, dz = x - p.x, z - p.z
+			if dx * dx + dz * dz < min2 then return false end
+		end
+		return true
+	end
+	local function ecologyIdFor(kind, x, z)
+		return string.format("%s:%s:%d:%d", chunk.key, tostring(kind), math.floor(x + 0.5), math.floor(z + 0.5))
+	end
+	for _ = 1, trees do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
+		if cell and (not cell.water) and (not cell.blocked) and canNode then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 9 * 9) then
+				local ecoId = ecologyIdFor("tree", x, z)
+				if FloraSystem.isNaturalNodeDepleted(ecoId) then
+					continue
+				end
+				local style = spec.styles[r:NextInteger(1, #spec.styles)]
+				local builder = BUILDERS[style]
+				if builder then
+					for _, inst in ipairs(builder(x, cell.yG, z, r)) do
+						addRef(chunk.key, inst)
+						if inst.Name == "Part" and inst.Material == Enum.Material.Wood then
+							inst.Name = "TreeNode"
+							attachHarvestNode(inst, "Tree", 4, "wood", 2, "natural")
+							inst:SetAttribute("EcologyId", ecoId)
 						end
 					end
+					table.insert(placed, { x = x, z = z })
 				end
-				if next(spawnWeights) == nil then
-					spawnWeights["dog"] = 1
+			end
+		end
+	end
+	local rockCount = math.max(1, math.floor((obstacleSpec.rocks or 0) * density + 0.5))
+	local oreCount = math.max(0, math.floor((obstacleSpec.ore or 0) * density + 0.5))
+	local crystalCount = math.max(0, math.floor((obstacleSpec.crystal or 0) * density + 0.5))
+
+	for _ = 1, rockCount do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
+		if cell and (not cell.water) and canNode then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 6 * 6) then
+				local ecoId = ecologyIdFor("rock", x, z)
+				if FloraSystem.isNaturalNodeDepleted(ecoId) then
+					continue
 				end
-				table.insert(spawnPoints, {
-					x = wx,
-					z = wz,
-					y = elevation,
-					biomeKey = biomeKey,
-					spawnWeights = spawnWeights,
-					levelBias = levelBias,
-					terrainClass = terrainClass,
-					tags = (BiomeConfig[biome] and BiomeConfig[biome].tags) or {},
-					reasonCode = EcologyRules.Reason.SPAWN_TERRAIN,
-				})
+				local rock = mkBall(x, cell.yG, z, r:NextNumber(1.8, 3.9), Color3.fromRGB(116, 116, 120), Enum.Material.Rock, nodesFolder)
+				rock.Name = "RockObstacle"
+				attachHarvestNode(rock, "Rock", 3, "stone", 2, "natural")
+				rock:SetAttribute("EcologyId", ecoId)
+				addRef(chunk.key, rock)
+				table.insert(placed, { x = x, z = z })
 			end
 		end
 	end
-
-	local function getCell(ix, iz)
-		if ix < 0 or iz < 0 or ix >= cellsPerAxis or iz >= cellsPerAxis then
-			return nil
-		end
-		return cells[iz * cellsPerAxis + ix + 1]
-	end
-
-	for iz = 0, cellsPerAxis - 1 do
-		for ix = 0, cellsPerAxis - 1 do
-			local cell = getCell(ix, iz)
-			local y = cell.yG or 0
-			local dx = 0
-			local dz = 0
-
-			local west = getCell(ix - 1, iz)
-			local east = getCell(ix + 1, iz)
-			local north = getCell(ix, iz - 1)
-			local south = getCell(ix, iz + 1)
-
-			if west and east then
-				dx = ((east.yG or y) - (west.yG or y)) / (2 * ORTHOGONAL_STEP)
-			elseif east then
-				dx = ((east.yG or y) - y) / ORTHOGONAL_STEP
-			elseif west then
-				dx = (y - (west.yG or y)) / ORTHOGONAL_STEP
-			end
-
-			if north and south then
-				dz = ((south.yG or y) - (north.yG or y)) / (2 * ORTHOGONAL_STEP)
-			elseif south then
-				dz = ((south.yG or y) - y) / ORTHOGONAL_STEP
-			elseif north then
-				dz = (y - (north.yG or y)) / ORTHOGONAL_STEP
-			end
-
-			local ne = getCell(ix + 1, iz - 1)
-			local nw = getCell(ix - 1, iz - 1)
-			local se = getCell(ix + 1, iz + 1)
-			local sw = getCell(ix - 1, iz + 1)
-			local diagDx, diagDz = 0, 0
-			if nw and ne and sw and se then
-				diagDx = ((ne.yG + se.yG) - (nw.yG + sw.yG)) / (4 * DIAGONAL_STEP)
-				diagDz = ((sw.yG + se.yG) - (nw.yG + ne.yG)) / (4 * DIAGONAL_STEP)
-				dx = dx * 0.7 + diagDx * 0.3
-				dz = dz * 0.7 + diagDz * 0.3
-			end
-
-			local slope = math.sqrt(dx * dx + dz * dz)
-			cell.slope = slope
-			if cell.blocked then
-				cell.moveCost = math.huge
-			elseif cell.water then
-				cell.moveCost = 2.2 + slope * 3.2
-			else
-				cell.moveCost = 1 + slope * 2.6
+	for _ = 1, oreCount do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
+		if cell and (not cell.water) and canNode then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 7 * 7) then
+				local ecoId = ecologyIdFor("ore", x, z)
+				if FloraSystem.isNaturalNodeDepleted(ecoId) then
+					continue
+				end
+				local ore = mkCylinder(x, cell.yG, z, r:NextNumber(1.1, 1.8), r:NextNumber(3.5, 5.5), Color3.fromRGB(122, 118, 95), Enum.Material.Slate, nodesFolder)
+				ore.Name = "OreNode"
+				attachHarvestNode(ore, "Ore", 4, "stone", 3, "natural")
+				ore:SetAttribute("EcologyId", ecoId)
+				addRef(chunk.key, ore)
+				table.insert(placed, { x = x, z = z })
 			end
 		end
 	end
-
-	local biomeMixSummary = {}
-	local dominantBiome, dominantWeight = "plains", -math.huge
-	local totalCells = math.max(1, #cells)
-	for biomeKey, totalWeight in pairs(biomeMixTotals) do
-		local normalized = totalWeight / totalCells
-		biomeMixSummary[biomeKey] = normalized
-		if normalized > dominantWeight then
-			dominantWeight = normalized
-			dominantBiome = biomeKey
+	for _ = 1, crystalCount do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		local canNode = cell and select(1, EcologyRules.canHostNode(cell))
+		if cell and (not cell.water) and canNode then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 8 * 8) then
+				local ecoId = ecologyIdFor("crystal", x, z)
+				if FloraSystem.isNaturalNodeDepleted(ecoId) then
+					continue
+				end
+				local crystal = mkCylinder(x, cell.yG, z, r:NextNumber(0.8, 1.4), r:NextNumber(4.8, 7.4), Color3.fromRGB(95, 210, 255), Enum.Material.Glass, nodesFolder)
+				crystal.Name = "CrystalNode"
+				attachHarvestNode(crystal, "Crystal", 5, "battery_seed", 2, "natural")
+				crystal:SetAttribute("EcologyId", ecoId)
+				addRef(chunk.key, crystal)
+				table.insert(placed, { x = x, z = z })
+			end
 		end
 	end
-
-	return {
-		cx = cx,
-		cz = cz,
-		key = chunkKey(cx, cz),
-		cells = cells,
-		spawnPoints = spawnPoints,
-		biomeMixSummary = biomeMixSummary,
-		dominantBiome = dominantBiome,
-		generatedAt = os.clock(),
-	}
-end
-
-function ChunkSystem.writeChunkTerrain(chunk)
+	for _ = 1, shrubs do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		if cell and (not cell.water) and (not cell.blocked) then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 5 * 5) then
+				addRef(chunk.key, mkBall(x, cell.yG, z, r:NextNumber(0.8, 1.6), Color3.fromRGB(70, 140, 80)))
+			end
+		end
+	end
+	local berryNodePool = {}
 	for _, cell in ipairs(chunk.cells) do
-		local matDef = BIOME_MATS[cell.dominantBiome] or BIOME_MATS.plains
-		local y = math.max(2, cell.yGround or cell.yG or 4)
-		local mat = y > 18 and matDef.high or matDef.ground
-		Terrain:FillBlock(
-			CFrame.new(cell.x, y * 0.5, cell.z),
-			Vector3.new(ChunkSystem.CELL_SIZE, y, ChunkSystem.CELL_SIZE),
-			mat
-		)
-		if (cell.yWater or cell.yW or 0) > y then
-			local hW = math.max(2, (cell.yWater or cell.yW or 0) - y)
-			Terrain:FillBlock(
-				CFrame.new(cell.x, y + hW * 0.5, cell.z),
-				Vector3.new(ChunkSystem.CELL_SIZE, hW, ChunkSystem.CELL_SIZE),
-				Enum.Material.Water
-			)
+		local biomeDef = cell and cell.dominantBiome and BiomeConfig[cell.dominantBiome] or nil
+		local nodeDefs = biomeDef and biomeDef.nodes or nil
+		if nodeDefs then
+			for _, n in ipairs(nodeDefs) do
+				local itemKey = BERRY_NODE_TO_ITEM[n.key]
+				if itemKey then
+					for _ = 1, math.max(1, n.weight or 1) do
+						table.insert(berryNodePool, itemKey)
+					end
+				end
+			end
 		end
 	end
-end
-
-function ChunkSystem.clearChunkTerrain(chunk)
-	FloraSystem.unloadChunk(chunk.key)
-	local clearH = 256
-	for _, cell in ipairs(chunk.cells) do
-		Terrain:FillBlock(
-			CFrame.new(cell.x, clearH * 0.5, cell.z),
-			Vector3.new(ChunkSystem.CELL_SIZE, clearH, ChunkSystem.CELL_SIZE),
-			Enum.Material.Air
-		)
+	if #berryNodePool <= 0 then
+		berryNodePool = { "berry_red", "berry_yellow", "berry_blue" }
 	end
-end
-
-function ChunkSystem.ensureLoaded(world, centerX, centerZ, radiusOverride)
-	local ccx, ccz = ChunkSystem.worldToChunk(centerX, centerZ)
-	local radius = radiusOverride or ChunkSystem.LOAD_RADIUS
-	for dz = -radius, radius do
-		for dx = -radius, radius do
-			local cx, cz = ccx + dx, ccz + dz
-			local key = chunkKey(cx, cz)
-			if not world.chunks[key] then
-				local chunk = ChunkSystem.generateChunk(cx, cz)
-				world.chunks[key] = chunk
-				ChunkSystem.writeChunkTerrain(chunk)
-				FloraSystem.scatterChunk(chunk)
+	for _ = 1, bushes do
+		local cell = chunk.cells[r:NextInteger(1, #chunk.cells)]
+		if cell and (not cell.water) and (not cell.blocked) then
+			local x = cell.x + r:NextNumber(-3, 3)
+			local z = cell.z + r:NextNumber(-3, 3)
+			if farEnough(x, z, 5 * 5) then
+				local itemKey = berryNodePool[r:NextInteger(1, #berryNodePool)]
+				addRef(chunk.key, mkBerryBush(x, cell.yG, z, itemKey))
 			end
 		end
 	end
 end
 
-function ChunkSystem.collectSpawnableCells(world)
-	local out = {}
-	for _, chunk in pairs(world.chunks) do
-		for _, cell in ipairs(chunk.cells) do
-			if cell.spawnable then table.insert(out, cell) end
+function FloraSystem.unloadChunk(chunkKey)
+	local list = instancesByChunk[chunkKey]
+	if not list then return end
+	for _, inst in ipairs(list) do
+		if inst and inst.Parent then
+			inst:Destroy()
 		end
 	end
-	return out
+	instancesByChunk[chunkKey] = nil
 end
 
-return ChunkSystem
+return FloraSystem
