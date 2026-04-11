@@ -38,6 +38,16 @@ local CAST_PHASE = {
 	RECOVERY = "recovery",
 }
 
+-- Cast result reasons
+local CAST_RESULT = {
+	STARTED = "cast_started",
+	RESOLVED = "resolved",
+	TARGET_LOST = "target_lost",
+	TARGET_DEAD = "target_dead",
+	INVALID = "invalid",
+	CANCELLED = "cancelled",
+}
+
 -- Visual ID counter
 local visualIdCounter = 0
 local function generateVisualId()
@@ -67,13 +77,22 @@ end
 local function getCastStateDebug(creature)
 	local cs = creature.castState
 	if not cs or cs.phase == CAST_PHASE.IDLE then
-		return { phase = "idle", abilityKey = nil, windupRemaining = 0, recoveryRemaining = 0 }
+		return {
+			phase = CAST_PHASE.IDLE,
+			abilityKey = nil,
+			windupRemaining = 0,
+			recoveryRemaining = 0,
+			gcdRemaining = 0,
+			lastCastResult = nil,
+		}
 	end
 	return {
 		phase = cs.phase,
 		abilityKey = cs.abilityKey,
 		windupRemaining = cs.windupRemaining or 0,
 		recoveryRemaining = cs.recoveryRemaining or 0,
+		gcdRemaining = 0, -- Will be filled in by getCastDebugInfo
+		lastCastResult = creature.lastCastResult or nil,
 	}
 end
 
@@ -87,6 +106,7 @@ local function ensureCastState(creature)
 			targetPoint = nil,
 			windupRemaining = 0,
 			recoveryRemaining = 0,
+			targetType = nil, -- Store target type for resolve phase
 		}
 	end
 	return creature.castState
@@ -102,6 +122,7 @@ local function clearCastState(creature)
 		cs.targetPoint = nil
 		cs.windupRemaining = 0
 		cs.recoveryRemaining = 0
+		cs.targetType = nil
 	end
 end
 
@@ -501,9 +522,18 @@ end
 
 -- Begin the cast of an ability (starts windup phase)
 -- Returns true if cast started, false otherwise
+-- All casts go through WINDUP -> RESOLVE -> RECOVERY pipeline
+-- Instant casts have windupRemaining = 0 and resolve on next update
 function CombatService:beginAbilityCast(source, abilityKey, target)
 	local ok, abilityOrReason, targetType = self:evaluateAbility(source, abilityKey, target)
 	if not ok then
+		-- Store failure in lastCastResult for debug visibility
+		source.lastCastResult = {
+			success = false,
+			reason = tostring(abilityOrReason),
+			abilityKey = abilityKey,
+			phase = "evaluate",
+		}
 		return false, tostring(abilityOrReason)
 	end
 
@@ -526,28 +556,29 @@ function CombatService:beginAbilityCast(source, abilityKey, target)
 	cs.abilityKey = abilityKey
 	cs.targetId = target and target.id or nil
 	cs.targetPoint = nil -- For future ground targeting
+	cs.targetType = targetType -- Store for resolve phase
 
 	-- Get timing values
 	local castTime = ability.castTime or 0
 	local recoveryTime = ability.recovery or 0
 
-	-- If no cast time, resolve immediately and go to recovery
-	if castTime <= 0 then
-		cs.phase = CAST_PHASE.RECOVERY
-		cs.recoveryRemaining = recoveryTime
-		cs.windupRemaining = 0
+	-- All casts start in WINDUP phase for consistency
+	-- Instant casts have windupRemaining = 0 and will resolve on next updateCasts
+	cs.phase = CAST_PHASE.WINDUP
+	cs.windupRemaining = castTime
+	cs.recoveryRemaining = recoveryTime
 
-		-- Resolve the ability immediately
-		local resolveTarget = self.worldService:getCreatureById(cs.targetId)
-		self:resolveAbilityCast(source, ability, resolveTarget, targetType)
-	else
-		-- Start windup phase
-		cs.phase = CAST_PHASE.WINDUP
-		cs.windupRemaining = castTime
-		cs.recoveryRemaining = recoveryTime
-	end
+	-- Store initial cast result (will be updated on resolve/fizzle)
+	source.lastCastResult = {
+		success = true,
+		reason = CAST_RESULT.STARTED,
+		abilityKey = abilityKey,
+		phase = CAST_PHASE.WINDUP,
+		windupRemaining = castTime,
+		recoveryRemaining = recoveryTime,
+	}
 
-	return true, "cast_started"
+	return true, CAST_RESULT.STARTED
 end
 
 -- Resolve the actual ability effects (called when windup completes)
@@ -636,11 +667,19 @@ function CombatService:updateCasts(dt)
 					local ability = AbilityConfig[cs.abilityKey]
 					if ability then
 						local target = self.worldService:getCreatureById(cs.targetId)
-						local targetType = self:getAbilityTargetType(ability)
-						self:resolveAbilityCast(creature, ability, target, targetType)
+						-- Use stored targetType instead of recomputing
+						local success, reason = self:resolveAbilityCast(creature, ability, target, cs.targetType)
+
+						-- Update lastCastResult with resolve outcome
+						creature.lastCastResult = {
+							success = success,
+							reason = reason,
+							abilityKey = cs.abilityKey,
+							phase = "resolve",
+						}
 					end
 
-					-- Transition to recovery
+					-- Transition to recovery (even if resolve failed)
 					cs.phase = CAST_PHASE.RECOVERY
 					cs.windupRemaining = 0
 				end
