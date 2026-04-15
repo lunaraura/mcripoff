@@ -41,41 +41,9 @@ end
 
 -- Create the world interaction prompt GUI
 function BuildController:createInteractionPrompt()
-	local player = Players.LocalPlayer
-	local gui = player:WaitForChild("PlayerGui")
-	
-	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "InteractionPromptGui"
-	screenGui.ResetOnSpawn = false
-	screenGui.Parent = gui
-	self.promptGui = screenGui
-	
-	local promptFrame = Instance.new("Frame")
-	promptFrame.Name = "PromptFrame"
-	promptFrame.Size = UDim2.fromOffset(300, 50)
-	promptFrame.Position = UDim2.new(0.5, -150, 0.7, 0)
-	promptFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
-	promptFrame.BackgroundTransparency = 0.3
-	promptFrame.BorderSizePixel = 0
-	promptFrame.Parent = screenGui
-	
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = promptFrame
-	
-	local promptLabel = Instance.new("TextLabel")
-	promptLabel.Name = "PromptLabel"
-	promptLabel.Size = UDim2.fromScale(1, 1)
-	promptLabel.BackgroundTransparency = 1
-	promptLabel.Font = Enum.Font.GothamBold
-	promptLabel.TextSize = 16
-	promptLabel.TextColor3 = Color3.fromRGB(235, 245, 255)
-	promptLabel.Text = ""
-	promptLabel.TextWrapped = true
-	promptLabel.Parent = promptFrame
-	self.promptLabel = promptLabel
-	
-	promptFrame.Visible = false
+	-- Intentionally disabled: the floating interaction prompt box was removed for UX cleanup.
+	self.promptGui = nil
+	self.promptLabel = nil
 end
 
 function BuildController:sendContext(payload)
@@ -176,24 +144,8 @@ end
 
 -- Update the interaction prompt display
 function BuildController:updateInteractionPrompt()
-	if not self.promptLabel or not self.promptGui then return end
-	
-	local now = tick()
-	if now - self.lastPromptUpdate < PROMPT_UPDATE_RATE then return end
-	self.lastPromptUpdate = now
-	
-	local promptText = self:getPromptText()
-	self.currentPromptText = promptText
-	
-	local promptFrame = self.promptGui:FindFirstChild("PromptFrame")
-	if promptFrame then
-		if promptText ~= "" and not self.buildMode then
-			self.promptLabel.Text = promptText
-			promptFrame.Visible = true
-		else
-			promptFrame.Visible = false
-		end
-	end
+	-- Prompt UI removed; keep target detection logic via getPromptText/getInteractionTarget intact.
+	return
 end
 
 function BuildController:selectTool(toolKey)

@@ -99,7 +99,6 @@ function UIController.new(buildController, itemController, partyController, comm
 				RadiusChunks = 2,
 				PetLeashDistance = 90,
 				PetHoldDefenseRange = 30,
-				AutoBerryEnabled = 1,
 			},
 		maxLogLines = 6,
 		activeSlot = 1,
@@ -133,8 +132,6 @@ function UIController:bind()
 		self.activeSlot = tonumber(meta.activeSlot) or self.activeSlot
 		self.controlMode = tostring(meta.controlMode or self.controlMode)
 		self.stance = tostring(meta.stance or self.stance)
-		self.currentBiome = tostring(meta.currentBiome or self.currentBiome or "unknown")
-		self.optionValues.AutoBerryEnabled = (meta.autoBerryEnabled == false) and 0 or 1
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
 		self.managementData = meta.management or self.managementData
@@ -234,19 +231,6 @@ function UIController:buildUi()
 	petStats.Text = "Lv -- | HP --/-- | ST -- | EN --"
 	petStats.Parent = activeHud
 	self.activePetStatsLabel = petStats
-
-	local biomeLabel = Instance.new("TextLabel")
-	biomeLabel.Name = "BiomeLabel"
-	biomeLabel.BackgroundTransparency = 1
-	biomeLabel.Size = UDim2.new(1, -12, 0, 14)
-	biomeLabel.Position = UDim2.fromOffset(6, 38)
-	biomeLabel.Font = Enum.Font.Code
-	biomeLabel.TextSize = 11
-	biomeLabel.TextXAlignment = Enum.TextXAlignment.Left
-	biomeLabel.TextColor3 = Color3.fromRGB(170, 220, 255)
-	biomeLabel.Text = "Biome: -"
-	biomeLabel.Parent = activeHud
-	self.biomeLabel = biomeLabel
 
 	self:buildAbilityHotbar(activeHud)
 	self:buildOptionsMenu(gui)
@@ -383,7 +367,7 @@ end
 function UIController:buildOptionsMenu(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "OptionsPanel"
-	panel.Size = UDim2.fromOffset(280, 214)
+	panel.Size = UDim2.fromOffset(280, 170)
 	panel.Position = UDim2.new(1, -292, 0, 12)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
@@ -405,7 +389,6 @@ function UIController:buildOptionsMenu(gui)
 	self:createOptionRow(panel, 1, "RadiusChunks", "Chunk Radius", 2, 31, 1)
 	self:createOptionRow(panel, 2, "PetLeashDistance", "Pet Leash", 35, 160, 5)
 	self:createOptionRow(panel, 3, "PetHoldDefenseRange", "Hold Defense", 10, 60, 2)
-	self:createOptionRow(panel, 4, "AutoBerryEnabled", "Auto Berries", 0, 1, 1)
 end
 
 function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
@@ -449,11 +432,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	local function refresh()
 		local v = self.optionValues[key]
 		text.Text = label
-		if key == "AutoBerryEnabled" then
-			valueLabel.Text = (v >= 0.5) and "ON" or "OFF"
-		else
-			valueLabel.Text = tostring(math.floor(v + 0.5))
-		end
+		valueLabel.Text = tostring(math.floor(v + 0.5))
 	end
 
 	local function apply(delta)
@@ -915,10 +894,6 @@ function UIController:updatePetHud(payload)
 				tostring(self.stance or "FOLLOW")
 			)
 		end
-	end
-	if self.biomeLabel then
-		local biomeToken = tostring(self.currentBiome or "unknown")
-		self.biomeLabel.Text = string.format("Biome: %s", biomeToken)
 	end
 	self.activePetHud = pets[self.activeSlot or 1]
 	self:refreshCommandPanel()

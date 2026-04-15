@@ -232,7 +232,7 @@ end
 function CreatureService:getCreatureVisualSize(creature)
 	local base = creature.modifiedStats and creature.modifiedStats.size or 3
 	local core = math.max(1.5, math.min(6, base * 0.45))
-	local tierScale = (creature.wildTier == "small" and 0.85) or (creature.wildTier == "big" and 1.6) or 1
+	local tierScale = (creature.wildTier == "small" and 0.85) or (creature.wildTier == "big" and 1.25) or 1
 	local final = core * tierScale
 	return Vector3.new(final, final, final)
 end
@@ -244,9 +244,6 @@ function CreatureService:getCreatureTagText(creature)
 	end
 	if creature.role == "passive" then
 		return string.format("%s (passive)", tostring(creature.speciesKey))
-	end
-	if creature.wildTier == "big" then
-		return string.format("ALPHA %s Lv.%d", tostring(creature.speciesKey), level)
 	end
 	return string.format("%s Lv.%d", tostring(creature.speciesKey), level)
 end

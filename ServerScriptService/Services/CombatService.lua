@@ -123,7 +123,6 @@ local function clearCastState(creature)
 		cs.windupRemaining = 0
 		cs.recoveryRemaining = 0
 		cs.targetType = nil
-		cs.dashMoved = 0
 	end
 end
 
@@ -558,7 +557,6 @@ function CombatService:beginAbilityCast(source, abilityKey, target)
 	cs.targetId = target and target.id or nil
 	cs.targetPoint = nil -- For future ground targeting
 	cs.targetType = targetType -- Store for resolve phase
-	cs.dashMoved = 0
 
 	-- Get timing values
 	local castTime = ability.castTime or 0
@@ -670,21 +668,22 @@ function CombatService:updateCasts(dt)
 				if ability and (ability.category == "dash" or ability.category == "retreat") then
 					local target = self.worldService:getCreatureById(cs.targetId)
 					if target and target.alive then
+						-- Calculate movement during windup
 						local dash = ability.dash or {}
 						local totalDistance = dash.distance or 60
-						local stopShort = dash.stopShort or 10
 						local castTime = ability.castTime or 0
-						local totalWindup = castTime > 0 and castTime or 0.1
+						local totalWindup = castTime > 0 and castTime or 0.1 -- Minimum windup for movement
 						local movementProgress = dt / totalWindup
+
+						-- Direction toward target (or away for retreat)
 						local dir = (target.pos - creature.pos)
 						local mag = math.max(0.01, dir.Magnitude)
 						local norm = Vector3.new(dir.X / mag, 0, dir.Z / mag)
 						if ability.category == "retreat" then norm = norm * -1 end
-						local remainingByPath = math.max(0, totalDistance - (cs.dashMoved or 0))
-						local remainingToTarget = ability.category == "retreat" and remainingByPath or math.max(0, mag - stopShort)
-						local moveDistance = math.min(remainingByPath, remainingToTarget, totalDistance * movementProgress)
+
+						-- Move creature during windup
+						local moveDistance = totalDistance * movementProgress
 						creature.pos = creature.pos + norm * moveDistance
-						cs.dashMoved = (cs.dashMoved or 0) + moveDistance
 					end
 				end
 
