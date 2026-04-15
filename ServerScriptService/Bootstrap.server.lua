@@ -72,6 +72,8 @@ local hudTimer = 0
 local hudReplicationCache = {}
 local HUD_KEEPALIVE_SECONDS = 1.0
 local COMMAND_OVERRIDE_SECONDS = 2.5
+local AUTO_BERRY_TICK = 0.6
+local autoBerryTimer = 0
 
 local PlayerSpawnService = require(Services:WaitForChild("PlayerSpawnService"))
 
@@ -164,7 +166,8 @@ Players.PlayerAdded:Connect(function(player)
 	player:SetAttribute("PetHoldDefenseRange", 30)
 	player:SetAttribute("ActivePetSlot", 1)
 	player:SetAttribute("PetControlMode", "AUTO")
-	player:SetAttribute("PetStance", "FOLLOW")
+	player:SetAttribute("PetStance", "AGGRESSIVE")
+	player:SetAttribute("AutoBerryEnabled", true)
 	player:SetAttribute("ActiveDesignatedTargetId", nil)
 	player:SetAttribute("PetDesignatedTargetSlot1", nil)
 	player:SetAttribute("PetDesignatedTargetSlot2", nil)
@@ -465,11 +468,13 @@ remotes.RequestClientOption.OnServerEvent:Connect(function(player, payload)
 	local value = tonumber(payload.value)
 	if not value then return end
 	if key == "RadiusChunks" then
-		player:SetAttribute("RadiusChunks", math.clamp(math.floor(value + 0.5), 2, 7))
+		player:SetAttribute("RadiusChunks", math.clamp(math.floor(value + 0.5), 2, 31))
 	elseif key == "PetLeashDistance" then
 		player:SetAttribute("PetLeashDistance", math.clamp(value, 35, 160))
 	elseif key == "PetHoldDefenseRange" then
 		player:SetAttribute("PetHoldDefenseRange", math.clamp(value, 10, 60))
+	elseif key == "AutoBerryEnabled" then
+		player:SetAttribute("AutoBerryEnabled", value >= 0.5)
 	end
 end)
 
@@ -591,17 +596,48 @@ local function pushPetHud()
 		if not sameAsLast or sinceLast >= HUD_KEEPALIVE_SECONDS then
 			remotes.PetHudUpdate:FireClient(player, {
 				pets = petPayload,
-				meta = {
-					activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1,
-					controlMode = tostring(player:GetAttribute("PetControlMode") or "AUTO"),
-					stance = tostring(player:GetAttribute("PetStance") or "FOLLOW"),
-					activeDesignatedTargetId = tonumber(player:GetAttribute("ActiveDesignatedTargetId")),
-					starterChosen = player:GetAttribute("StarterChosen") == true,
-					management = { party = managedParty, reserve = managedReserve, items = managedItems },
-				},
+					meta = {
+						activeSlot = tonumber(player:GetAttribute("ActivePetSlot")) or 1,
+						controlMode = tostring(player:GetAttribute("PetControlMode") or "AUTO"),
+						stance = tostring(player:GetAttribute("PetStance") or "FOLLOW"),
+						autoBerryEnabled = player:GetAttribute("AutoBerryEnabled") ~= false,
+						activeDesignatedTargetId = tonumber(player:GetAttribute("ActiveDesignatedTargetId")),
+						currentBiome = (function()
+							local root = player.Character and player.Character.PrimaryPart
+							if not root then return nil end
+							local cell = worldService:getChunkCellAtWorld(root.Position.X, root.Position.Z)
+							return (cell and (cell.dominantBiome or cell.biomeKey)) or nil
+						end)(),
+						starterChosen = player:GetAttribute("StarterChosen") == true,
+						management = { party = managedParty, reserve = managedReserve, items = managedItems },
+					},
 				t = worldService.time,
 			})
 			hudReplicationCache[player.UserId] = { summary = summary, lastSentAt = worldService.time }
+		end
+	end
+end
+
+local function tryAutoUseBerriesForPlayer(player)
+	if player:GetAttribute("AutoBerryEnabled") == false then return end
+	local data = playerDataService:getOrCreate(player)
+	for slot = 1, 2 do
+		local ownedId = data.partySlots[slot]
+		if ownedId then
+			local runtime = worldService:getRuntimeCreatureForOwnedId(player.UserId, ownedId)
+			if runtime and runtime.alive then
+				local hpRatio = runtime.currentHP / math.max(1, runtime.modifiedStats.maxHP or runtime.currentHP)
+				local stRatio = runtime.currentStamina / math.max(1, runtime.modifiedStats.stamina or runtime.currentStamina)
+				local enRatio = runtime.currentEnergy / math.max(1, runtime.modifiedStats.energy or runtime.currentEnergy)
+				if hpRatio <= 0.35 and inventoryService:getCount(player, "berry_red") > 0 then
+					berryService:tryUseBerry(player, "berry_red", slot, ownedId)
+					return
+				end
+				if (stRatio <= 0.22 or enRatio <= 0.22) and inventoryService:getCount(player, "replenish_berry") > 0 then
+					berryService:tryUseBerry(player, "replenish_berry", slot, ownedId)
+					return
+				end
+			end
 		end
 	end
 end
@@ -639,6 +675,13 @@ RunService.Heartbeat:Connect(function(dt)
 					end
 				end
 			end
+		end
+	end
+	autoBerryTimer += dt
+	if autoBerryTimer >= AUTO_BERRY_TICK then
+		autoBerryTimer = 0
+		for _, player in ipairs(Players:GetPlayers()) do
+			tryAutoUseBerriesForPlayer(player)
 		end
 	end
 	for _, creature in ipairs(worldService.creatures) do

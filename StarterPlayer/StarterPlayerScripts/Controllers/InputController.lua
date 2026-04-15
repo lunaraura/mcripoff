@@ -43,14 +43,18 @@ function InputController:bind()
 			else
 				self.command:sendCommand({ type = "clearDesignatedTarget" })
 			end
-		elseif input.KeyCode == Enum.KeyCode.E then
-			self.build:handlePrimaryAction()
-		elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
-			local targetId = self.command:getTargetIdUnderMouse()
-			if targetId then
-				self.command:sendCommand({ type = "attack", targetId = targetId })
-			else
-				self.command:sendCommand({ type = "attackNearest" })
+			elseif input.KeyCode == Enum.KeyCode.E then
+				self.build:handlePrimaryAction()
+			elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if self.build and self.build.buildMode then
+					self.build:handlePrimaryAction()
+					return
+				end
+				local targetId = self.command:getTargetIdUnderMouse()
+				if targetId then
+					self.command:sendCommand({ type = "attack", targetId = targetId })
+				else
+					self.command:sendCommand({ type = "attackNearest" })
 			end
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 			local hit = self.command.mouse and self.command.mouse.Hit

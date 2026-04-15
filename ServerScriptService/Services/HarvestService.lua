@@ -14,6 +14,30 @@ function HarvestService.new(worldService, inventoryService)
 	return setmetatable({ worldService = worldService, inventoryService = inventoryService }, HarvestService)
 end
 
+function HarvestService:hasToolInInventory(player, toolKey)
+	if not player or not toolKey then return false end
+	-- Backward-compat: if tool keys are not tracked as inventory materials yet, treat as available.
+	local count = self.inventoryService:getCount(player, toolKey)
+	if count == nil then
+		return true
+	end
+	return (tonumber(count) or 0) > 0
+end
+
+function HarvestService:resolveToolForNode(player, requestedToolKey, nodeTypeKey)
+	local toolKey = tostring(requestedToolKey or "")
+	local toolDef = HarvestConfig.getToolDef(toolKey)
+	if toolDef and toolDef.mode == "destroy" and (not toolDef.allowedNodeTypes or toolDef.allowedNodeTypes[nodeTypeKey]) then
+		return toolKey, toolDef
+	end
+	for key, def in pairs(HarvestConfig.toolDefs or {}) do
+		if def.mode == "destroy" and (not def.allowedNodeTypes or def.allowedNodeTypes[nodeTypeKey]) and self:hasToolInInventory(player, key) then
+			return key, def
+		end
+	end
+	return nil, nil
+end
+
 function HarvestService:configure(playerDataService, creatureService, morphService)
 	self.playerDataService = playerDataService
 	self.creatureService = creatureService
@@ -96,12 +120,6 @@ end
 
 function HarvestService:tryHarvestNodeInstance(player, node, opts)
 	opts = opts or {}
-	local toolKey = tostring(opts.toolKey or "")
-	local toolDef = HarvestConfig.getToolDef(toolKey)
-	if not toolDef or toolDef.mode ~= "destroy" then
-		self.worldService:pushEventLog(player, "Need Node Demolisher tool to harvest nodes", "#ffb3b3")
-		return false, "tool_required_node_demolisher"
-	end
 	if not node or not node.Parent then return false, "missing node" end
 	if node:GetAttribute("Depleted") then
 		return false, "depleted node"
@@ -109,6 +127,11 @@ function HarvestService:tryHarvestNodeInstance(player, node, opts)
 	local nodeType = tostring(node:GetAttribute("NodeType") or "resource")
 	local nodeDef = HarvestConfig.getObstacleDef(nodeType)
 	local nodeTypeKey = string.lower(nodeType)
+	local toolKey, toolDef = self:resolveToolForNode(player, opts.toolKey, nodeTypeKey)
+	if not toolDef then
+		self.worldService:pushEventLog(player, "Missing required harvesting tool in inventory", "#ffb3b3")
+		return false, "tool_required_in_inventory"
+	end
 	if toolDef.allowedNodeTypes and not toolDef.allowedNodeTypes[nodeTypeKey] then
 		return false, "tool_cannot_harvest_node_type"
 	end
@@ -305,6 +328,9 @@ function HarvestService:tryUseTool(player, payload)
 	local toolDef = HarvestConfig.getToolDef(toolKey)
 	if not toolDef then
 		return false, "unknown tool"
+	end
+	if not self:hasToolInInventory(player, toolKey) then
+		return false, "tool_missing_inventory"
 	end
 	if toolKey == "node_demolisher" then
 		return self:tryUseDemolishHarvestTool(player, payload)

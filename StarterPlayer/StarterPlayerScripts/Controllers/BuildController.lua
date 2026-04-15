@@ -244,11 +244,7 @@ function BuildController:handlePrimaryAction()
 	end
 	
 	-- Use the selected tool on the current target
-	if self.selectedTool then
-		return self:sendContext({ action = "useTool", tool = self.selectedTool })
-	end
-	
-	return self:sendContext({ action = "context" })
+	return self:sendContext({ action = "context", preferredTool = self.selectedTool, radius = 16 })
 end
 
 -- Get current tool info for UI display

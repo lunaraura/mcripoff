@@ -94,12 +94,13 @@ function UIController.new(buildController, itemController, partyController, comm
 		command = commandController,
 		hudLabels = {},
 		logLabels = {},
-		optionRows = {},
-		optionValues = {
-			RadiusChunks = 2,
-			PetLeashDistance = 90,
-			PetHoldDefenseRange = 30,
-		},
+			optionRows = {},
+			optionValues = {
+				RadiusChunks = 2,
+				PetLeashDistance = 90,
+				PetHoldDefenseRange = 30,
+				AutoBerryEnabled = 1,
+			},
 		maxLogLines = 6,
 		activeSlot = 1,
 		controlMode = "AUTO",
@@ -132,6 +133,8 @@ function UIController:bind()
 		self.activeSlot = tonumber(meta.activeSlot) or self.activeSlot
 		self.controlMode = tostring(meta.controlMode or self.controlMode)
 		self.stance = tostring(meta.stance or self.stance)
+		self.currentBiome = tostring(meta.currentBiome or self.currentBiome or "unknown")
+		self.optionValues.AutoBerryEnabled = (meta.autoBerryEnabled == false) and 0 or 1
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
 		self.managementData = meta.management or self.managementData
@@ -232,6 +235,19 @@ function UIController:buildUi()
 	petStats.Parent = activeHud
 	self.activePetStatsLabel = petStats
 
+	local biomeLabel = Instance.new("TextLabel")
+	biomeLabel.Name = "BiomeLabel"
+	biomeLabel.BackgroundTransparency = 1
+	biomeLabel.Size = UDim2.new(1, -12, 0, 14)
+	biomeLabel.Position = UDim2.fromOffset(6, 38)
+	biomeLabel.Font = Enum.Font.Code
+	biomeLabel.TextSize = 11
+	biomeLabel.TextXAlignment = Enum.TextXAlignment.Left
+	biomeLabel.TextColor3 = Color3.fromRGB(170, 220, 255)
+	biomeLabel.Text = "Biome: -"
+	biomeLabel.Parent = activeHud
+	self.biomeLabel = biomeLabel
+
 	self:buildAbilityHotbar(activeHud)
 	self:buildOptionsMenu(gui)
 	self:buildCommandPanel(gui)
@@ -329,21 +345,10 @@ function UIController:refreshCommandPanel()
 end
 
 function UIController:buildCommandPanel(gui)
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromOffset(404, 18)
-	label.Position = UDim2.fromOffset(20, 266)
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Font = Enum.Font.Code
-	label.TextSize = 12
-	label.TextColor3 = Color3.fromRGB(210, 230, 245)
-	label.Parent = gui
-	self.commandModeLabel = label
-
 	local panel = Instance.new("Frame")
 	panel.Name = "CommandPanel"
 	panel.Size = UDim2.fromOffset(404, 34)
-	panel.Position = UDim2.fromOffset(20, 286)
+	panel.Position = UDim2.fromOffset(20, 266)
 	panel.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
 	panel.BackgroundTransparency = 0.18
 	panel.Visible = false
@@ -378,7 +383,7 @@ end
 function UIController:buildOptionsMenu(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "OptionsPanel"
-	panel.Size = UDim2.fromOffset(280, 170)
+	panel.Size = UDim2.fromOffset(280, 214)
 	panel.Position = UDim2.new(1, -292, 0, 12)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
@@ -397,9 +402,10 @@ function UIController:buildOptionsMenu(gui)
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = panel
 
-	self:createOptionRow(panel, 1, "RadiusChunks", "Chunk Radius", 2, 7, 1)
+	self:createOptionRow(panel, 1, "RadiusChunks", "Chunk Radius", 2, 31, 1)
 	self:createOptionRow(panel, 2, "PetLeashDistance", "Pet Leash", 35, 160, 5)
 	self:createOptionRow(panel, 3, "PetHoldDefenseRange", "Hold Defense", 10, 60, 2)
+	self:createOptionRow(panel, 4, "AutoBerryEnabled", "Auto Berries", 0, 1, 1)
 end
 
 function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
@@ -443,7 +449,11 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	local function refresh()
 		local v = self.optionValues[key]
 		text.Text = label
-		valueLabel.Text = tostring(math.floor(v + 0.5))
+		if key == "AutoBerryEnabled" then
+			valueLabel.Text = (v >= 0.5) and "ON" or "OFF"
+		else
+			valueLabel.Text = tostring(math.floor(v + 0.5))
+		end
 	end
 
 	local function apply(delta)
@@ -472,7 +482,7 @@ end
 function UIController:buildBuildAndToolMenu(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "BuildToolPanel"
-	panel.Size = UDim2.fromOffset(320, 250)
+	panel.Size = UDim2.new(0, 320, 0.42, 0)
 	panel.Position = UDim2.new(1, -312, 0, 190)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
@@ -520,7 +530,7 @@ function UIController:buildBuildAndToolMenu(gui)
 
 	local levelTwo = Instance.new("Frame")
 	levelTwo.Name = "LevelTwo"
-	levelTwo.Size = UDim2.fromOffset(302, 138)
+	levelTwo.Size = UDim2.new(1, -18, 0, 138)
 	levelTwo.Position = UDim2.fromOffset(9, 146)
 	levelTwo.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	levelTwo.BackgroundTransparency = 0.15
@@ -541,13 +551,13 @@ function UIController:buildBuildAndToolMenu(gui)
 	local toolDemolisher = Instance.new("TextButton")
 	toolDemolisher.Size = UDim2.fromOffset(136, 24)
 	toolDemolisher.Position = UDim2.fromOffset(8, 28)
-	toolDemolisher.Text = "Equip Demolisher"
+	toolDemolisher.Text = "Prefer Demolisher"
 	toolDemolisher.Parent = levelTwo
 
 	local toolPlanter = Instance.new("TextButton")
 	toolPlanter.Size = UDim2.fromOffset(136, 24)
 	toolPlanter.Position = UDim2.fromOffset(156, 28)
-	toolPlanter.Text = "Equip Planter"
+	toolPlanter.Text = "Prefer Planter"
 	toolPlanter.Parent = levelTwo
 
 	local openBuildSelection = Instance.new("TextButton")
@@ -559,12 +569,12 @@ function UIController:buildBuildAndToolMenu(gui)
 	local useButton = Instance.new("TextButton")
 	useButton.Size = UDim2.fromOffset(284, 24)
 	useButton.Position = UDim2.fromOffset(8, 88)
-	useButton.Text = "Use Selected Action"
+	useButton.Text = "Interact / Place"
 	useButton.Parent = levelTwo
 
 	local levelThree = Instance.new("Frame")
 	levelThree.Name = "LevelThree"
-	levelThree.Size = UDim2.fromOffset(302, 152)
+	levelThree.Size = UDim2.new(1, -18, 0, 152)
 	levelThree.Position = UDim2.fromOffset(9, 146)
 	levelThree.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	levelThree.BackgroundTransparency = 0.1
@@ -604,6 +614,24 @@ function UIController:buildBuildAndToolMenu(gui)
 	selectedLabel.TextWrapped = false
 	selectedLabel.Text = "Mode:-  Tool:-  Build:-  Status:-"
 	selectedLabel.Parent = panel
+
+	local mobilePlaceBtn = Instance.new("TextButton")
+	mobilePlaceBtn.Name = "MobilePlaceBuildButton"
+	mobilePlaceBtn.AnchorPoint = Vector2.new(0.5, 1)
+	mobilePlaceBtn.Size = UDim2.fromOffset(180, 40)
+	mobilePlaceBtn.Position = UDim2.new(0.5, 0, 1, -24)
+	mobilePlaceBtn.BackgroundColor3 = Color3.fromRGB(48, 102, 78)
+	mobilePlaceBtn.TextColor3 = Color3.fromRGB(236, 247, 240)
+	mobilePlaceBtn.Font = Enum.Font.GothamBold
+	mobilePlaceBtn.TextSize = 14
+	mobilePlaceBtn.Text = "Place Build"
+	mobilePlaceBtn.Visible = false
+	mobilePlaceBtn.Parent = gui
+	mobilePlaceBtn.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:handlePrimaryAction()
+		end
+	end)
 
 	local refresh
 
@@ -656,6 +684,7 @@ function UIController:buildBuildAndToolMenu(gui)
 		openManagementButton.Text = (self.managementState and self.managementState.open) and "Creature Management (Open)" or "Creature Management"
 		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
 		selectedLabel.Text = string.format("Mode:%s  Tool:%s  Build:%s  Status:%s", tostring(buildMode or "-"), tostring(tool), tostring(buildKey), tostring(placementReason))
+		mobilePlaceBtn.Visible = UserInputService.TouchEnabled and (buildMode == true) and (not self.hiddenUi)
 	end
 
 	openBuildHubButton.MouseButton1Click:Connect(function()
@@ -794,13 +823,13 @@ function UIController:buildItemBar(gui)
 	end
 	
 	refresh()
-	task.spawn(function()
-		while panel.Parent do
-			refresh()
-			task.wait(0.2)
-		end
-	end)
-end
+		task.spawn(function()
+			while panel.Parent do
+				refresh()
+				task.wait(0.2)
+			end
+		end)
+	end
 
 function UIController:updatePetHud(payload)
 	local pets = payload and payload.pets or {}
@@ -886,6 +915,10 @@ function UIController:updatePetHud(payload)
 				tostring(self.stance or "FOLLOW")
 			)
 		end
+	end
+	if self.biomeLabel then
+		local biomeToken = tostring(self.currentBiome or "unknown")
+		self.biomeLabel.Text = string.format("Biome: %s", biomeToken)
 	end
 	self.activePetHud = pets[self.activeSlot or 1]
 	self:refreshCommandPanel()

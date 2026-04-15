@@ -24,17 +24,18 @@ end
 function PlayerDataService:getOrCreate(player)
 	local data = self.dataByUserId[player.UserId]
 	if data then return data end
-	data = {
-		ownedCreatures = {},
-		partySlots = { nil, nil }, -- 2 active pets
-		reserve = {},
-		materials = {
-			fiber = 0, wood = 0, stone = 0, meat = 0, battery_seed = 0,
-			red = 0, yellow = 0, blue = 0,
-			berry_red = 0, berry_yellow = 0, berry_blue = 0,
-			revive_berry = 0, replenish_berry = 0,
-			lure_meat = 0, crystal_shard = 0, water_glob = 0,
-		},
+		data = {
+			ownedCreatures = {},
+			partySlots = { nil, nil }, -- 2 active pets
+			reserve = {},
+			materials = {
+				fiber = 0, wood = 0, stone = 0, meat = 0, battery_seed = 0,
+				red = 0, yellow = 0, blue = 0,
+				berry_red = 0, berry_yellow = 0, berry_blue = 0,
+				revive_berry = 0, replenish_berry = 0,
+				lure_meat = 0, crystal_shard = 0, water_glob = 0,
+				node_demolisher = 1, berry_planter = 1,
+			},
 		morphPoints = 0,
 		selectedPetSlot = 1,
 		starterChosen = false,
