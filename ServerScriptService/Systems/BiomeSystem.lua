@@ -9,12 +9,18 @@ BiomeSystem.MOUNTAIN_AMPLIFY = 1.4
 BiomeSystem.OCEAN_FLOOR_AMPLIFY = 1.2
 
 local HEIGHT_PROFILE = {
+	plains = { baseOffset = 1, ampScale = 1.0, ridgeBoost = 0.92 },
+	forest = { baseOffset = 2, ampScale = 1.06, ridgeBoost = 0.98 },
+	desert = { baseOffset = 0, ampScale = 0.94, ridgeBoost = 0.82 },
 	ocean = { baseOffset = -12, ampScale = 0.72, oceanCapOffset = -1 },
+	stormfield = { baseOffset = 3, ampScale = 1.34, ridgeBoost = 1.2 },
 	volcanic = { baseOffset = 4, ampScale = 3.25, ridgeBoost = 1.35 },
+	marshes = { baseOffset = -2, ampScale = 0.76, ridgeBoost = 0.62, oceanCapOffset = 0 },
+	magiboreas = { baseOffset = 4, ampScale = 1.56, ridgeBoost = 1.26 },
 	polar = { baseOffset = 2, ampScale = 1.12, ridgeBoost = 1.18 },
 	tundra = { baseOffset = 2, ampScale = 1.1, ridgeBoost = 1.1 },
-	smallMountains = { baseOffset = 2, ampScale = 1.1, ridgeBoost = 0.9 },
-	highMountains = { baseOffset = 2, ampScale = 3.1, ridgeBoost = 0.7 },
+	smallMountains = { baseOffset = 5, ampScale = 1.74, ridgeBoost = 1.18 },
+	highMountains = { baseOffset = 11, ampScale = 3.85, ridgeBoost = 1.34 },
 }
 
 local BIOME_KEYS = {}

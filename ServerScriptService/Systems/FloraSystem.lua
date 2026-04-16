@@ -29,6 +29,10 @@ local BIOME_TREES = {
 	volcanic = { base = 4, styles = { "cypress" } },
 	tundra = { base = 7, styles = { "pine", "fir" } },
 	polar = { base = 5, styles = { "pine", "fir" } },
+	marshes = { base = 9, styles = { "mangrove", "willow", "cypress" } },
+	magiboreas = { base = 6, styles = { "fir", "spruce" } },
+	smallMountains = { base = 5, styles = { "pine", "fir" } },
+	highMountains = { base = 3, styles = { "fir", "spruce" } },
 }
 
 local BERRY_COLORS = {
@@ -232,6 +236,10 @@ local BIOME_OBSTACLES = {
 	volcanic = { rocks = 8, ore = 4, crystal = 1, density = 1.15, regenMult = 1.2 },
 	tundra = { rocks = 6, ore = 1, crystal = 2, density = 0.9, regenMult = 1.05 },
 	polar = { rocks = 5, ore = 1, crystal = 3, density = 0.85, regenMult = 1.1 },
+	marshes = { rocks = 4, ore = 1, crystal = 1, density = 0.9, regenMult = 0.95 },
+	magiboreas = { rocks = 5, ore = 2, crystal = 4, density = 0.92, regenMult = 1.15 },
+	smallMountains = { rocks = 7, ore = 3, crystal = 1, density = 1.08, regenMult = 1.05 },
+	highMountains = { rocks = 8, ore = 4, crystal = 2, density = 1.15, regenMult = 1.1 },
 }
 
 function FloraSystem.scatterChunk(chunk)
@@ -244,7 +252,13 @@ function FloraSystem.scatterChunk(chunk)
 	local shrubs = math.floor(spec.base * 1.2)
 	local bushes = math.max(1, math.floor(spec.base * 0.35))
 	local obstacleSpec = BIOME_OBSTACLES[dominant] or BIOME_OBSTACLES.plains
-	local density = obstacleSpec.density or 1
+	local chunkDensity = chunk.biomeDensity or {}
+	local vegetationDensity = chunkDensity.vegetation or 1
+	local obstacleDensity = chunkDensity.obstacle or 1
+	trees = math.max(1, math.floor(trees * vegetationDensity + 0.5))
+	shrubs = math.max(1, math.floor(shrubs * vegetationDensity + 0.5))
+	bushes = math.max(1, math.floor(bushes * (0.75 + vegetationDensity * 0.35) + 0.5))
+	local density = (obstacleSpec.density or 1) * obstacleDensity
 	local placed = {}
 	local function farEnough(x, z, min2)
 		for _, p in ipairs(placed) do

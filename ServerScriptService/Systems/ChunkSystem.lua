@@ -37,12 +37,39 @@ local BIOME_MATS = {
 	volcanic = { ground = Enum.Material.Basalt, high = Enum.Material.Rock },
 	tundra = { ground = Enum.Material.Snow, high = Enum.Material.Ice },
 	polar = { ground = Enum.Material.Snow, high = Enum.Material.Ice },
+	smallMountains = { ground = Enum.Material.Slate, high = Enum.Material.Rock },
+	highMountains = { ground = Enum.Material.Rock, high = Enum.Material.Rock },
+	marshes = { ground = Enum.Material.Mud, high = Enum.Material.Ground },
+	magiboreas = { ground = Enum.Material.Snow, high = Enum.Material.Ice },
 }
+
+local function deterministicNoise01(x, z, seed)
+	local n = math.noise((x + seed * 73) * 0.069, (z - seed * 41) * 0.069, seed * 0.17)
+	return 0.5 + n * 0.5
+end
+
+local function getTopBiomes(biomeMix)
+	local topKey, topWeight = "plains", 0
+	local secondKey, secondWeight = nil, 0
+	for key, weight in pairs(biomeMix or {}) do
+		if weight > topWeight then
+			secondKey, secondWeight = topKey, topWeight
+			topKey, topWeight = key, weight
+		elseif weight > secondWeight then
+			secondKey, secondWeight = key, weight
+		end
+	end
+	return topKey, topWeight, secondKey, secondWeight
+end
 
 function ChunkSystem.generateChunk(cx, cz)
 	local cells = {}
 	local spawnPoints = {}
 	local biomeMixTotals = {}
+	local wetCells = 0
+	local rockCells = 0
+	local passableCells = 0
+	local boundaryCells = 0
 	local cellsPerAxis = ChunkSystem.CHUNK_SIZE / ChunkSystem.CELL_SIZE
 	for iz = 0, cellsPerAxis - 1 do
 		for ix = 0, cellsPerAxis - 1 do
@@ -54,6 +81,9 @@ function ChunkSystem.generateChunk(cx, cz)
 			local blocked = terrainClass == "rock"
 			local water = terrainClass == "water"
 			local biomeMix = env.biomeMix or { [biome] = 1 }
+			local _, topWeight, _, secondWeight = getTopBiomes(biomeMix)
+			local boundaryStrength = math.clamp((secondWeight or 0) * 2.2, 0, 1)
+			local blendedSurface = boundaryStrength >= 0.32
 			for biomeKey, weight in pairs(biomeMix) do
 				biomeMixTotals[biomeKey] = (biomeMixTotals[biomeKey] or 0) + weight
 			end
@@ -77,8 +107,14 @@ function ChunkSystem.generateChunk(cx, cz)
 				moveCost = water and 2.2 or (blocked and math.huge or 1),
 				spawnable = (not blocked and not water),
 				nodeable = (not blocked),
+				boundaryStrength = boundaryStrength,
+				blendedSurface = blendedSurface,
 			}
 			cells[iz * cellsPerAxis + ix + 1] = EcologyRules.normalizeCell(cell)
+			if water then wetCells = wetCells + 1 end
+			if blocked then rockCells = rockCells + 1 end
+			if not blocked then passableCells = passableCells + 1 end
+			if blendedSurface then boundaryCells = boundaryCells + 1 end
 			local canSpawn = EcologyRules.canHostSpawn(cells[iz * cellsPerAxis + ix + 1])
 			if canSpawn then
 				local biomeKey = BiomeConfig[biome] and biome or "plains"
@@ -187,6 +223,13 @@ function ChunkSystem.generateChunk(cx, cz)
 		end
 	end
 
+	local waterRatio = wetCells / totalCells
+	local rockRatio = rockCells / totalCells
+	local boundaryRatio = boundaryCells / totalCells
+	local passableRatio = passableCells / totalCells
+	local vegetationDensity = math.clamp((1 - waterRatio) * (1 - rockRatio * 0.75) * (1 - boundaryRatio * 0.35), 0.2, 1.35)
+	local obstacleDensity = math.clamp((0.75 + rockRatio * 0.9 + boundaryRatio * 0.2) * math.max(0.45, passableRatio), 0.35, 1.7)
+
 	return {
 		cx = cx,
 		cz = cz,
@@ -195,15 +238,36 @@ function ChunkSystem.generateChunk(cx, cz)
 		spawnPoints = spawnPoints,
 		biomeMixSummary = biomeMixSummary,
 		dominantBiome = dominantBiome,
+		biomeDensity = {
+			vegetation = vegetationDensity,
+			obstacle = obstacleDensity,
+			waterRatio = waterRatio,
+			rockRatio = rockRatio,
+			boundaryRatio = boundaryRatio,
+			passableRatio = passableRatio,
+		},
 		generatedAt = os.clock(),
 	}
 end
 
 function ChunkSystem.writeChunkTerrain(chunk)
 	for _, cell in ipairs(chunk.cells) do
-		local matDef = BIOME_MATS[cell.dominantBiome] or BIOME_MATS.plains
+		local topBiome, topWeight, secondBiome, secondWeight = getTopBiomes(cell.biomeMix or { [cell.dominantBiome] = 1 })
+		local matDef = BIOME_MATS[topBiome] or BIOME_MATS[cell.dominantBiome] or BIOME_MATS.plains
 		local y = math.max(2, cell.yGround or cell.yG or 4)
 		local mat = y > 18 and matDef.high or matDef.ground
+		local boundaryStrength = cell.boundaryStrength or 0
+		if secondBiome and (secondWeight or 0) > 0.18 then
+			local secondMatDef = BIOME_MATS[secondBiome]
+			if secondMatDef then
+				local secondMat = y > 18 and secondMatDef.high or secondMatDef.ground
+				local blendThreshold = 0.45 - math.min(0.18, (topWeight or 0.5) * 0.12)
+				local n = deterministicNoise01(cell.x, cell.z, 21)
+				if boundaryStrength > blendThreshold and n < boundaryStrength then
+					mat = secondMat
+				end
+			end
+		end
 		Terrain:FillBlock(
 			CFrame.new(cell.x, y * 0.5, cell.z),
 			Vector3.new(ChunkSystem.CELL_SIZE, y, ChunkSystem.CELL_SIZE),
