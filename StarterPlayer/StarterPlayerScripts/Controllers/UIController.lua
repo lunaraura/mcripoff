@@ -14,6 +14,14 @@ local ItemUseRules = require(Items:WaitForChild("ItemUseRules"))
 local UIController = {}
 UIController.__index = UIController
 
+local function attachSizeConstraint(guiObject, minX, minY, maxX, maxY)
+	local c = Instance.new("UISizeConstraint")
+	c.MinSize = Vector2.new(minX, minY)
+	c.MaxSize = Vector2.new(maxX, maxY)
+	c.Parent = guiObject
+	return c
+end
+
 -- UI visibility state
 local UI_HIDDEN = false
 local HIDEABLE_PANELS = {}
@@ -176,16 +184,17 @@ function UIController:buildUi()
 	-- Hide UI button
 	local hideBtn = Instance.new("TextButton")
 	hideBtn.Name = "HideUIButton"
-	hideBtn.AnchorPoint = Vector2.new(1, 0)
-	hideBtn.Size = UDim2.fromOffset(96, 30)
-	hideBtn.Position = UDim2.new(1, -6, 0, -22)
-	hideBtn.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+		hideBtn.AnchorPoint = Vector2.new(0, 0)
+		hideBtn.Size = UDim2.new(0.14, 0, 0.045, 0)
+		hideBtn.Position = UDim2.new(0.015, 0, 0.015, 0)
+		hideBtn.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	hideBtn.TextColor3 = Color3.fromRGB(235, 245, 255)
 	hideBtn.Font = Enum.Font.GothamBold
 	hideBtn.TextSize = 12
-	hideBtn.Text = "Hide UI"
-	hideBtn.Parent = gui
-	self.hideUiButton = hideBtn
+		hideBtn.Text = "Hide UI"
+		hideBtn.Parent = gui
+		self.hideUiButton = hideBtn
+		attachSizeConstraint(hideBtn, 88, 28, 180, 44)
 
 	hideBtn.MouseButton1Click:Connect(function()
 		self.hiddenUi = not self.hiddenUi
@@ -196,18 +205,19 @@ function UIController:buildUi()
 	local activeHud = Instance.new("Frame")
 	activeHud.Name = "ActivePetHud"
 	activeHud.AnchorPoint = Vector2.new(0.5, 1)
-	activeHud.Size = UDim2.new(0.32, 0, 0, 96)
-	activeHud.Position = UDim2.new(0.5, 0, 1, -96)
+	activeHud.Size = UDim2.new(0.58, 0, 0.115, 0)
+	activeHud.Position = UDim2.new(0.5, 0, 0.90, 0)
 	activeHud.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	activeHud.BackgroundTransparency = 0.12
 	activeHud.Parent = gui
 	self.activePetFrame = activeHud
 	table.insert(self.mainHudFrames, activeHud)
+	attachSizeConstraint(activeHud, 280, 88, 760, 140)
 
 	local petName = Instance.new("TextLabel")
 	petName.Name = "PetName"
 	petName.BackgroundTransparency = 1
-	petName.Size = UDim2.new(1, -12, 0, 18)
+		petName.Size = UDim2.new(1, -12, 0, 20)
 	petName.Position = UDim2.fromOffset(6, 4)
 	petName.Font = Enum.Font.GothamBold
 	petName.TextSize = 15
@@ -220,7 +230,7 @@ function UIController:buildUi()
 	local petStats = Instance.new("TextLabel")
 	petStats.Name = "PetStats"
 	petStats.BackgroundTransparency = 1
-	petStats.Size = UDim2.new(1, -12, 0, 18)
+		petStats.Size = UDim2.new(1, -12, 0, 18)
 	petStats.Position = UDim2.fromOffset(6, 22)
 	petStats.Font = Enum.Font.Code
 	petStats.TextSize = 12
@@ -242,7 +252,7 @@ function UIController:buildUi()
 	-- utility/build menu should be top-right compact
 	if self.buildToolPanel then
 		self.buildToolPanel.AnchorPoint = Vector2.new(1, 0)
-		self.buildToolPanel.Position = UDim2.new(1, -12, 0, 48)
+		self.buildToolPanel.Position = UDim2.new(0.99, 0, 0.07, 0)
 	end
 
 	-- keep item bar visible for now
@@ -331,13 +341,14 @@ end
 function UIController:buildCommandPanel(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "CommandPanel"
-	panel.Size = UDim2.fromOffset(404, 34)
-	panel.Position = UDim2.fromOffset(20, 266)
+	panel.Size = UDim2.new(0.32, 0, 0.06, 0)
+	panel.Position = UDim2.new(0.02, 0, 0.35, 0)
 	panel.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
 	panel.BackgroundTransparency = 0.18
 	panel.Visible = false
 	panel.Parent = gui
 	self.commandPanel = panel
+	attachSizeConstraint(panel, 280, 34, 460, 56)
 
 	local function makeButton(text, x, key)
 		local b = Instance.new("TextButton")
@@ -367,13 +378,15 @@ end
 function UIController:buildOptionsMenu(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "OptionsPanel"
-	panel.Size = UDim2.fromOffset(280, 170)
-	panel.Position = UDim2.new(1, -292, 0, 12)
+	panel.AnchorPoint = Vector2.new(1, 0)
+	panel.Size = UDim2.new(0.28, 0, 0.26, 0)
+	panel.Position = UDim2.new(0.99, 0, 0.02, 0)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
 	panel.Visible = false
 	panel.Parent = gui
 	self.optionsPanel = panel
+	attachSizeConstraint(panel, 250, 170, 420, 300)
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
@@ -461,11 +474,13 @@ end
 function UIController:buildBuildAndToolMenu(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "BuildToolPanel"
-	panel.Size = UDim2.new(0, 320, 0.42, 0)
-	panel.Position = UDim2.new(1, -312, 0, 190)
+	panel.AnchorPoint = Vector2.new(1, 0)
+	panel.Size = UDim2.new(0.30, 0, 0.42, 0)
+	panel.Position = UDim2.new(0.99, 0, 0.08, 0)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
 	panel.Parent = gui
+	attachSizeConstraint(panel, 250, 240, 420, 460)
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
@@ -509,7 +524,7 @@ function UIController:buildBuildAndToolMenu(gui)
 
 	local levelTwo = Instance.new("Frame")
 	levelTwo.Name = "LevelTwo"
-	levelTwo.Size = UDim2.new(1, -18, 0, 138)
+	levelTwo.Size = UDim2.new(1, -18, 1, -154)
 	levelTwo.Position = UDim2.fromOffset(9, 146)
 	levelTwo.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	levelTwo.BackgroundTransparency = 0.15
@@ -553,7 +568,7 @@ function UIController:buildBuildAndToolMenu(gui)
 
 	local levelThree = Instance.new("Frame")
 	levelThree.Name = "LevelThree"
-	levelThree.Size = UDim2.new(1, -18, 0, 152)
+	levelThree.Size = UDim2.new(1, -18, 1, -154)
 	levelThree.Position = UDim2.fromOffset(9, 146)
 	levelThree.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	levelThree.BackgroundTransparency = 0.1
@@ -567,7 +582,7 @@ function UIController:buildBuildAndToolMenu(gui)
 	backToLevelTwo.Parent = levelThree
 
 	local buildList = Instance.new("ScrollingFrame")
-	buildList.Size = UDim2.fromOffset(284, 118)
+	buildList.Size = UDim2.new(1, -16, 1, -36)
 	buildList.Position = UDim2.fromOffset(8, 30)
 	buildList.CanvasSize = UDim2.fromOffset(0, 0)
 	buildList.ScrollBarThickness = 6
@@ -583,8 +598,8 @@ function UIController:buildBuildAndToolMenu(gui)
 	local selectedLabel = Instance.new("TextLabel")
 	selectedLabel.Name = "SelectedLabel"
 	selectedLabel.BackgroundTransparency = 1
-	selectedLabel.Size = UDim2.new(1, -12, 0, 18)
-	selectedLabel.Position = UDim2.fromOffset(8, 226)
+	selectedLabel.Size = UDim2.new(1, -12, 0, 16)
+	selectedLabel.Position = UDim2.new(0, 8, 1, -20)
 	selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
 	selectedLabel.TextYAlignment = Enum.TextYAlignment.Top
 	selectedLabel.Font = Enum.Font.Code
@@ -597,8 +612,8 @@ function UIController:buildBuildAndToolMenu(gui)
 	local mobilePlaceBtn = Instance.new("TextButton")
 	mobilePlaceBtn.Name = "MobilePlaceBuildButton"
 	mobilePlaceBtn.AnchorPoint = Vector2.new(0.5, 1)
-	mobilePlaceBtn.Size = UDim2.fromOffset(180, 40)
-	mobilePlaceBtn.Position = UDim2.new(0.5, 0, 1, -24)
+	mobilePlaceBtn.Size = UDim2.new(0.28, 0, 0.07, 0)
+	mobilePlaceBtn.Position = UDim2.new(0.5, 0, 0.98, 0)
 	mobilePlaceBtn.BackgroundColor3 = Color3.fromRGB(48, 102, 78)
 	mobilePlaceBtn.TextColor3 = Color3.fromRGB(236, 247, 240)
 	mobilePlaceBtn.Font = Enum.Font.GothamBold
@@ -606,6 +621,7 @@ function UIController:buildBuildAndToolMenu(gui)
 	mobilePlaceBtn.Text = "Place Build"
 	mobilePlaceBtn.Visible = false
 	mobilePlaceBtn.Parent = gui
+	attachSizeConstraint(mobilePlaceBtn, 140, 36, 260, 52)
 	mobilePlaceBtn.MouseButton1Click:Connect(function()
 		if self.build then
 			self.build:handlePrimaryAction()
@@ -728,11 +744,13 @@ end
 function UIController:buildItemBar(gui)
 	local panel = Instance.new("Frame")
 	panel.Name = "ItemBar"
-	panel.Size = UDim2.fromOffset(300, 72)
-	panel.Position = UDim2.new(0.5, -150, 1, -88)
+	panel.AnchorPoint = Vector2.new(0.5, 1)
+	panel.Size = UDim2.new(0.48, 0, 0.10, 0)
+	panel.Position = UDim2.new(0.5, 0, 0.995, 0)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
 	panel.Parent = gui
+	attachSizeConstraint(panel, 280, 66, 620, 120)
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
@@ -746,27 +764,27 @@ function UIController:buildItemBar(gui)
 	title.Parent = panel
 
 	local prevBtn = Instance.new("TextButton")
-	prevBtn.Size = UDim2.fromOffset(28, 28)
+	prevBtn.Size = UDim2.fromOffset(44, 34)
 	prevBtn.Position = UDim2.fromOffset(8, 30)
 	prevBtn.Text = "<"
 	prevBtn.Parent = panel
 
 	local useBtn = Instance.new("TextButton")
-	useBtn.Size = UDim2.fromOffset(90, 28)
-	useBtn.Position = UDim2.fromOffset(106, 30)
+	useBtn.Size = UDim2.fromOffset(108, 34)
+	useBtn.Position = UDim2.fromOffset(96, 30)
 	useBtn.Text = "Use Item"
 	useBtn.Parent = panel
 
 	local nextBtn = Instance.new("TextButton")
-	nextBtn.Size = UDim2.fromOffset(28, 28)
-	nextBtn.Position = UDim2.fromOffset(264, 30)
+	nextBtn.Size = UDim2.fromOffset(44, 34)
+	nextBtn.Position = UDim2.fromOffset(246, 30)
 	nextBtn.Text = ">"
 	nextBtn.Parent = panel
 
 	local info = Instance.new("TextLabel")
 	info.BackgroundTransparency = 1
-	info.Size = UDim2.fromOffset(150, 28)
-	info.Position = UDim2.fromOffset(44, 30)
+	info.Size = UDim2.fromOffset(146, 34)
+	info.Position = UDim2.fromOffset(52, 30)
 	info.TextXAlignment = Enum.TextXAlignment.Left
 	info.Font = Enum.Font.Code
 	info.TextSize = 13
@@ -802,13 +820,13 @@ function UIController:buildItemBar(gui)
 	end
 	
 	refresh()
-		task.spawn(function()
-			while panel.Parent do
-				refresh()
-				task.wait(0.2)
-			end
-		end)
-	end
+	task.spawn(function()
+		while panel.Parent do
+			refresh()
+			task.wait(0.2)
+		end
+	end)
+end
 
 function UIController:updatePetHud(payload)
 	local pets = payload and payload.pets or {}
@@ -903,7 +921,7 @@ end
 function UIController:buildAbilityHotbar(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "AbilityHotbar"
-	panel.Size = UDim2.new(1, -12, 0, 42)
+	panel.Size = UDim2.new(1, -12, 0, 52)
 	panel.Position = UDim2.fromOffset(6, 44)
 	panel.BackgroundTransparency = 1
 	panel.Parent = parent
@@ -918,10 +936,10 @@ function UIController:buildAbilityHotbar(parent)
 	for i = 1, 4 do
 		local slot = Instance.new("TextButton")
 		slot.Name = "AbilitySlot" .. i
-		slot.Size = UDim2.new(0.245, -4, 0, 42)
+			slot.Size = UDim2.new(0.245, -4, 0, 50)
 		slot.Position = UDim2.new((i - 1) * 0.25, 0, 0, 0)
 		slot.Font = Enum.Font.Code
-		slot.TextSize = 11
+			slot.TextSize = 12
 		slot.TextWrapped = true
 		slot.TextColor3 = Color3.fromRGB(230, 240, 255)
 		slot.BackgroundColor3 = Color3.fromRGB(35, 42, 54)
