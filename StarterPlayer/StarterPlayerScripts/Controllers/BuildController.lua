@@ -149,19 +149,28 @@ function BuildController:updateInteractionPrompt()
 end
 
 function BuildController:selectTool(toolKey)
+	if toolKey == "berry_planter" and (Players.LocalPlayer:GetAttribute("Feature_planter_tool_unlocked") ~= true) then
+		return false
+	end
 	self.selectedTool = toolKey
 	self.buildMode = false
 	self:clearPreview()
+	return true
 end
 
 function BuildController:setBuildMode(enabled)
+	if enabled and (Players.LocalPlayer:GetAttribute("Feature_building_tool_unlocked") ~= true) then
+		self.buildMode = false
+		self:clearPreview()
+		return false
+	end
 	self.buildMode = enabled and true or false
 	if not self.buildMode then self:clearPreview() end
+	return self.buildMode
 end
 
 function BuildController:toggleBuildMode()
-	self.buildMode = not self.buildMode
-	return self.buildMode
+	return self:setBuildMode(not self.buildMode)
 end
 
 function BuildController:selectBuildable(buildKey)

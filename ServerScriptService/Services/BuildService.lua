@@ -16,10 +16,21 @@ BuildService.Actions = {
 }
 
 function BuildService.new(worldService, inventoryService)
-	return setmetatable({ worldService = worldService, inventoryService = inventoryService, nextBuildId = 1, buildables = {} }, BuildService)
+	return setmetatable({ worldService = worldService, inventoryService = inventoryService, objectiveService = nil, nextBuildId = 1, buildables = {} }, BuildService)
 end
 
 local SHRUB_BERRY_KEYS = { berry_red = true, berry_yellow = true, berry_blue = true }
+
+function BuildService:configureObjectiveService(objectiveService)
+	self.objectiveService = objectiveService
+end
+
+function BuildService:isFeatureUnlocked(player, featureKey)
+	if not self.objectiveService then
+		return true
+	end
+	return self.objectiveService:isFeatureUnlocked(player, featureKey)
+end
 
 function BuildService:getOrCreateBuildFolder()
 	local world = workspace:FindFirstChild("World") or Instance.new("Folder")
@@ -131,6 +142,9 @@ function BuildService:canAfford(player, costs)
 end
 
 function BuildService:tryBuild(player, payload)
+	if not self:isFeatureUnlocked(player, "building_tool") then
+		return false, { reasonCode = "FEATURE_LOCKED_BUILDING" }
+	end
 	local buildKey = payload.buildKey or "fiber_trap"
 	local validationDef = PlacementRules.getBuildDef(buildKey)
 	if not validationDef then return false, { reasonCode = PlacementRules.Reason.UNKNOWN_BUILD_KEY } end
@@ -198,6 +212,9 @@ end
 
 function BuildService:tryPlantShrub(player, payload)
 	payload = payload or {}
+	if not self:isFeatureUnlocked(player, "planter_tool") then
+		return false, { reasonCode = "FEATURE_LOCKED_PLANTER" }
+	end
 	local berryKey = tostring(payload.berryKey or "berry_red")
 	if not SHRUB_BERRY_KEYS[berryKey] then
 		return false, { reasonCode = "INVALID_BERRY_KEY" }

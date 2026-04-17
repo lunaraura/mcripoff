@@ -2,7 +2,11 @@ local InventoryService = {}
 InventoryService.__index = InventoryService
 
 function InventoryService.new(playerDataService)
-	return setmetatable({ playerDataService = playerDataService }, InventoryService)
+	return setmetatable({ playerDataService = playerDataService, onGrant = nil }, InventoryService)
+end
+
+function InventoryService:setGrantListener(listener)
+	self.onGrant = listener
 end
 
 function InventoryService:grant(player, rewards)
@@ -11,6 +15,9 @@ function InventoryService:grant(player, rewards)
 	for _, r in ipairs(rewards or {}) do
 		data.materials[r.key] = (data.materials[r.key] or 0) + (r.amount or 0)
 		table.insert(granted, { key = r.key, amount = r.amount or 0 })
+		if self.onGrant then
+			self.onGrant(player, { key = r.key, amount = r.amount or 0 })
+		end
 	end
 	return granted
 end

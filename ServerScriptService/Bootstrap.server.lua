@@ -53,6 +53,7 @@ local BuildService = require(Services:WaitForChild("BuildService"))
 local MorphService = require(Services:WaitForChild("MorphService"))
 local PlayerDataService = require(Services:WaitForChild("PlayerDataService"))
 local BerryService = require(Services:WaitForChild("BerryService"))
+local ObjectiveService = require(Services:WaitForChild("ObjectiveService"))
 
 local playerDataService = PlayerDataService.new()
 local worldService = WorldService.new(remotes)
@@ -66,8 +67,16 @@ local harvestService = HarvestService.new(worldService, inventoryService)
 local buildService = BuildService.new(worldService, inventoryService)
 local morphService = MorphService.new(playerDataService, creatureService)
 local berryService = BerryService.new(worldService, inventoryService, creatureService, playerDataService)
+local objectiveService = ObjectiveService.new(playerDataService, inventoryService, worldService)
 harvestService:configure(playerDataService, creatureService, morphService)
+buildService:configureObjectiveService(objectiveService)
 combatService:configureProgression(playerDataService, morphService)
+inventoryService:setGrantListener(function(player, reward)
+	objectiveService:recordObjectiveEvent(player, "item_gained", reward)
+end)
+playerDataService:setOwnedLevelChangedListener(function(player, payload)
+	objectiveService:recordObjectiveEvent(player, "pet_level_reached", payload)
+end)
 local hudTimer = 0
 local hudReplicationCache = {}
 local HUD_KEEPALIVE_SECONDS = 1.0
@@ -168,6 +177,7 @@ Players.PlayerAdded:Connect(function(player)
 	player:SetAttribute("ActiveDesignatedTargetId", nil)
 	player:SetAttribute("PetDesignatedTargetSlot1", nil)
 	player:SetAttribute("PetDesignatedTargetSlot2", nil)
+	objectiveService:initPlayer(player)
 	player.CharacterAdded:Connect(function()
 		task.wait(0.3)
 		creatureService:HydrateParty(player)
@@ -184,6 +194,7 @@ remotes.RequestStarterChoice.OnServerEvent:Connect(function(player, payload)
 	local ok = playerDataService:chooseStarter(player, speciesKey)
 	if not ok then return end
 	player:SetAttribute("StarterChosen", true)
+	objectiveService:recordObjectiveEvent(player, "starter_chosen", { speciesKey = speciesKey })
 	creatureService:HydrateParty(player)
 	local root = player.Character and player.Character.PrimaryPart
 	if root then
@@ -597,6 +608,7 @@ local function pushPetHud()
 					stance = tostring(player:GetAttribute("PetStance") or "FOLLOW"),
 					activeDesignatedTargetId = tonumber(player:GetAttribute("ActiveDesignatedTargetId")),
 					starterChosen = player:GetAttribute("StarterChosen") == true,
+					objectives = objectiveService:getClientSummary(player),
 					management = { party = managedParty, reserve = managedReserve, items = managedItems },
 				},
 				t = worldService.time,

@@ -138,6 +138,7 @@ function UIController.new(buildController, itemController, partyController, comm
 		hotbarStatusLabel = nil,
 		activeCommand = "follow",
 		managementData = { party = {}, reserve = {}, items = {} },
+		objectiveSummary = { active = {}, objectives = {}, unlockedFeatures = {} },
 		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
 	}, UIController)
 end
@@ -165,6 +166,7 @@ function UIController:bind()
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
 		self.managementData = meta.management or self.managementData
+		self.objectiveSummary = meta.objectives or self.objectiveSummary
 		self:refreshCreatureManagementMenu()
 	end)
 	self.creatureManageResultRemote.OnClientEvent:Connect(function(payload)

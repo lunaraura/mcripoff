@@ -18,7 +18,11 @@ local ALLOWED_STARTERS = {
 }
 
 function PlayerDataService.new()
-	return setmetatable({ dataByUserId = {} }, PlayerDataService)
+	return setmetatable({ dataByUserId = {}, onOwnedLevelChanged = nil }, PlayerDataService)
+end
+
+function PlayerDataService:setOwnedLevelChangedListener(listener)
+	self.onOwnedLevelChanged = listener
 end
 
 function PlayerDataService:getOrCreate(player)
@@ -34,7 +38,7 @@ function PlayerDataService:getOrCreate(player)
 				berry_red = 0, berry_yellow = 0, berry_blue = 0,
 				revive_berry = 0, replenish_berry = 0,
 				lure_meat = 0, crystal_shard = 0, water_glob = 0,
-				node_demolisher = 1, berry_planter = 1,
+				node_demolisher = 0, berry_planter = 0,
 			},
 		morphPoints = 0,
 		selectedPetSlot = 1,
@@ -386,6 +390,14 @@ function PlayerDataService:addOwnedXP(player, ownedId, amount)
 	end
 	owned.abilities = table.clone((def and def.abilities) or owned.abilities or {})
 	owned.moveset = MoveProgression.getLearnedMoves(owned.speciesKey, owned.level)
+	if levelUps > 0 and self.onOwnedLevelChanged then
+		self.onOwnedLevelChanged(player, {
+			ownedId = ownedId,
+			speciesKey = owned.speciesKey,
+			level = owned.level,
+			levelUps = levelUps,
+		})
+	end
 	return true, {
 		gained = gained,
 		levelUps = levelUps,
