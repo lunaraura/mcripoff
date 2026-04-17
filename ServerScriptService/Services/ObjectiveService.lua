@@ -10,13 +10,21 @@ local STATE_NOT_STARTED = "not_started"
 local STATE_ACTIVE = "active"
 local STATE_COMPLETED = "completed"
 local STATE_CLAIMED = "claimed"
+local DEBUG_LOG = true
+
+local function debugLog(message)
+	if not DEBUG_LOG then return end
+	print(string.format("[ObjectiveService] %s", tostring(message)))
+end
 
 function ObjectiveService.new(playerDataService, inventoryService, worldService)
-	return setmetatable({
+	local self = setmetatable({
 		playerDataService = playerDataService,
 		inventoryService = inventoryService,
 		worldService = worldService,
 	}, ObjectiveService)
+	self:validateDefinitions()
+	return self
 end
 
 local function ensureObjectiveState(data)
@@ -39,10 +47,29 @@ local function ensureObjectiveEntry(state, objectiveId)
 		id = objectiveId,
 		status = STATE_NOT_STARTED,
 		progress = 0,
+		progressCurrent = 0,
+		progressGoal = 1,
+		progressText = "0/1",
 		completedAt = nil,
 		claimedAt = nil,
 	}
 	return state.byId[objectiveId]
+end
+
+function ObjectiveService:validateDefinitions()
+	local seen = {}
+	for _, objectiveId in ipairs(ObjectiveConfig.Order or {}) do
+		if seen[objectiveId] then
+			warn(string.format("[ObjectiveService] Duplicate objective id in order: %s", tostring(objectiveId)))
+		end
+		seen[objectiveId] = true
+		local def = ObjectiveConfig.Objectives[objectiveId]
+		if not def then
+			warn(string.format("[ObjectiveService] Missing objective definition for id in order: %s", tostring(objectiveId)))
+		elseif type(def.requirements) ~= "table" or #def.requirements == 0 then
+			warn(string.format("[ObjectiveService] Objective has no requirements: %s", tostring(objectiveId)))
+		end
+	end
 end
 
 function ObjectiveService:initPlayer(player)
@@ -72,17 +99,20 @@ function ObjectiveService:applyReward(player, reward)
 		if key ~= "" and self.inventoryService:getCount(player, key) < amount then
 			self.inventoryService:grant(player, { { key = key, amount = amount } })
 		end
+		debugLog(string.format("Reward unlock_tool applied: player=%s key=%s amount=%d", tostring(player.UserId), key, amount))
 	elseif rType == "unlock_feature" then
 		local key = tostring(reward.key or "")
 		if key ~= "" then
 			state.unlockedFeatures[key] = true
 			player:SetAttribute("Feature_" .. key .. "_unlocked", true)
+			debugLog(string.format("Reward unlock_feature applied: player=%s key=%s", tostring(player.UserId), key))
 		end
 	elseif rType == "grant_item" then
 		local amount = math.max(1, math.floor(tonumber(reward.amount) or 1))
 		local key = tostring(reward.key or "")
 		if key ~= "" then
 			self.inventoryService:grant(player, { { key = key, amount = amount } })
+			debugLog(string.format("Reward grant_item applied: player=%s key=%s amount=%d", tostring(player.UserId), key, amount))
 		end
 	end
 end
@@ -102,42 +132,49 @@ end
 function ObjectiveService:getRequirementProgress(state, req)
 	local reqType = tostring(req.type or "")
 	if reqType == "starter_chosen" then
-		return state.flags.starterChosen and 1 or 0, 1
+		local current = state.flags.starterChosen and 1 or 0
+		return current >= 1 and 1 or 0, current, 1
 	elseif reqType == "item_gained" then
 		local key = tostring(req.key or "")
 		local current = tonumber(state.counters.items[key]) or 0
 		local goal = math.max(1, tonumber(req.count) or 1)
-		return math.clamp(current / goal, 0, 1), goal
+		return math.clamp(current / goal, 0, 1), current, goal
 	elseif reqType == "item_total" then
 		local total = 0
 		for _, key in ipairs(req.keys or {}) do
 			total = total + (tonumber(state.counters.items[tostring(key)]) or 0)
 		end
 		local goal = math.max(1, tonumber(req.count) or 1)
-		return math.clamp(total / goal, 0, 1), goal
+		return math.clamp(total / goal, 0, 1), total, goal
 	elseif reqType == "pet_level_min" then
 		local current = tonumber(state.counters.petLevelMax) or 1
 		local goal = math.max(1, tonumber(req.level) or 1)
-		return math.clamp(current / goal, 0, 1), goal
+		return math.clamp(current / goal, 0, 1), current, goal
 	elseif reqType == "objective_completed" then
 		local id = tostring(req.id or "")
 		local entry = state.byId[id]
 		local done = entry and (entry.status == STATE_COMPLETED or entry.status == STATE_CLAIMED)
-		return done and 1 or 0, 1
+		local current = done and 1 or 0
+		return current, current, 1
 	elseif reqType == "feature_unlocked" then
 		local key = tostring(req.key or "")
-		return state.unlockedFeatures[key] and 1 or 0, 1
+		local current = state.unlockedFeatures[key] and 1 or 0
+		return current, current, 1
 	end
-	return 0, 1
+	return 0, 0, 1
 end
 
 function ObjectiveService:objectiveIsComplete(state, def)
 	local aggregate = 1
+	local current = 0
+	local goal = 1
 	for _, req in ipairs(def.requirements or {}) do
-		local progress = self:getRequirementProgress(state, req)
+		local progress, reqCurrent, reqGoal = self:getRequirementProgress(state, req)
 		aggregate = math.min(aggregate, progress)
+		current = reqCurrent
+		goal = reqGoal
 	end
-	return aggregate >= 1, aggregate
+	return aggregate >= 1, aggregate, current, goal
 end
 
 function ObjectiveService:claimObjective(player, objectiveId, def, entry)
@@ -162,11 +199,19 @@ function ObjectiveService:evaluateObjectives(player)
 					entry.status = STATE_ACTIVE
 					dirty = true
 				end
-				local complete, progress = self:objectiveIsComplete(state, def)
+				local complete, progress, current, goal = self:objectiveIsComplete(state, def)
+				local previousProgress = tonumber(entry.progress) or 0
 				entry.progress = progress
+				entry.progressCurrent = current
+				entry.progressGoal = goal
+				entry.progressText = string.format("%d/%d", math.floor(current + 0.5), math.max(1, math.floor(goal + 0.5)))
+				if math.abs(previousProgress - progress) > 0.0001 then
+					debugLog(string.format("Progress updated: player=%s objective=%s progress=%s", tostring(player.UserId), tostring(objectiveId), tostring(entry.progressText)))
+				end
 				if complete and (entry.status == STATE_ACTIVE or entry.status == STATE_NOT_STARTED) then
 					entry.status = STATE_COMPLETED
 					entry.completedAt = os.clock()
+					debugLog(string.format("Objective completed: player=%s objective=%s", tostring(player.UserId), tostring(objectiveId)))
 					dirty = true
 				end
 				if entry.status == STATE_COMPLETED then
@@ -195,6 +240,7 @@ function ObjectiveService:recordObjectiveEvent(player, eventType, payload)
 	local state = ensureObjectiveState(data)
 	payload = payload or {}
 	local key = tostring(eventType or "")
+	debugLog(string.format("Event: player=%s type=%s", tostring(player.UserId), key))
 	if key == "starter_chosen" then
 		state.flags.starterChosen = true
 	elseif key == "item_gained" then
@@ -232,8 +278,9 @@ end
 function ObjectiveService:getClientSummary(player)
 	local data = self.playerDataService:getOrCreate(player)
 	local state = ensureObjectiveState(data)
-	local objectives = {}
-	local active = {}
+	local activeObjective = nil
+	local nextObjective = nil
+	local recentlyCompleted = nil
 	for _, objectiveId in ipairs(ObjectiveConfig.Order) do
 		local def = ObjectiveConfig.Objectives[objectiveId]
 		local entry = state.byId[objectiveId]
@@ -246,19 +293,27 @@ function ObjectiveService:getClientSummary(player)
 				stage = tonumber(def.stage) or 0,
 				status = tostring(entry.status or STATE_NOT_STARTED),
 				progress = tonumber(entry.progress) or 0,
+				progressCurrent = tonumber(entry.progressCurrent) or 0,
+				progressGoal = tonumber(entry.progressGoal) or 1,
+				progressText = tostring(entry.progressText or "0/1"),
 			}
-			table.insert(objectives, item)
-			if item.status == STATE_ACTIVE then
-				table.insert(active, item)
+			if item.status == STATE_ACTIVE and not activeObjective then
+				activeObjective = item
+			end
+			if not nextObjective and (item.status == STATE_NOT_STARTED or item.status == STATE_ACTIVE) then
+				nextObjective = item
+			end
+			if item.status == STATE_CLAIMED then
+				if not recentlyCompleted or (entry.claimedAt or 0) > (recentlyCompleted.claimedAt or 0) then
+					recentlyCompleted = {
+						id = item.id,
+						label = item.label,
+						claimedAt = entry.claimedAt or 0,
+					}
+				end
 			end
 		end
 	end
-	table.sort(objectives, function(a, b)
-		if a.stage == b.stage then
-			return a.id < b.id
-		end
-		return a.stage < b.stage
-	end)
 	local unlocked = {}
 	for key, isUnlocked in pairs(state.unlockedFeatures or {}) do
 		if isUnlocked == true then
@@ -267,8 +322,10 @@ function ObjectiveService:getClientSummary(player)
 	end
 	table.sort(unlocked)
 	return {
-		active = active,
-		objectives = objectives,
+		active = activeObjective and { activeObjective } or {},
+		activeObjective = activeObjective,
+		nextObjective = nextObjective,
+		recentlyCompleted = recentlyCompleted,
 		unlockedFeatures = unlocked,
 	}
 end

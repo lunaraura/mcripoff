@@ -83,6 +83,9 @@ function UIController:refreshUiMode()
 		local buildMode = self.build and self.build.buildMode
 		self.mobilePlaceBuildButton.Visible = showGameplay and UserInputService.TouchEnabled and (buildMode == true)
 	end
+	if self.objectiveToastLabel and not showGameplay then
+		self.objectiveToastLabel.Visible = false
+	end
 end
 
 function UIController:openOptionsFromUtilityPanel()
@@ -139,6 +142,8 @@ function UIController.new(buildController, itemController, partyController, comm
 		activeCommand = "follow",
 		managementData = { party = {}, reserve = {}, items = {} },
 		objectiveSummary = { active = {}, objectives = {}, unlockedFeatures = {} },
+		lastObjectiveToastId = nil,
+		lastObjectiveToastAt = 0,
 		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
 	}, UIController)
 end
@@ -167,6 +172,7 @@ function UIController:bind()
 		self:updatePetHud(payload)
 		self.managementData = meta.management or self.managementData
 		self.objectiveSummary = meta.objectives or self.objectiveSummary
+		self:refreshObjectiveHud()
 		self:refreshCreatureManagementMenu()
 	end)
 	self.creatureManageResultRemote.OnClientEvent:Connect(function(payload)
@@ -276,6 +282,34 @@ function UIController:buildUi()
 	status.Parent = activeHud
 	self.gameplayStatusLabel = status
 
+	local objectiveLabel = Instance.new("TextLabel")
+	objectiveLabel.Name = "ObjectiveHudLabel"
+	objectiveLabel.BackgroundTransparency = 1
+	objectiveLabel.Size = UDim2.new(1, -12, 0, 16)
+	objectiveLabel.Position = UDim2.fromOffset(6, 76)
+	objectiveLabel.Font = Enum.Font.Code
+	objectiveLabel.TextSize = 12
+	objectiveLabel.TextXAlignment = Enum.TextXAlignment.Left
+	objectiveLabel.TextColor3 = Color3.fromRGB(215, 232, 180)
+	objectiveLabel.Text = "Objective: --"
+	objectiveLabel.Parent = activeHud
+	self.objectiveLabel = objectiveLabel
+
+	local objectiveToast = Instance.new("TextLabel")
+	objectiveToast.Name = "ObjectiveToastLabel"
+	objectiveToast.BackgroundColor3 = Color3.fromRGB(24, 42, 28)
+	objectiveToast.BackgroundTransparency = 0.2
+	objectiveToast.Size = UDim2.fromOffset(300, 24)
+	objectiveToast.AnchorPoint = Vector2.new(0.5, 1)
+	objectiveToast.Position = UDim2.new(0.5, 0, 0.84, 0)
+	objectiveToast.Font = Enum.Font.GothamBold
+	objectiveToast.TextSize = 12
+	objectiveToast.TextColor3 = Color3.fromRGB(210, 255, 210)
+	objectiveToast.Visible = false
+	objectiveToast.Text = ""
+	objectiveToast.Parent = gui
+	self.objectiveToastLabel = objectiveToast
+
 	self:buildCommandPanel(activeHud)
 	self:buildAbilityHotbar(activeHud)
 	self:buildOptionsMenu(gui)
@@ -290,6 +324,7 @@ function UIController:buildUi()
 	end
 
 	self:setUiMode(UI_MODE_STARTER)
+	self:refreshObjectiveHud()
 end
 
 function UIController:toggleCommandPanelMode()
@@ -323,6 +358,40 @@ function UIController:refreshCommandPanel()
 	end
 	for key, btn in pairs(self.commandButtons or {}) do
 		btn.BackgroundColor3 = (self.activeCommand == key) and Color3.fromRGB(70, 105, 145) or Color3.fromRGB(40, 45, 58)
+	end
+end
+
+function UIController:showObjectiveToast(text)
+	if not self.objectiveToastLabel then return end
+	self.objectiveToastLabel.Text = tostring(text or "")
+	self.objectiveToastLabel.Visible = true
+	local token = os.clock()
+	self.lastObjectiveToastAt = token
+	task.delay(2.0, function()
+		if self.objectiveToastLabel and self.lastObjectiveToastAt == token then
+			self.objectiveToastLabel.Visible = false
+		end
+	end)
+end
+
+function UIController:refreshObjectiveHud()
+	if not self.objectiveLabel then return end
+	local summary = self.objectiveSummary or {}
+	local active = summary.activeObjective or ((summary.active and summary.active[1]) or nil)
+	local nextObj = summary.nextObjective
+	if active then
+		local progressText = tostring(active.progressText or string.format("%d/%d", tonumber(active.progressCurrent) or 0, tonumber(active.progressGoal) or 1))
+		self.objectiveLabel.Text = string.format("Objective: %s (%s)", tostring(active.label or active.id or "--"), progressText)
+	elseif nextObj then
+		self.objectiveLabel.Text = string.format("Next: %s", tostring(nextObj.label or nextObj.id or "--"))
+	else
+		self.objectiveLabel.Text = "Objectives complete"
+	end
+	local recentlyCompleted = summary.recentlyCompleted
+	local toastId = recentlyCompleted and tostring(recentlyCompleted.id) or nil
+	if toastId and toastId ~= self.lastObjectiveToastId then
+		self.lastObjectiveToastId = toastId
+		self:showObjectiveToast(string.format("Objective complete: %s", tostring(recentlyCompleted.label or toastId)))
 	end
 end
 
@@ -912,7 +981,7 @@ function UIController:buildAbilityHotbar(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "AbilityHotbar"
 	panel.Size = UDim2.new(1, -12, 0, 52)
-	panel.Position = UDim2.fromOffset(6, 84)
+	panel.Position = UDim2.fromOffset(6, 100)
 	panel.BackgroundTransparency = 1
 	panel.Parent = parent
 	self.hotbarPanel = panel
