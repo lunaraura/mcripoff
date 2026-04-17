@@ -22,51 +22,66 @@ local function attachSizeConstraint(guiObject, minX, minY, maxX, maxY)
 	return c
 end
 
--- UI visibility state
-local UI_HIDDEN = false
-local HIDEABLE_PANELS = {}
+local UI_MODE_STARTER = "starter"
+local UI_MODE_GAMEPLAY = "gameplay"
+
+local function getStarterPanel()
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local starterGui = playerGui:FindFirstChild("StarterPickerUI")
+	if not starterGui then return nil end
+	return starterGui:FindFirstChild("StarterPanel")
+end
 
 function UIController:setUtilityPanelsVisibility(opts)
 	opts = opts or {}
-	if self.optionsPanel then
-		self.optionsPanel.Visible = opts.options == true and not UI_HIDDEN
-	end
-	if self.managementPanel then
-		self.managementState.open = opts.management == true and not UI_HIDDEN
-		self.managementPanel.Visible = self.managementState.open
-	end
+	self.optionsOpen = opts.options == true
+	self.managementState.open = opts.management == true
+	self:refreshUiMode()
 	if self.managementState.open then
 		self.managementState.layer = self.managementState.layer or "root"
 		self:refreshCreatureManagementMenu()
 	end
 end
 
-function UIController:toggleUIHidden()
-	UI_HIDDEN = not UI_HIDDEN
-	self:updateAllPanelVisibility()
-	if self.hideButton then
-		self.hideButton.Text = UI_HIDDEN and "Show UI" or "Hide UI"
+function UIController:setUiMode(mode)
+	local nextMode = (mode == UI_MODE_GAMEPLAY) and UI_MODE_GAMEPLAY or UI_MODE_STARTER
+	if self.uiMode ~= nextMode then
+		self.uiMode = nextMode
 	end
+	self:refreshUiMode()
 end
 
-function UIController:updateAllPanelVisibility()
-	local visible = not UI_HIDDEN
-	-- Update hideable panels
-	for _, panel in ipairs(HIDEABLE_PANELS) do
-		if panel then
-			-- Special handling for management panel
-			if panel == self.managementPanel then
-				panel.Visible = visible and self.managementState.open
-			elseif panel == self.optionsPanel then
-				panel.Visible = visible and self.optionsOpen
-			else
-				panel.Visible = visible
-			end
-		end
+function UIController:refreshUiMode()
+	local inGameplay = self.uiMode == UI_MODE_GAMEPLAY
+	local showGameplay = inGameplay and (not self.hiddenUi)
+	local starterPanel = getStarterPanel()
+	if starterPanel then
+		starterPanel.Visible = (self.uiMode == UI_MODE_STARTER)
 	end
-	-- Always show hide button
-	if self.hideButton and self.hideButton.Parent then
-		self.hideButton.Parent.Visible = true
+	if self.mainGameplayHud then
+		self.mainGameplayHud.Visible = showGameplay
+	end
+	if self.buildToolPanel then
+		self.buildToolPanel.Visible = showGameplay
+	end
+	if self.itemBarPanel then
+		self.itemBarPanel.Visible = showGameplay
+	end
+	if self.optionsPanel then
+		self.optionsPanel.Visible = showGameplay and self.optionsOpen == true
+	end
+	if self.managementPanel then
+		self.managementPanel.Visible = showGameplay and self.managementState.open == true
+	end
+	if self.hideUiButton then
+		self.hideUiButton.Text = self.hiddenUi and "Show UI" or "Hide UI"
+		self.hideUiButton.Visible = inGameplay
+	end
+	if self.mobilePlaceBuildButton then
+		local buildMode = self.build and self.build.buildMode
+		self.mobilePlaceBuildButton.Visible = showGameplay and UserInputService.TouchEnabled and (buildMode == true)
 	end
 end
 
@@ -115,9 +130,12 @@ function UIController.new(buildController, itemController, partyController, comm
 		activeDesignatedTargetId = nil,
 		lastManualCast = nil,
 		activePetHud = nil,
+		uiMode = UI_MODE_STARTER,
+		starterChosen = false,
+		optionsOpen = false,
+		hiddenUi = false,
 		hotbarSlots = {},
 		hotbarStatusLabel = nil,
-		commandPanelMode = "HIDDEN",
 		activeCommand = "follow",
 		managementData = { party = {}, reserve = {}, items = {} },
 		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
@@ -140,6 +158,10 @@ function UIController:bind()
 		self.activeSlot = tonumber(meta.activeSlot) or self.activeSlot
 		self.controlMode = tostring(meta.controlMode or self.controlMode)
 		self.stance = tostring(meta.stance or self.stance)
+		if meta.starterChosen ~= nil then
+			self.starterChosen = meta.starterChosen == true
+		end
+		self:setUiMode(self.starterChosen and UI_MODE_GAMEPLAY or UI_MODE_STARTER)
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
 		self.managementData = meta.management or self.managementData
@@ -178,9 +200,6 @@ function UIController:buildUi()
 	gui.Parent = player:WaitForChild("PlayerGui")
 	self.gui = gui
 
-	self.hiddenUi = false
-	self.mainHudFrames = {}
-
 	-- Hide UI button
 	local hideBtn = Instance.new("TextButton")
 	hideBtn.Name = "HideUIButton"
@@ -198,21 +217,21 @@ function UIController:buildUi()
 
 	hideBtn.MouseButton1Click:Connect(function()
 		self.hiddenUi = not self.hiddenUi
-		self:setUiHidden(self.hiddenUi)
+		self:refreshUiMode()
 	end)
 
-	-- Active pet combat HUD (replaces old debug panel)
+	-- Main gameplay HUD (active pet + abilities + commands + gameplay status)
 	local activeHud = Instance.new("Frame")
-	activeHud.Name = "ActivePetHud"
+	activeHud.Name = "MainGameplayHud"
 	activeHud.AnchorPoint = Vector2.new(0.5, 1)
-	activeHud.Size = UDim2.new(0.58, 0, 0.115, 0)
-	activeHud.Position = UDim2.new(0.5, 0, 0.90, 0)
+	activeHud.Size = UDim2.new(0.62, 0, 0.19, 0)
+	activeHud.Position = UDim2.new(0.5, 0, 0.89, 0)
 	activeHud.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	activeHud.BackgroundTransparency = 0.12
 	activeHud.Parent = gui
+	self.mainGameplayHud = activeHud
 	self.activePetFrame = activeHud
-	table.insert(self.mainHudFrames, activeHud)
-	attachSizeConstraint(activeHud, 280, 88, 760, 140)
+	attachSizeConstraint(activeHud, 320, 132, 860, 236)
 
 	local petName = Instance.new("TextLabel")
 	petName.Name = "PetName"
@@ -242,9 +261,22 @@ function UIController:buildUi()
 	petStats.Parent = activeHud
 	self.activePetStatsLabel = petStats
 
+	local status = Instance.new("TextLabel")
+	status.Name = "GameplayStatus"
+	status.BackgroundTransparency = 1
+	status.Size = UDim2.new(1, -12, 0, 16)
+	status.Position = UDim2.fromOffset(6, 40)
+	status.Font = Enum.Font.Code
+	status.TextSize = 12
+	status.TextXAlignment = Enum.TextXAlignment.Left
+	status.TextColor3 = Color3.fromRGB(195, 220, 240)
+	status.Text = "Mode:AUTO  Stance:FOLLOW  Slot:1"
+	status.Parent = activeHud
+	self.gameplayStatusLabel = status
+
+	self:buildCommandPanel(activeHud)
 	self:buildAbilityHotbar(activeHud)
 	self:buildOptionsMenu(gui)
-	self:buildCommandPanel(gui)
 	self:buildBuildAndToolMenu(gui)
 	self:buildItemBar(gui)
 	self:buildCreatureManagementMenu(gui)
@@ -255,56 +287,10 @@ function UIController:buildUi()
 		self.buildToolPanel.Position = UDim2.new(0.99, 0, 0.07, 0)
 	end
 
-	-- keep item bar visible for now
-	if self.itemBarPanel then
-		table.insert(self.mainHudFrames, self.itemBarPanel)
-	end
-	if self.buildToolPanel then
-		table.insert(self.mainHudFrames, self.buildToolPanel)
-	end
-	if self.commandPanel then
-		table.insert(self.mainHudFrames, self.commandPanel)
-	end
-	if self.commandModeLabel then
-		table.insert(self.mainHudFrames, self.commandModeLabel)
-	end
+	self:setUiMode(UI_MODE_STARTER)
 end
-function UIController:setUiHidden(hidden)
-	local show = not hidden
 
-	for _, obj in ipairs(self.mainHudFrames or {}) do
-		if obj then
-			obj.Visible = show
-		end
-	end
-
-	if self.optionsPanel then
-		self.optionsPanel.Visible = show and self.optionsPanel.Visible
-	end
-	if self.managementPanel then
-		self.managementPanel.Visible = show and self.managementState.open
-	end
-	if self.optionsPanel then
-		self.optionsPanel.Visible = show and self.optionsPanel.Visible
-	end
-	if self.optionsPanel then
-		self.optionsPanel.Visible = show and self.optionsPanel.Visible
-	end
-
-	if self.hideUiButton then
-		self.hideUiButton.Text = hidden and "Show UI" or "Hide UI"
-		self.hideUiButton.Visible = true
-	end
-end
 function UIController:toggleCommandPanelMode()
-	if self.commandPanelMode == "HIDDEN" then
-		self.commandPanelMode = "VISIBLE"
-	else
-		self.commandPanelMode = "HIDDEN"
-	end
-	if self.commandPanel then
-		self.commandPanel.Visible = self.commandPanelMode == "VISIBLE"
-	end
 	self:refreshCommandPanel()
 end
 
@@ -325,35 +311,32 @@ function UIController:sendCommandFromUi(kind)
 end
 
 function UIController:refreshCommandPanel()
-	if not self.commandModeLabel then return end
-	--self.commandModeLabel.Text = string.format(
-	--	"Command Panel [C]: %s  ActiveSlot:%s  Mode:%s  Stance:%s",
-	--	self.commandPanelMode,
-	--	tostring(self.activeSlot or 1),
-	--	tostring(self.controlMode or "AUTO"),
-	--	tostring(self.stance or "FOLLOW")
-	--)
-	--for key, btn in pairs(self.commandButtons or {}) do
-	--	btn.BackgroundColor3 = (self.activeCommand == key) and Color3.fromRGB(70, 105, 145) or Color3.fromRGB(40, 45, 58)
-	--end
+	if self.gameplayStatusLabel then
+		self.gameplayStatusLabel.Text = string.format(
+			"Mode:%s  Stance:%s  Slot:%s",
+			tostring(self.controlMode or "AUTO"),
+			tostring(self.stance or "FOLLOW"),
+			tostring(self.activeSlot or 1)
+		)
+	end
+	for key, btn in pairs(self.commandButtons or {}) do
+		btn.BackgroundColor3 = (self.activeCommand == key) and Color3.fromRGB(70, 105, 145) or Color3.fromRGB(40, 45, 58)
+	end
 end
 
-function UIController:buildCommandPanel(gui)
+function UIController:buildCommandPanel(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "CommandPanel"
-	panel.Size = UDim2.new(0.32, 0, 0.06, 0)
-	panel.Position = UDim2.new(0.02, 0, 0.35, 0)
-	panel.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
-	panel.BackgroundTransparency = 0.18
-	panel.Visible = false
-	panel.Parent = gui
+	panel.Size = UDim2.new(1, -12, 0, 26)
+	panel.Position = UDim2.fromOffset(6, 58)
+	panel.BackgroundTransparency = 1
+	panel.Parent = parent
 	self.commandPanel = panel
-	attachSizeConstraint(panel, 280, 34, 460, 56)
 
 	local function makeButton(text, x, key)
 		local b = Instance.new("TextButton")
-		b.Size = UDim2.fromOffset(124, 24)
-		b.Position = UDim2.fromOffset(x, 5)
+		b.Size = UDim2.fromOffset(96, 22)
+		b.Position = UDim2.fromOffset(x, 2)
 		b.Text = text
 		b.Font = Enum.Font.GothamBold
 		b.TextSize = 12
@@ -367,9 +350,9 @@ function UIController:buildCommandPanel(gui)
 	end
 
 	self.commandButtons = {
-		follow = makeButton("Follow", 6, "follow"),
-		hold = makeButton("Hold", 140, "hold"),
-		attack = makeButton("Attack", 274, "attack"),
+		follow = makeButton("Follow", 0, "follow"),
+		hold = makeButton("Hold", 102, "hold"),
+		attack = makeButton("Attack", 204, "attack"),
 	}
 
 	self:refreshCommandPanel()
@@ -463,6 +446,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 end
 
 function UIController:toggleOptionsMenu()
+	if self.uiMode ~= UI_MODE_GAMEPLAY then return end
 	if not self.optionsPanel then return end
 	local nextVisible = not self.optionsPanel.Visible
 	self:setUtilityPanelsVisibility({
@@ -480,6 +464,7 @@ function UIController:buildBuildAndToolMenu(gui)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
 	panel.Parent = gui
+	self.buildToolPanel = panel
 	attachSizeConstraint(panel, 250, 240, 420, 460)
 
 	local title = Instance.new("TextLabel")
@@ -679,8 +664,10 @@ function UIController:buildBuildAndToolMenu(gui)
 		openManagementButton.Text = (self.managementState and self.managementState.open) and "Creature Management (Open)" or "Creature Management"
 		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
 		selectedLabel.Text = string.format("Mode:%s  Tool:%s  Build:%s  Status:%s", tostring(buildMode or "-"), tostring(tool), tostring(buildKey), tostring(placementReason))
-		mobilePlaceBtn.Visible = UserInputService.TouchEnabled and (buildMode == true) and (not self.hiddenUi)
+		mobilePlaceBtn.Visible = UserInputService.TouchEnabled and (buildMode == true) and (self.uiMode == UI_MODE_GAMEPLAY) and (not self.hiddenUi)
 	end
+
+	self.mobilePlaceBuildButton = mobilePlaceBtn
 
 	openBuildHubButton.MouseButton1Click:Connect(function()
 		local opening = not (levelTwo.Visible or levelThree.Visible)
@@ -750,6 +737,7 @@ function UIController:buildItemBar(gui)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
 	panel.Parent = gui
+	self.itemBarPanel = panel
 	attachSizeConstraint(panel, 280, 66, 620, 120)
 
 	local title = Instance.new("TextLabel")
@@ -922,7 +910,7 @@ function UIController:buildAbilityHotbar(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "AbilityHotbar"
 	panel.Size = UDim2.new(1, -12, 0, 52)
-	panel.Position = UDim2.fromOffset(6, 44)
+	panel.Position = UDim2.fromOffset(6, 84)
 	panel.BackgroundTransparency = 1
 	panel.Parent = parent
 	self.hotbarPanel = panel
@@ -1135,6 +1123,7 @@ end
 
 
 function UIController:toggleCreatureManagementMenu()
+	if self.uiMode ~= UI_MODE_GAMEPLAY then return end
 	local nextOpen = not self.managementState.open
 	self:setUtilityPanelsVisibility({
 		options = false,
