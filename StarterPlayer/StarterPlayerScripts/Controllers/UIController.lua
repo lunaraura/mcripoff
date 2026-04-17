@@ -45,6 +45,25 @@ function UIController:setUtilityPanelsVisibility(opts)
 	end
 end
 
+function UIController:fitPanelToChildren(panel, minHeight, maxHeight, padding)
+	if not panel then return end
+	local basePosY = panel.AbsolutePosition.Y
+	local bottom = basePosY
+	for _, child in ipairs(panel:GetChildren()) do
+		if child:IsA("GuiObject") and child.Visible then
+			local childBottom = child.AbsolutePosition.Y + child.AbsoluteSize.Y
+			if childBottom > bottom then
+				bottom = childBottom
+			end
+		end
+	end
+	local contentHeight = math.max(minHeight or 0, math.floor((bottom - basePosY) + (padding or 0) + 0.5))
+	if maxHeight then
+		contentHeight = math.min(contentHeight, maxHeight)
+	end
+	panel.Size = UDim2.new(panel.Size.X.Scale, panel.Size.X.Offset, 0, contentHeight)
+end
+
 function UIController:setUiMode(mode)
 	local nextMode = (mode == UI_MODE_GAMEPLAY) and UI_MODE_GAMEPLAY or UI_MODE_STARTER
 	if self.uiMode ~= nextMode then
@@ -62,6 +81,9 @@ function UIController:refreshUiMode()
 	end
 	if self.mainGameplayHud then
 		self.mainGameplayHud.Visible = showGameplay
+	end
+	if self.alwaysObjectiveLine then
+		self.alwaysObjectiveLine.Visible = inGameplay
 	end
 	if self.buildToolPanel then
 		self.buildToolPanel.Visible = showGameplay
@@ -142,8 +164,11 @@ function UIController.new(buildController, itemController, partyController, comm
 		activeCommand = "follow",
 		managementData = { party = {}, reserve = {}, items = {} },
 		objectiveSummary = { active = {}, objectives = {}, unlockedFeatures = {} },
+		lastObjectiveProgressText = nil,
+		knownUnlockedFeatures = {},
 		lastObjectiveToastId = nil,
 		lastObjectiveToastAt = 0,
+		itemBarWindowStart = 1,
 		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
 	}, UIController)
 end
@@ -171,9 +196,11 @@ function UIController:bind()
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
 		self.managementData = meta.management or self.managementData
+		local previousSummary = self.objectiveSummary
 		self.objectiveSummary = meta.objectives or self.objectiveSummary
 		self:refreshObjectiveHud()
 		self:refreshObjectiveList()
+		self:emitObjectiveDeltaFeedback(previousSummary, self.objectiveSummary)
 		self:refreshCreatureManagementMenu()
 	end)
 	self.creatureManageResultRemote.OnClientEvent:Connect(function(payload)
@@ -198,6 +225,30 @@ function UIController:bind()
 			self:managementBack()
 		end
 	end)
+end
+
+function UIController:emitObjectiveDeltaFeedback(previousSummary, nextSummary)
+	local prev = previousSummary or {}
+	local nextState = nextSummary or {}
+	local prevActive = prev.activeObjective
+	local nextActive = nextState.activeObjective
+	local prevProgress = prevActive and tostring(prevActive.progressText or "") or ""
+	local nextProgress = nextActive and tostring(nextActive.progressText or "") or ""
+	if nextActive and nextProgress ~= "" and prevProgress ~= nextProgress then
+		print(string.format("[UIObjective] progress %s -> %s (%s)", prevProgress, nextProgress, tostring(nextActive.id or nextActive.label or "?")))
+		if prevProgress ~= "" then
+			self:showObjectiveToast(string.format("%s progress: %s", tostring(nextActive.label or nextActive.id or "Objective"), nextProgress))
+		end
+	end
+	local unlocked = {}
+	for _, key in ipairs(nextState.unlockedFeatures or {}) do
+		unlocked[tostring(key)] = true
+		if not self.knownUnlockedFeatures[tostring(key)] then
+			print(string.format("[UIObjective] unlocked feature: %s", tostring(key)))
+			self:showObjectiveToast(string.format("Unlocked: %s", tostring(key)))
+		end
+	end
+	self.knownUnlockedFeatures = unlocked
 end
 
 function UIController:buildUi()
@@ -311,6 +362,22 @@ function UIController:buildUi()
 	objectiveToast.Parent = gui
 	self.objectiveToastLabel = objectiveToast
 
+	local alwaysObjective = Instance.new("TextLabel")
+	alwaysObjective.Name = "AlwaysObjectiveLine"
+	alwaysObjective.BackgroundColor3 = Color3.fromRGB(20, 26, 34)
+	alwaysObjective.BackgroundTransparency = 0.22
+	alwaysObjective.AnchorPoint = Vector2.new(0.5, 0)
+	alwaysObjective.Size = UDim2.fromOffset(420, 22)
+	alwaysObjective.Position = UDim2.new(0.5, 0, 0.015, 0)
+	alwaysObjective.Font = Enum.Font.Code
+	alwaysObjective.TextSize = 12
+	alwaysObjective.TextColor3 = Color3.fromRGB(230, 240, 255)
+	alwaysObjective.Text = "Objective: --"
+	alwaysObjective.Visible = false
+	alwaysObjective.Parent = gui
+	self.alwaysObjectiveLine = alwaysObjective
+	attachSizeConstraint(alwaysObjective, 180, 20, 520, 26)
+
 	self:buildCommandPanel(activeHud)
 	self:buildAbilityHotbar(activeHud)
 	self:buildOptionsMenu(gui)
@@ -326,6 +393,10 @@ function UIController:buildUi()
 
 	self:setUiMode(UI_MODE_STARTER)
 	self:refreshObjectiveHud()
+	self:fitPanelToChildren(self.mainGameplayHud, 150, 280, 10)
+	self:fitPanelToChildren(self.itemBarPanel, 72, 140, 10)
+	self:fitPanelToChildren(self.buildToolPanel, 220, 520, 12)
+	self:fitPanelToChildren(self.optionsPanel, 150, 340, 8)
 end
 
 function UIController:toggleCommandPanelMode()
@@ -382,11 +453,22 @@ function UIController:refreshObjectiveHud()
 	local nextObj = summary.nextObjective
 	if active then
 		local progressText = tostring(active.progressText or string.format("%d/%d", tonumber(active.progressCurrent) or 0, tonumber(active.progressGoal) or 1))
-		self.objectiveLabel.Text = string.format("Objective: %s (%s)", tostring(active.label or active.id or "--"), progressText)
+		local line = string.format("Objective: %s (%s)", tostring(active.label or active.id or "--"), progressText)
+		self.objectiveLabel.Text = line
+		if self.alwaysObjectiveLine then
+			self.alwaysObjectiveLine.Text = line
+		end
 	elseif nextObj then
-		self.objectiveLabel.Text = string.format("Next: %s", tostring(nextObj.label or nextObj.id or "--"))
+		local line = string.format("Next: %s", tostring(nextObj.label or nextObj.id or "--"))
+		self.objectiveLabel.Text = line
+		if self.alwaysObjectiveLine then
+			self.alwaysObjectiveLine.Text = line
+		end
 	else
 		self.objectiveLabel.Text = "Objectives complete"
+		if self.alwaysObjectiveLine then
+			self.alwaysObjectiveLine.Text = "Objectives complete"
+		end
 	end
 	local recentlyCompleted = summary.recentlyCompleted
 	local toastId = recentlyCompleted and tostring(recentlyCompleted.id) or nil
@@ -434,6 +516,7 @@ function UIController:refreshObjectiveList()
 		y = y + 19
 	end
 	list.CanvasSize = UDim2.fromOffset(0, math.max(y, list.AbsoluteSize.Y))
+	self:fitPanelToChildren(self.buildToolPanel, 220, 520, 12)
 end
 
 function UIController:buildCommandPanel(parent)
@@ -799,11 +882,13 @@ function UIController:buildBuildAndToolMenu(gui)
 		local tool = self.build and self.build.selectedTool or "-"
 		local buildKey = self.build and self.build.selectedBuildKey or "-"
 		local placementReason = self.build and self.build.placement and (self.build.placement.reasonCode or self.build.placement.reason) or "-"
+		local interactionHint = self.build and self.build.lastInteractionHint or ""
 		openBuildHubButton.Text = (levelTwo.Visible or levelThree.Visible) and "Close Build / Action" or "Build / Action"
 		openOptionsButton.Text = self.optionsPanel and self.optionsPanel.Visible and "Options (Open)" or "Options"
 		openManagementButton.Text = (self.managementState and self.managementState.open) and "Creature Management (Open)" or "Creature Management"
 		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
-		selectedLabel.Text = string.format("Mode:%s  Tool:%s  Build:%s  Status:%s", tostring(buildMode or "-"), tostring(tool), tostring(buildKey), tostring(placementReason))
+		local statusText = interactionHint ~= "" and interactionHint or tostring(placementReason)
+		selectedLabel.Text = string.format("Mode:%s  Tool:%s  Build:%s  Status:%s", tostring(buildMode or "-"), tostring(tool), tostring(buildKey), statusText)
 		mobilePlaceBtn.Visible = UserInputService.TouchEnabled and (buildMode == true) and (self.uiMode == UI_MODE_GAMEPLAY) and (not self.hiddenUi)
 		objectiveHeader.Visible = not (levelTwo.Visible or levelThree.Visible)
 		objectiveList.Visible = objectiveHeader.Visible
@@ -916,7 +1001,15 @@ function UIController:buildItemBar(gui)
 		local pad = 6
 		local visibleSlots = math.clamp(math.floor((width + pad) / (slotW + pad)), 1, maxSlots)
 		local activeIndex = math.clamp(self.items.selectedItemIndex or 1, 1, #entries)
-		local startIndex = math.clamp(activeIndex - math.floor((visibleSlots - 1) / 2), 1, math.max(1, #entries - visibleSlots + 1))
+		local maxStart = math.max(1, #entries - visibleSlots + 1)
+		local startIndex = math.clamp(self.itemBarWindowStart or 1, 1, maxStart)
+		if activeIndex < startIndex then
+			startIndex = activeIndex
+		elseif activeIndex >= (startIndex + visibleSlots) then
+			startIndex = activeIndex - visibleSlots + 1
+		end
+		startIndex = math.clamp(startIndex, 1, maxStart)
+		self.itemBarWindowStart = startIndex
 		for i = 1, visibleSlots do
 			local itemIndex = startIndex + i - 1
 			local item = entries[itemIndex]
@@ -929,11 +1022,17 @@ function UIController:buildItemBar(gui)
 				slot.TextSize = 11
 				local count = self.items:getCount(item.key)
 				local prefix = (itemIndex <= 9) and tostring(itemIndex) or "-"
-				slot.Text = string.format("%s\n%d:%s", tostring(item.label or item.key), prefix, tostring(count))
-				local selected = itemIndex == activeIndex
-				slot.BackgroundColor3 = selected and Color3.fromRGB(63, 95, 122) or Color3.fromRGB(34, 40, 52)
-				slot.TextColor3 = selected and Color3.fromRGB(240, 250, 255) or Color3.fromRGB(208, 220, 235)
-				slot.Parent = slotHost
+					slot.Text = string.format("%s\n%d:%s", tostring(item.label or item.key), prefix, tostring(count))
+					local selected = itemIndex == activeIndex
+					slot.BackgroundColor3 = selected and Color3.fromRGB(63, 95, 122) or Color3.fromRGB(34, 40, 52)
+					slot.TextColor3 = selected and Color3.fromRGB(240, 250, 255) or Color3.fromRGB(208, 220, 235)
+					if selected then
+						local stroke = Instance.new("UIStroke")
+						stroke.Thickness = 2
+						stroke.Color = Color3.fromRGB(210, 235, 255)
+						stroke.Parent = slot
+					end
+					slot.Parent = slotHost
 				slot.MouseButton1Click:Connect(function()
 					local wasSelected = (self.items.selectedItemIndex == itemIndex)
 					self.items:selectIndex(itemIndex)

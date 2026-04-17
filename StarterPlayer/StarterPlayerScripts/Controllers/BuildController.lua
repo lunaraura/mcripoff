@@ -32,6 +32,7 @@ function BuildController.new()
 		currentTarget = nil,
 		currentTargetType = nil,
 		currentPromptText = "",
+		lastInteractionHint = "",
 		lastPromptUpdate = 0,
 		promptGui = nil,
 	}, BuildController)
@@ -213,8 +214,11 @@ end
 -- Unified action execution - called by both E key and UI button
 function BuildController:handlePrimaryAction()
 	if not self:isFeatureUnlockedForTool(self.selectedTool) then
+		self.lastInteractionHint = "Tool locked by objective progression"
+		print(string.format("[BuildController] blocked primary action: %s", tostring(self.selectedTool)))
 		return false
 	end
+	self.lastInteractionHint = ""
 	if self.buildMode then
 		if self.placement.valid and self.placement.worldPos then
 			return self:sendContext({ action = "build", buildKey = self.selectedBuildKey, position = self.placement.worldPos, yGround = self.placement.yGround, rotationY = self.selectedRotationY })
