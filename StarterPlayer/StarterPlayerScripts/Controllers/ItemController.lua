@@ -39,7 +39,25 @@ function ItemController:bind()
 		if gp then return end
 		if input.KeyCode == Enum.KeyCode.LeftBracket then self:cycle(-1)
 		elseif input.KeyCode == Enum.KeyCode.RightBracket then self:cycle(1)
-		elseif input.KeyCode == Enum.KeyCode.B then self:useSelected() end
+		elseif input.KeyCode == Enum.KeyCode.B then
+			self:useSelected()
+		else
+			local keyMap = {
+				[Enum.KeyCode.One] = 1,
+				[Enum.KeyCode.Two] = 2,
+				[Enum.KeyCode.Three] = 3,
+				[Enum.KeyCode.Four] = 4,
+				[Enum.KeyCode.Five] = 5,
+				[Enum.KeyCode.Six] = 6,
+				[Enum.KeyCode.Seven] = 7,
+				[Enum.KeyCode.Eight] = 8,
+				[Enum.KeyCode.Nine] = 9,
+			}
+			local slot = keyMap[input.KeyCode]
+			if slot then
+				self:selectIndex(slot)
+			end
+		end
 	end)
 end
 
@@ -61,6 +79,16 @@ function ItemController:cycle(delta)
 	self.selectedItemIndex = ((self.selectedItemIndex - 1 + delta) % n) + 1
 	self.selectedItemKey = self.items[self.selectedItemIndex].key
 	self:emitChanged()
+end
+
+function ItemController:selectIndex(index)
+	local n = #self.items
+	if n <= 0 then return false end
+	local i = math.clamp(tonumber(index) or 1, 1, n)
+	self.selectedItemIndex = i
+	self.selectedItemKey = self.items[self.selectedItemIndex].key
+	self:emitChanged()
+	return true
 end
 
 function ItemController:getSelectedItem()

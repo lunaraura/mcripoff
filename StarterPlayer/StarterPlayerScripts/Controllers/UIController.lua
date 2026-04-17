@@ -173,6 +173,7 @@ function UIController:bind()
 		self.managementData = meta.management or self.managementData
 		self.objectiveSummary = meta.objectives or self.objectiveSummary
 		self:refreshObjectiveHud()
+		self:refreshObjectiveList()
 		self:refreshCreatureManagementMenu()
 	end)
 	self.creatureManageResultRemote.OnClientEvent:Connect(function(payload)
@@ -395,6 +396,46 @@ function UIController:refreshObjectiveHud()
 	end
 end
 
+function UIController:refreshObjectiveList()
+	if not self.objectiveListScroll then return end
+	local list = self.objectiveListScroll
+	for _, child in ipairs(list:GetChildren()) do
+		if child:IsA("TextLabel") and child.Name == "ObjectiveRow" then
+			child:Destroy()
+		end
+	end
+	local objectives = (self.objectiveSummary and self.objectiveSummary.objectives) or {}
+	local y = 0
+	for _, obj in ipairs(objectives) do
+		local row = Instance.new("TextLabel")
+		row.Name = "ObjectiveRow"
+		row.BackgroundTransparency = 1
+		row.Size = UDim2.new(1, -8, 0, 18)
+		row.Position = UDim2.fromOffset(4, y)
+		row.Font = Enum.Font.Code
+		row.TextSize = 11
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		local prefix = "[UPCOMING]"
+		local color = Color3.fromRGB(190, 210, 230)
+		if obj.visibility == "locked" then
+			prefix = "[LOCKED]"
+			color = Color3.fromRGB(120, 125, 135)
+		elseif obj.status == "active" then
+			prefix = "[ACTIVE]"
+			color = Color3.fromRGB(215, 235, 180)
+		elseif obj.status == "claimed" or obj.status == "completed" then
+			prefix = "[DONE]"
+			color = Color3.fromRGB(160, 235, 170)
+		end
+		row.TextColor3 = color
+		local progressText = tostring(obj.progressText or "")
+		row.Text = string.format("%s %s %s", prefix, tostring(obj.label or obj.id or "--"), progressText ~= "" and ("(" .. progressText .. ")") or "")
+		row.Parent = list
+		y = y + 19
+	end
+	list.CanvasSize = UDim2.fromOffset(0, math.max(y, list.AbsoluteSize.Y))
+end
+
 function UIController:buildCommandPanel(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "CommandPanel"
@@ -437,6 +478,7 @@ function UIController:buildOptionsMenu(gui)
 	panel.Position = UDim2.new(0.99, 0, 0.02, 0)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
+	panel.ZIndex = 40
 	panel.Visible = false
 	panel.Parent = gui
 	self.optionsPanel = panel
@@ -451,6 +493,7 @@ function UIController:buildOptionsMenu(gui)
 	title.Size = UDim2.new(1, -12, 0, 22)
 	title.Position = UDim2.fromOffset(8, 4)
 	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.ZIndex = 41
 	title.Parent = panel
 
 	self:createOptionRow(panel, 1, "RadiusChunks", "Chunk Radius", 2, 31, 1)
@@ -468,6 +511,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	text.TextXAlignment = Enum.TextXAlignment.Left
 	text.Size = UDim2.fromOffset(160, 22)
 	text.Position = UDim2.fromOffset(10, y)
+	text.ZIndex = 41
 	text.Parent = panel
 
 	local minus = Instance.new("TextButton")
@@ -476,6 +520,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	minus.TextSize = 16
 	minus.Size = UDim2.fromOffset(26, 22)
 	minus.Position = UDim2.fromOffset(172, y)
+	minus.ZIndex = 41
 	minus.Parent = panel
 
 	local plus = Instance.new("TextButton")
@@ -484,6 +529,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	plus.TextSize = 16
 	plus.Size = UDim2.fromOffset(26, 22)
 	plus.Position = UDim2.fromOffset(238, y)
+	plus.ZIndex = 41
 	plus.Parent = panel
 
 	local valueLabel = Instance.new("TextLabel")
@@ -494,6 +540,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	valueLabel.TextXAlignment = Enum.TextXAlignment.Center
 	valueLabel.Size = UDim2.fromOffset(36, 22)
 	valueLabel.Position = UDim2.fromOffset(200, y)
+	valueLabel.ZIndex = 41
 	valueLabel.Parent = panel
 
 	local function refresh()
@@ -561,22 +608,44 @@ function UIController:buildBuildAndToolMenu(gui)
 	hubTitle.Parent = panel
 
 	local openBuildHubButton = Instance.new("TextButton")
-	openBuildHubButton.Size = UDim2.fromOffset(302, 28)
+	openBuildHubButton.Size = UDim2.new(1, -18, 0, 28)
 	openBuildHubButton.Position = UDim2.fromOffset(9, 48)
 	openBuildHubButton.Text = "Build / Action"
 	openBuildHubButton.Parent = panel
 
 	local openOptionsButton = Instance.new("TextButton")
-	openOptionsButton.Size = UDim2.fromOffset(302, 28)
+	openOptionsButton.Size = UDim2.new(1, -18, 0, 28)
 	openOptionsButton.Position = UDim2.fromOffset(9, 80)
 	openOptionsButton.Text = "Options"
 	openOptionsButton.Parent = panel
 
 	local openManagementButton = Instance.new("TextButton")
-	openManagementButton.Size = UDim2.fromOffset(302, 28)
+	openManagementButton.Size = UDim2.new(1, -18, 0, 28)
 	openManagementButton.Position = UDim2.fromOffset(9, 112)
 	openManagementButton.Text = "Creature Management"
 	openManagementButton.Parent = panel
+
+	local objectiveHeader = Instance.new("TextLabel")
+	objectiveHeader.BackgroundTransparency = 1
+	objectiveHeader.Size = UDim2.new(1, -18, 0, 16)
+	objectiveHeader.Position = UDim2.fromOffset(9, 128)
+	objectiveHeader.TextXAlignment = Enum.TextXAlignment.Left
+	objectiveHeader.Font = Enum.Font.GothamBold
+	objectiveHeader.TextSize = 11
+	objectiveHeader.TextColor3 = Color3.fromRGB(210, 225, 240)
+	objectiveHeader.Text = "Objectives"
+	objectiveHeader.Parent = panel
+
+	local objectiveList = Instance.new("ScrollingFrame")
+	objectiveList.Name = "ObjectiveList"
+	objectiveList.Size = UDim2.new(1, -18, 1, -154)
+	objectiveList.Position = UDim2.fromOffset(9, 146)
+	objectiveList.ScrollBarThickness = 5
+	objectiveList.CanvasSize = UDim2.fromOffset(0, 0)
+	objectiveList.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+	objectiveList.BackgroundTransparency = 0.15
+	objectiveList.Parent = panel
+	self.objectiveListScroll = objectiveList
 
 	local levelTwo = Instance.new("Frame")
 	levelTwo.Name = "LevelTwo"
@@ -655,7 +724,7 @@ function UIController:buildBuildAndToolMenu(gui)
 	selectedLabel.Name = "SelectedLabel"
 	selectedLabel.BackgroundTransparency = 1
 	selectedLabel.Size = UDim2.new(1, -12, 0, 16)
-	selectedLabel.Position = UDim2.new(0, 8, 1, -20)
+	selectedLabel.Position = UDim2.new(0, 8, 1, -18)
 	selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
 	selectedLabel.TextYAlignment = Enum.TextYAlignment.Top
 	selectedLabel.Font = Enum.Font.Code
@@ -736,6 +805,8 @@ function UIController:buildBuildAndToolMenu(gui)
 		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
 		selectedLabel.Text = string.format("Mode:%s  Tool:%s  Build:%s  Status:%s", tostring(buildMode or "-"), tostring(tool), tostring(buildKey), tostring(placementReason))
 		mobilePlaceBtn.Visible = UserInputService.TouchEnabled and (buildMode == true) and (self.uiMode == UI_MODE_GAMEPLAY) and (not self.hiddenUi)
+		objectiveHeader.Visible = not (levelTwo.Visible or levelThree.Visible)
+		objectiveList.Visible = objectiveHeader.Visible
 	end
 
 	self.mobilePlaceBuildButton = mobilePlaceBtn
@@ -797,6 +868,7 @@ function UIController:buildBuildAndToolMenu(gui)
 
 	rebuildBuildMenu()
 	refresh()
+	self:refreshObjectiveList()
 end
 
 function UIController:buildItemBar(gui)
@@ -819,66 +891,68 @@ function UIController:buildItemBar(gui)
 	title.Font = Enum.Font.GothamBold
 	title.TextSize = 13
 	title.TextColor3 = Color3.fromRGB(235, 245, 255)
-	title.Text = "Items  [ / ] cycle   B use"
+	title.Text = "Items (1-9 select, tap selected to use)"
 	title.Parent = panel
 
-	local prevBtn = Instance.new("TextButton")
-	prevBtn.Size = UDim2.fromOffset(44, 34)
-	prevBtn.Position = UDim2.fromOffset(8, 30)
-	prevBtn.Text = "<"
-	prevBtn.Parent = panel
-
-	local useBtn = Instance.new("TextButton")
-	useBtn.Size = UDim2.fromOffset(108, 34)
-	useBtn.Position = UDim2.fromOffset(96, 30)
-	useBtn.Text = "Use Item"
-	useBtn.Parent = panel
-
-	local nextBtn = Instance.new("TextButton")
-	nextBtn.Size = UDim2.fromOffset(44, 34)
-	nextBtn.Position = UDim2.fromOffset(246, 30)
-	nextBtn.Text = ">"
-	nextBtn.Parent = panel
-
-	local info = Instance.new("TextLabel")
-	info.BackgroundTransparency = 1
-	info.Size = UDim2.fromOffset(146, 34)
-	info.Position = UDim2.fromOffset(52, 30)
-	info.TextXAlignment = Enum.TextXAlignment.Left
-	info.Font = Enum.Font.Code
-	info.TextSize = 13
-	info.TextColor3 = Color3.fromRGB(220, 235, 255)
-	info.Parent = panel
+	local slotHost = Instance.new("Frame")
+	slotHost.Name = "ItemSlotHost"
+	slotHost.BackgroundTransparency = 1
+	slotHost.Size = UDim2.new(1, -12, 0, 40)
+	slotHost.Position = UDim2.fromOffset(6, 24)
+	slotHost.Parent = panel
 
 	local function refresh()
-		if not self.items then
-			info.Text = "No item controller"
-			return
+		for _, child in ipairs(slotHost:GetChildren()) do
+			if child:IsA("TextButton") then
+				child:Destroy()
+			end
 		end
-		local selected = self.items:getSelectedItem()
-		local key = selected and selected.key or "?"
-		local label = selected and selected.label or key
-		local count = self.items:getCount(key)
-		local status = self.items.lastUseResult and self.items.lastUseResult.reasonCode or ""
-		info.Text = string.format("%s x%d [%s]", label, count, status)
+		if not self.items then return end
+		local entries = self.items.items or {}
+		local maxSlots = math.min(9, #entries)
+		if maxSlots <= 0 then return end
+		local width = math.max(120, slotHost.AbsoluteSize.X)
+		local slotW = UserInputService.TouchEnabled and 58 or 64
+		local pad = 6
+		local visibleSlots = math.clamp(math.floor((width + pad) / (slotW + pad)), 1, maxSlots)
+		local activeIndex = math.clamp(self.items.selectedItemIndex or 1, 1, #entries)
+		local startIndex = math.clamp(activeIndex - math.floor((visibleSlots - 1) / 2), 1, math.max(1, #entries - visibleSlots + 1))
+		for i = 1, visibleSlots do
+			local itemIndex = startIndex + i - 1
+			local item = entries[itemIndex]
+			if item then
+				local slot = Instance.new("TextButton")
+				slot.Size = UDim2.fromOffset(slotW, 36)
+				slot.Position = UDim2.fromOffset((i - 1) * (slotW + pad), 2)
+				slot.TextWrapped = true
+				slot.Font = Enum.Font.Code
+				slot.TextSize = 11
+				local count = self.items:getCount(item.key)
+				local prefix = (itemIndex <= 9) and tostring(itemIndex) or "-"
+				slot.Text = string.format("%s\n%d:%s", tostring(item.label or item.key), prefix, tostring(count))
+				local selected = itemIndex == activeIndex
+				slot.BackgroundColor3 = selected and Color3.fromRGB(63, 95, 122) or Color3.fromRGB(34, 40, 52)
+				slot.TextColor3 = selected and Color3.fromRGB(240, 250, 255) or Color3.fromRGB(208, 220, 235)
+				slot.Parent = slotHost
+				slot.MouseButton1Click:Connect(function()
+					local wasSelected = (self.items.selectedItemIndex == itemIndex)
+					self.items:selectIndex(itemIndex)
+					if wasSelected then
+						self.items:useSelected()
+					end
+				end)
+			end
+		end
 	end
-	
-	prevBtn.MouseButton1Click:Connect(function()
-		if self.items then self.items:cycle(-1) end
-		refresh()
-	end)
-	nextBtn.MouseButton1Click:Connect(function()
-		if self.items then self.items:cycle(1) end
-		refresh()
-	end)
-	useBtn.MouseButton1Click:Connect(function()
-		if self.items then self.items:useSelected() end
-	end)
+
 	if self.items then
 		self.items:setChangedCallback(refresh)
 	end
-	
+
 	refresh()
+	slotHost:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		refresh()
+	end)
 	task.spawn(function()
 		while panel.Parent do
 			refresh()

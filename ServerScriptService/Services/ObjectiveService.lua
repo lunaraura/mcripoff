@@ -281,10 +281,12 @@ function ObjectiveService:getClientSummary(player)
 	local activeObjective = nil
 	local nextObjective = nil
 	local recentlyCompleted = nil
+	local allObjectives = {}
 	for _, objectiveId in ipairs(ObjectiveConfig.Order) do
 		local def = ObjectiveConfig.Objectives[objectiveId]
 		local entry = state.byId[objectiveId]
-		if def and entry and self:isVisible(state, def) then
+		if def and entry then
+			local isVisible = self:isVisible(state, def)
 			local item = {
 				id = objectiveId,
 				label = tostring(def.label or objectiveId),
@@ -296,11 +298,13 @@ function ObjectiveService:getClientSummary(player)
 				progressCurrent = tonumber(entry.progressCurrent) or 0,
 				progressGoal = tonumber(entry.progressGoal) or 1,
 				progressText = tostring(entry.progressText or "0/1"),
+				visibility = isVisible and "visible" or "locked",
 			}
-			if item.status == STATE_ACTIVE and not activeObjective then
+			table.insert(allObjectives, item)
+			if isVisible and item.status == STATE_ACTIVE and not activeObjective then
 				activeObjective = item
 			end
-			if not nextObjective and (item.status == STATE_NOT_STARTED or item.status == STATE_ACTIVE) then
+			if isVisible and (not nextObjective) and (item.status == STATE_NOT_STARTED or item.status == STATE_ACTIVE) then
 				nextObjective = item
 			end
 			if item.status == STATE_CLAIMED then
@@ -314,6 +318,12 @@ function ObjectiveService:getClientSummary(player)
 			end
 		end
 	end
+	table.sort(allObjectives, function(a, b)
+		if a.stage == b.stage then
+			return a.id < b.id
+		end
+		return a.stage < b.stage
+	end)
 	local unlocked = {}
 	for key, isUnlocked in pairs(state.unlockedFeatures or {}) do
 		if isUnlocked == true then
@@ -326,6 +336,7 @@ function ObjectiveService:getClientSummary(player)
 		activeObjective = activeObjective,
 		nextObjective = nextObjective,
 		recentlyCompleted = recentlyCompleted,
+		objectives = allObjectives,
 		unlockedFeatures = unlocked,
 	}
 end

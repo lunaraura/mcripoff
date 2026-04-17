@@ -15,13 +15,14 @@ end
 function InputController:bind()
 	UserInputService.InputBegan:Connect(function(input, gp)
 		if gp then return end
-		if input.KeyCode == Enum.KeyCode.One then
+		local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+		if input.KeyCode == Enum.KeyCode.One and ctrlDown then
 			if self.ui and self.ui.triggerHotbarSlot then self.ui:triggerHotbarSlot(1) end
-		elseif input.KeyCode == Enum.KeyCode.Two then
+		elseif input.KeyCode == Enum.KeyCode.Two and ctrlDown then
 			if self.ui and self.ui.triggerHotbarSlot then self.ui:triggerHotbarSlot(2) end
-		elseif input.KeyCode == Enum.KeyCode.Three then
+		elseif input.KeyCode == Enum.KeyCode.Three and ctrlDown then
 			if self.ui and self.ui.triggerHotbarSlot then self.ui:triggerHotbarSlot(3) end
-		elseif input.KeyCode == Enum.KeyCode.Four then
+		elseif input.KeyCode == Enum.KeyCode.Four and ctrlDown then
 			if self.ui and self.ui.triggerHotbarSlot then self.ui:triggerHotbarSlot(4) end
 		elseif input.KeyCode == Enum.KeyCode.F1 or (input.KeyCode == Enum.KeyCode.One and (UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift))) then
 			self.party:selectSlot(1)

@@ -39,6 +39,18 @@ function BuildController.new()
 	return self
 end
 
+function BuildController:isFeatureUnlockedForTool(toolKey)
+	local player = Players.LocalPlayer
+	if not player then return true end
+	if toolKey == "berry_planter" then
+		return player:GetAttribute("Feature_planter_tool_unlocked") == true
+	end
+	if toolKey == "node_demolisher" then
+		return player:GetAttribute("Feature_building_tool_unlocked") == true
+	end
+	return true
+end
+
 -- Create the world interaction prompt GUI
 function BuildController:createInteractionPrompt()
 	-- Intentionally disabled: the floating interaction prompt box was removed for UX cleanup.
@@ -116,6 +128,9 @@ function BuildController:getPromptText()
 	local toolDef = HarvestConfig.getToolDef(self.selectedTool)
 	if not toolDef then
 		return ""
+	end
+	if not self:isFeatureUnlockedForTool(self.selectedTool) then
+		return "Locked: complete objective to unlock tool"
 	end
 	
 	-- Generate context-appropriate prompt
@@ -197,6 +212,9 @@ end
 
 -- Unified action execution - called by both E key and UI button
 function BuildController:handlePrimaryAction()
+	if not self:isFeatureUnlockedForTool(self.selectedTool) then
+		return false
+	end
 	if self.buildMode then
 		if self.placement.valid and self.placement.worldPos then
 			return self:sendContext({ action = "build", buildKey = self.selectedBuildKey, position = self.placement.worldPos, yGround = self.placement.yGround, rotationY = self.selectedRotationY })
