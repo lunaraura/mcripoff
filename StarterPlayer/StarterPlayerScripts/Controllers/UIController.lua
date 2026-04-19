@@ -142,12 +142,12 @@ function UIController.new(buildController, itemController, partyController, comm
 		command = commandController,
 		hudLabels = {},
 		logLabels = {},
-			optionRows = {},
-			optionValues = {
-				RadiusChunks = 2,
-				PetLeashDistance = 90,
-				PetHoldDefenseRange = 30,
-			},
+		optionRows = {},
+		optionValues = {
+			RadiusChunks = 2,
+			PetLeashDistance = 90,
+			PetHoldDefenseRange = 30,
+		},
 		maxLogLines = 6,
 		activeSlot = 1,
 		controlMode = "AUTO",
@@ -202,6 +202,7 @@ function UIController:bind()
 		self:refreshObjectiveList()
 		self:emitObjectiveDeltaFeedback(previousSummary, self.objectiveSummary)
 		self:refreshCreatureManagementMenu()
+		
 	end)
 	self.creatureManageResultRemote.OnClientEvent:Connect(function(payload)
 		if payload and payload.reason then
@@ -263,17 +264,17 @@ function UIController:buildUi()
 	-- Hide UI button
 	local hideBtn = Instance.new("TextButton")
 	hideBtn.Name = "HideUIButton"
-		hideBtn.AnchorPoint = Vector2.new(0, 0)
-		hideBtn.Size = UDim2.new(0.14, 0, 0.045, 0)
-		hideBtn.Position = UDim2.new(0.015, 0, 0.015, 0)
-		hideBtn.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+	hideBtn.AnchorPoint = Vector2.new(0, 0)
+	hideBtn.Size = UDim2.new(0.14, 0, 0.045, 0)
+	hideBtn.Position = UDim2.new(0.015, 0, 0.015, 0)
+	hideBtn.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	hideBtn.TextColor3 = Color3.fromRGB(235, 245, 255)
 	hideBtn.Font = Enum.Font.GothamBold
 	hideBtn.TextSize = 12
-		hideBtn.Text = "Hide UI"
-		hideBtn.Parent = gui
-		self.hideUiButton = hideBtn
-		attachSizeConstraint(hideBtn, 88, 28, 180, 44)
+	hideBtn.Text = "Hide UI"
+	hideBtn.Parent = gui
+	self.hideUiButton = hideBtn
+	attachSizeConstraint(hideBtn, 88, 28, 180, 44)
 
 	hideBtn.MouseButton1Click:Connect(function()
 		self.hiddenUi = not self.hiddenUi
@@ -296,7 +297,7 @@ function UIController:buildUi()
 	local petName = Instance.new("TextLabel")
 	petName.Name = "PetName"
 	petName.BackgroundTransparency = 1
-		petName.Size = UDim2.new(1, -12, 0, 20)
+	petName.Size = UDim2.new(1, -12, 0, 20)
 	petName.Position = UDim2.fromOffset(6, 4)
 	petName.Font = Enum.Font.GothamBold
 	petName.TextSize = 15
@@ -309,7 +310,7 @@ function UIController:buildUi()
 	local petStats = Instance.new("TextLabel")
 	petStats.Name = "PetStats"
 	petStats.BackgroundTransparency = 1
-		petStats.Size = UDim2.new(1, -12, 0, 18)
+	petStats.Size = UDim2.new(1, -12, 0, 18)
 	petStats.Position = UDim2.fromOffset(6, 22)
 	petStats.Font = Enum.Font.Code
 	petStats.TextSize = 12
@@ -480,43 +481,67 @@ end
 
 function UIController:refreshObjectiveList()
 	if not self.objectiveListScroll then return end
+
+	local objectives = (self.objectiveSummary and self.objectiveSummary.visibleObjectives) or {}
+	local sigParts = {}
+	for _, obj in ipairs(objectives) do
+		table.insert(sigParts, string.format(
+			"%s|%s|%s|%s",
+			tostring(obj.id or ""),
+			tostring(obj.status or ""),
+			tostring(obj.progressText or ""),
+			tostring(obj.visibility or "")
+			))
+	end
+	local signature = table.concat(sigParts, "||")
+	if self.lastObjectiveListSignature == signature then
+		return
+	end
+	self.lastObjectiveListSignature = signature
+
 	local list = self.objectiveListScroll
 	for _, child in ipairs(list:GetChildren()) do
 		if child:IsA("TextLabel") and child.Name == "ObjectiveRow" then
 			child:Destroy()
 		end
 	end
-	local objectives = (self.objectiveSummary and self.objectiveSummary.objectives) or {}
+
 	local y = 0
 	for _, obj in ipairs(objectives) do
-		local row = Instance.new("TextLabel")
-		row.Name = "ObjectiveRow"
-		row.BackgroundTransparency = 1
-		row.Size = UDim2.new(1, -8, 0, 18)
-		row.Position = UDim2.fromOffset(4, y)
-		row.Font = Enum.Font.Code
-		row.TextSize = 11
-		row.TextXAlignment = Enum.TextXAlignment.Left
-		local prefix = "[UPCOMING]"
-		local color = Color3.fromRGB(190, 210, 230)
-		if obj.visibility == "locked" then
-			prefix = "[LOCKED]"
-			color = Color3.fromRGB(120, 125, 135)
-		elseif obj.status == "active" then
-			prefix = "[ACTIVE]"
-			color = Color3.fromRGB(215, 235, 180)
-		elseif obj.status == "claimed" or obj.status == "completed" then
-			prefix = "[DONE]"
-			color = Color3.fromRGB(160, 235, 170)
+		if obj and obj.visibility ~= "locked" and tostring(obj.label or "") ~= "" then
+			local row = Instance.new("TextLabel")
+			row.Name = "ObjectiveRow"
+			row.BackgroundTransparency = 1
+			row.Size = UDim2.new(1, -8, 0, 18)
+			row.Position = UDim2.fromOffset(4, y)
+			row.Font = Enum.Font.Code
+			row.TextSize = 11
+			row.TextXAlignment = Enum.TextXAlignment.Left
+
+			local prefix = "[UPCOMING]"
+			local color = Color3.fromRGB(190, 210, 230)
+			if obj.status == "active" then
+				prefix = "[ACTIVE]"
+				color = Color3.fromRGB(215, 235, 180)
+			elseif obj.status == "claimed" or obj.status == "completed" then
+				prefix = "[DONE]"
+				color = Color3.fromRGB(160, 235, 170)
+			end
+
+			row.TextColor3 = color
+			local progressText = tostring(obj.progressText or "")
+			row.Text = string.format(
+				"%s %s%s",
+				prefix,
+				tostring(obj.label or obj.id or "--"),
+				(progressText ~= "" and (" (" .. progressText .. ")") or "")
+			)
+			row.Parent = list
+			y += 19
 		end
-		row.TextColor3 = color
-		local progressText = tostring(obj.progressText or "")
-		row.Text = string.format("%s %s %s", prefix, tostring(obj.label or obj.id or "--"), progressText ~= "" and ("(" .. progressText .. ")") or "")
-		row.Parent = list
-		y = y + 19
 	end
-	list.CanvasSize = UDim2.fromOffset(0, math.max(y, list.AbsoluteSize.Y))
-	self:fitPanelToChildren(self.buildToolPanel, 220, 520, 12)
+
+	list.CanvasSize = UDim2.fromOffset(0, math.max(y, 0))
 end
 
 function UIController:buildCommandPanel(parent)
@@ -1022,17 +1047,17 @@ function UIController:buildItemBar(gui)
 				slot.TextSize = 11
 				local count = self.items:getCount(item.key)
 				local prefix = (itemIndex <= 9) and tostring(itemIndex) or "-"
-					slot.Text = string.format("%s\n%d:%s", tostring(item.label or item.key), prefix, tostring(count))
-					local selected = itemIndex == activeIndex
-					slot.BackgroundColor3 = selected and Color3.fromRGB(63, 95, 122) or Color3.fromRGB(34, 40, 52)
-					slot.TextColor3 = selected and Color3.fromRGB(240, 250, 255) or Color3.fromRGB(208, 220, 235)
-					if selected then
-						local stroke = Instance.new("UIStroke")
-						stroke.Thickness = 2
-						stroke.Color = Color3.fromRGB(210, 235, 255)
-						stroke.Parent = slot
-					end
-					slot.Parent = slotHost
+				slot.Text = string.format("%s\n%d:%s", tostring(item.label or item.key), prefix, tostring(count))
+				local selected = itemIndex == activeIndex
+				slot.BackgroundColor3 = selected and Color3.fromRGB(63, 95, 122) or Color3.fromRGB(34, 40, 52)
+				slot.TextColor3 = selected and Color3.fromRGB(240, 250, 255) or Color3.fromRGB(208, 220, 235)
+				if selected then
+					local stroke = Instance.new("UIStroke")
+					stroke.Thickness = 2
+					stroke.Color = Color3.fromRGB(210, 235, 255)
+					stroke.Parent = slot
+				end
+				slot.Parent = slotHost
 				slot.MouseButton1Click:Connect(function()
 					local wasSelected = (self.items.selectedItemIndex == itemIndex)
 					self.items:selectIndex(itemIndex)
@@ -1158,7 +1183,7 @@ function UIController:buildAbilityHotbar(parent)
 	panel.BackgroundTransparency = 1
 	panel.Parent = parent
 	self.hotbarPanel = panel
-	
+
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
 	title.Size = UDim2.new(1, 0, 0, 0)
@@ -1168,10 +1193,10 @@ function UIController:buildAbilityHotbar(parent)
 	for i = 1, 4 do
 		local slot = Instance.new("TextButton")
 		slot.Name = "AbilitySlot" .. i
-			slot.Size = UDim2.new(0.245, -4, 0, 50)
+		slot.Size = UDim2.new(0.245, -4, 0, 50)
 		slot.Position = UDim2.new((i - 1) * 0.25, 0, 0, 0)
 		slot.Font = Enum.Font.Code
-			slot.TextSize = 12
+		slot.TextSize = 12
 		slot.TextWrapped = true
 		slot.TextColor3 = Color3.fromRGB(230, 240, 255)
 		slot.BackgroundColor3 = Color3.fromRGB(35, 42, 54)
