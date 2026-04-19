@@ -9,9 +9,9 @@ local Ecology = Shared:WaitForChild("Ecology")
 local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
 
 local ChunkSystem = {}
-ChunkSystem.CHUNK_SIZE = 32
+ChunkSystem.CHUNK_SIZE = 64
 ChunkSystem.CELL_SIZE = 8
-ChunkSystem.LOAD_RADIUS = 17
+ChunkSystem.LOAD_RADIUS = 15
 
 local ORTHOGONAL_STEP = ChunkSystem.CELL_SIZE
 local DIAGONAL_STEP = ChunkSystem.CELL_SIZE * math.sqrt(2)
@@ -34,7 +34,7 @@ local BIOME_MATS = {
 	forest = { ground = Enum.Material.Grass, high = Enum.Material.Ground },
 	plains = { ground = Enum.Material.Grass, high = Enum.Material.Ground },
 	stormfield = { ground = Enum.Material.Slate, high = Enum.Material.Rock },
-	volcanic = { ground = Enum.Material.Basalt, high = Enum.Material.Rock },
+	volcanic = { ground = Enum.Material.Basalt, high = Enum.Material.SmoothPlastic, highVariant = "ObsidianGlass" },
 	tundra = { ground = Enum.Material.Snow, high = Enum.Material.Ice },
 	polar = { ground = Enum.Material.Snow, high = Enum.Material.Ice },
 	smallMountains = { ground = Enum.Material.Slate, high = Enum.Material.Rock },
@@ -268,10 +268,15 @@ function ChunkSystem.writeChunkTerrain(chunk)
 				end
 			end
 		end
+		local matVariant = nil
+		if y > 18 and matDef.highVariant then
+			matVariant = matDef.highVariant
+		end
 		Terrain:FillBlock(
 			CFrame.new(cell.x, y * 0.5, cell.z),
 			Vector3.new(ChunkSystem.CELL_SIZE, y, ChunkSystem.CELL_SIZE),
-			mat
+			mat,
+			matVariant
 		)
 		if (cell.yWater or cell.yW or 0) > y then
 			local hW = math.max(2, (cell.yWater or cell.yW or 0) - y)
