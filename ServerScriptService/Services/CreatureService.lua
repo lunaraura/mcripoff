@@ -95,6 +95,9 @@ function CreatureService:attachModel(creature)
 
 	model.PrimaryPart = mainPart
 	model:SetAttribute("CreatureId", creature.id)
+	model:SetAttribute("CreatureMode", tostring(creature.mode or "unknown"))
+	model:SetAttribute("CreatureDefeated", creature.alive ~= true)
+	model:SetAttribute("CreatureLifecycle", tostring(creature.lifecycle or (creature.alive and "alive" or "defeated")))
 	creature.model = model
 end
 
@@ -128,6 +131,11 @@ function CreatureService:updateModel(creature)
 			end
 		end
 		creature.model:SetAttribute("DesignatedTargetId", tonumber(creature.designatedTargetId) or -1)
+		creature.model:SetAttribute("CreatureMode", tostring(creature.mode or "unknown"))
+		creature.model:SetAttribute("CreatureDefeated", creature.alive ~= true)
+		creature.model:SetAttribute("CreatureLifecycle", tostring(creature.lifecycle or (creature.alive and "alive" or "defeated")))
+		creature.model:SetAttribute("DefeatedExpiresAt", tonumber(creature.defeatedExpiresAt) or 0)
+		creature.model:SetAttribute("DefeatedOutcome", tostring(creature.defeatedOutcome or ""))
 		creature.model:SetAttribute("ManualCastState", tostring(creature.manualCastState or "idle"))
 		creature.model:SetAttribute("ManualCastNote", tostring(creature.manualCastNote or "-"))
 		creature.model:SetAttribute("LastManualCastCode", tostring(creature.lastManualCastResult and creature.lastManualCastResult.code or "-"))
@@ -222,6 +230,9 @@ function CreatureService:getOrCreateCreatureModelsFolder()
 end
 
 function CreatureService:getCreatureColor(creature)
+	if creature.alive ~= true and creature.mode == "wild" then
+		return Color3.fromRGB(125, 125, 125)
+	end
 	if creature.role == "passive" then return Color3.fromRGB(177, 229, 157) end
 	if creature.team == 0 then return Color3.fromRGB(120, 220, 255) end
 	if creature.wildTier == "big" then return Color3.fromRGB(242, 130, 104) end
@@ -241,6 +252,9 @@ function CreatureService:getCreatureTagText(creature)
 	local level = math.max(1, math.floor(tonumber(creature.level) or 1))
 	if creature.mode == "pet" then
 		return string.format("%s Lv.%d", tostring(creature.speciesKey), level)
+	end
+	if creature.alive ~= true and creature.mode == "wild" then
+		return string.format("%s Lv.%d (downed)", tostring(creature.speciesKey), level)
 	end
 	if creature.role == "passive" then
 		return string.format("%s (passive)", tostring(creature.speciesKey))

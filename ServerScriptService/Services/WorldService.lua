@@ -64,7 +64,12 @@ end
 function WorldService:removeDead()
 	local filtered = {}
 	for _, c in ipairs(self.creatures) do
-		if c.alive then
+		local keepDefeatedWild = (not c.alive)
+			and c.mode == "wild"
+			and c.lifecycle == "defeated"
+			and (c.defeatedOutcome == nil)
+			and ((tonumber(c.defeatedExpiresAt) or (self.time + 1)) > self.time)
+		if c.alive or keepDefeatedWild then
 			table.insert(filtered, c)
 		else
 			self.creaturesById[c.id] = nil

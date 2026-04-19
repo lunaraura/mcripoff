@@ -112,6 +112,28 @@ function BuildController:getInteractionTarget()
 			end
 		end
 	end
+
+	-- Check for defeated wild creatures (interactable lure/harvest targets)
+	local worldFolder = Workspace:FindFirstChild("World")
+	local creatureModels = worldFolder and worldFolder:FindFirstChild("CreatureModels")
+	if creatureModels then
+		for _, model in ipairs(creatureModels:GetChildren()) do
+			local primary = model:IsA("Model") and model.PrimaryPart
+			if primary and model:GetAttribute("CreatureMode") == "wild" and model:GetAttribute("CreatureDefeated") == true then
+				local outcome = tostring(model:GetAttribute("DefeatedOutcome") or "")
+				local expiresAt = tonumber(model:GetAttribute("DefeatedExpiresAt")) or 0
+				local isAvailable = outcome == "" and expiresAt > 0
+				if isAvailable then
+					local dist = (playerPos - primary.Position).Magnitude
+					if dist < nearestDist then
+						nearestDist = dist
+						nearestTarget = model
+						targetType = "defeated_wild"
+					end
+				end
+			end
+		end
+	end
 	
 	return nearestTarget, targetType
 end
@@ -153,6 +175,13 @@ function BuildController:getPromptText()
 		else
 			return string.format("[E] Interact with %s bush", berryType:gsub("_", " "))
 		end
+	elseif targetType == "defeated_wild" then
+		local player = Players.LocalPlayer
+		local lureCount = tonumber(player:GetAttribute("Mat_lure_berry")) or 0
+		if lureCount > 0 then
+			return "[E] Use lure berry / Harvest"
+		end
+		return "[E] Harvest (need lure berry to tame)"
 	end
 	
 	return "[E] Interact"
@@ -161,6 +190,12 @@ end
 -- Update the interaction prompt display
 function BuildController:updateInteractionPrompt()
 	-- Prompt UI removed; keep target detection logic via getPromptText/getInteractionTarget intact.
+	self.currentPromptText = self:getPromptText()
+	if self.currentPromptText and self.currentPromptText ~= "" then
+		self.lastInteractionHint = self.currentPromptText
+	elseif self.lastInteractionHint == self.currentPromptText then
+		self.lastInteractionHint = ""
+	end
 	return
 end
 
@@ -227,6 +262,18 @@ function BuildController:handlePrimaryAction()
 	end
 	
 	-- Use the selected tool on the current target
+	local target, targetType = self:getInteractionTarget()
+	if targetType == "defeated_wild" and target and target:GetAttribute("CreatureId") then
+		local creatureId = tonumber(target:GetAttribute("CreatureId"))
+		if creatureId then
+			local player = Players.LocalPlayer
+			local lureCount = tonumber(player:GetAttribute("Mat_lure_berry")) or 0
+			if lureCount > 0 then
+				return self:sendContext({ action = "tameCreature", targetId = creatureId })
+			end
+			return self:sendContext({ action = "harvestCreature", targetId = creatureId })
+		end
+	end
 	return self:sendContext({ action = "context", preferredTool = self.selectedTool, radius = 16 })
 end
 

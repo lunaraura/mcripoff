@@ -433,7 +433,7 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 	elseif payload.action == "tameCreature" and payload.targetId then
 		ok = harvestService:tryTameDefeated(player, payload.targetId)
 		if not ok then
-			worldService:pushEventLog(player, "Tame failed (need lure_meat or valid target)", "#ffb3b3")
+			worldService:pushEventLog(player, "Lure failed (need lure_berry and a defeated wild creature)", "#ffb3b3")
 			return
 		end
 	elseif payload.action == "plantShrub" then
@@ -623,6 +623,7 @@ RunService.Heartbeat:Connect(function(dt)
 	worldService:updateChunksAroundPlayers()
 	spawnService:update(dt)
 	harvestService:tickNodeRegrowth()
+	harvestService:tickDefeatedWilds()
 	buildService:tickStructureEffects()
 	combatService:update(dt)
 	for _, creature in ipairs(worldService.creatures) do

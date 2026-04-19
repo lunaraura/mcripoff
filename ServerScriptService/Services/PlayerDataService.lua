@@ -37,7 +37,7 @@ function PlayerDataService:getOrCreate(player)
 				red = 0, yellow = 0, blue = 0,
 				berry_red = 0, berry_yellow = 0, berry_blue = 0,
 				revive_berry = 0, replenish_berry = 0,
-				lure_meat = 0, crystal_shard = 0, water_glob = 0,
+				lure_meat = 0, lure_berry = 0, crystal_shard = 0, water_glob = 0,
 				node_demolisher = 0, berry_planter = 0,
 			},
 		morphPoints = 0,
