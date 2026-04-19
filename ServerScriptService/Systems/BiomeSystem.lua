@@ -4,15 +4,16 @@ local Config = Shared:WaitForChild("Config")
 local BiomeConfig = require(Config:WaitForChild("BiomeConfig"))
 
 local BiomeSystem = {}
-BiomeSystem.GLOBAL_HEIGHT_AMPLIFY = 2.6
-BiomeSystem.MOUNTAIN_AMPLIFY = 1.4
+BiomeSystem.GLOBAL_HEIGHT_AMPLIFY = 3.6
+BiomeSystem.MOUNTAIN_AMPLIFY = 1.1
 BiomeSystem.OCEAN_FLOOR_AMPLIFY = 1.2
 
 local HEIGHT_PROFILE = {
 	plains = { baseOffset = 1, ampScale = 1.0, ridgeBoost = 0.92 },
 	forest = { baseOffset = 2, ampScale = 1.06, ridgeBoost = 0.98 },
 	desert = { baseOffset = 0, ampScale = 0.94, ridgeBoost = 0.82 },
-	ocean = { baseOffset = -12, ampScale = 0.72, oceanCapOffset = -1 },
+	lake = { baseOffset = -10, ampScale = 0.72, ridgeBoost = 0.92 },
+	ocean = { baseOffset = -22, ampScale = 0.72, oceanCapOffset = -1 },
 	stormfield = { baseOffset = 3, ampScale = 1.34, ridgeBoost = 1.2 },
 	volcanic = { baseOffset = 4, ampScale = 3.25, ridgeBoost = 1.35 },
 	marshes = { baseOffset = -2, ampScale = 0.76, ridgeBoost = 0.62, oceanCapOffset = 0 },
@@ -20,7 +21,7 @@ local HEIGHT_PROFILE = {
 	polar = { baseOffset = 2, ampScale = 1.12, ridgeBoost = 1.18 },
 	tundra = { baseOffset = 2, ampScale = 1.1, ridgeBoost = 1.1 },
 	smallMountains = { baseOffset = 5, ampScale = 1.74, ridgeBoost = 1.18 },
-	highMountains = { baseOffset = 11, ampScale = 3.85, ridgeBoost = 1.34 },
+	highMountains = { baseOffset = 11, ampScale = 2.85, ridgeBoost = 1.34 },
 }
 
 local BIOME_KEYS = {}
@@ -41,10 +42,10 @@ function BiomeSystem.sampleClimate(x, z)
 	return {
 		temperature = clamp01(noise01(x, z, 0.0018, 1)),
 		rainfall = clamp01(noise01(x, z, 0.0017, 2)),
-		lithosphere = clamp01(noise01(x, z, 0.0021, 3)),
+		lithosphere = clamp01(noise01(x, z, 0.0035, 3)),
 		barrenness = clamp01(noise01(x, z, 0.0015, 4)),
 		arcane = clamp01(noise01(x, z, 0.0012, 5)),
-		softness = clamp01(noise01(x, z, 0.0023, 6)),
+		softness = clamp01(noise01(x, z, 0.0043, 6)),
 	}
 end
 
@@ -121,7 +122,7 @@ function BiomeSystem.sampleEnvironment(x, z)
 	local lithoPeak = math.pow(climate.lithosphere, 1.65)
 	local mountainLift = math.max(0, climate.lithosphere - 0.55)
 	mountainLift = (mountainLift * mountainLift) * 46 * BiomeSystem.MOUNTAIN_AMPLIFY
-	local baseHeight = -14 + ((climate.lithosphere-0.5) * 32) - (climate.barrenness * 2) + (globalMacro - 0.5) * 10 + (profile.baseOffset or 0)
+	local baseHeight = -18 + ((climate.lithosphere-0.5) * 32) - (climate.barrenness * 2) + (globalMacro - 0.5) * 10 + (profile.baseOffset or 0)
 	local ampHeight = (14 + (lithoPeak * 24) + ((1 - climate.softness) * 8) + globalRidge * 14 * (profile.ridgeBoost or 1)) * BiomeSystem.GLOBAL_HEIGHT_AMPLIFY * (profile.ampScale or 1)
 	local yGround = math.max(2, math.floor(baseHeight + ampHeight * heightNoise + mountainLift + 0.5))
 	local yWater = math.max(2, math.floor(10 + climate.rainfall * 4 - climate.barrenness * 2 + 0.5))
