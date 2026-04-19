@@ -58,6 +58,7 @@ end
 
 function ObjectiveService:validateDefinitions()
 	local seen = {}
+	print("[ObjectiveService] Validating objectives...")
 	for _, objectiveId in ipairs(ObjectiveConfig.Order or {}) do
 		if seen[objectiveId] then
 			warn(string.format("[ObjectiveService] Duplicate objective id in order: %s", tostring(objectiveId)))
@@ -85,6 +86,7 @@ function ObjectiveService:initPlayer(player)
 	for _, objectiveId in ipairs(ObjectiveConfig.Order) do
 		ensureObjectiveEntry(state, objectiveId)
 	end
+	print("[ObjectiveService] Player initialized:", player.Name)
 	self:evaluateObjectives(player)
 end
 
@@ -93,6 +95,7 @@ function ObjectiveService:applyReward(player, reward)
 	local rType = tostring(reward.type or "")
 	local data = self.playerDataService:getOrCreate(player)
 	local state = ensureObjectiveState(data)
+	print("[ObjectiveService] Applying reward:", rType, reward)
 	if rType == "unlock_tool" then
 		local amount = math.max(1, math.floor(tonumber(reward.amount) or 1))
 		local key = tostring(reward.key or "")
@@ -165,16 +168,33 @@ function ObjectiveService:getRequirementProgress(state, req)
 end
 
 function ObjectiveService:objectiveIsComplete(state, def)
+	local requirements = def.requirements or {}
+	if #requirements == 0 then
+		return false, 0, 0, 1, "0/1"
+	end
+
 	local aggregate = 1
-	local current = 0
-	local goal = 1
-	for _, req in ipairs(def.requirements or {}) do
+	local totalCurrent = 0
+	local totalGoal = 0
+
+	for _, req in ipairs(requirements) do
 		local progress, reqCurrent, reqGoal = self:getRequirementProgress(state, req)
 		aggregate = math.min(aggregate, progress)
-		current = reqCurrent
-		goal = reqGoal
+
+		reqCurrent = tonumber(reqCurrent) or 0
+		reqGoal = math.max(1, tonumber(reqGoal) or 1)
+
+		totalCurrent += math.min(reqCurrent, reqGoal)
+		totalGoal += reqGoal
 	end
-	return aggregate >= 1, aggregate, current, goal
+
+	local progressText = string.format(
+		"%d/%d",
+		math.floor(totalCurrent + 0.5),
+		math.max(1, math.floor(totalGoal + 0.5))
+	)
+
+	return aggregate >= 1, aggregate, totalCurrent, totalGoal, progressText
 end
 
 function ObjectiveService:claimObjective(player, objectiveId, def, entry)
@@ -199,12 +219,12 @@ function ObjectiveService:evaluateObjectives(player)
 					entry.status = STATE_ACTIVE
 					dirty = true
 				end
-				local complete, progress, current, goal = self:objectiveIsComplete(state, def)
+				local complete, progress, current, goal, progressText = self:objectiveIsComplete(state, def)
 				local previousProgress = tonumber(entry.progress) or 0
 				entry.progress = progress
 				entry.progressCurrent = current
 				entry.progressGoal = goal
-				entry.progressText = string.format("%d/%d", math.floor(current + 0.5), math.max(1, math.floor(goal + 0.5)))
+				entry.progressText = progressText
 				if math.abs(previousProgress - progress) > 0.0001 then
 					debugLog(string.format("Progress updated: player=%s objective=%s progress=%s", tostring(player.UserId), tostring(objectiveId), tostring(entry.progressText)))
 				end
@@ -217,10 +237,17 @@ function ObjectiveService:evaluateObjectives(player)
 				if entry.status == STATE_COMPLETED then
 					self:claimObjective(player, objectiveId, def, entry)
 					dirty = true
+					print(string.format(
+						"Claimed objective: player=%s objective=%s",
+						tostring(player.UserId),
+						tostring(objectiveId)
+						))
 				end
+
 			end
 		end
 	end
+	
 	if dirty then
 		self:syncFeatureAttributes(player)
 	end
@@ -278,13 +305,16 @@ end
 function ObjectiveService:getClientSummary(player)
 	local data = self.playerDataService:getOrCreate(player)
 	local state = ensureObjectiveState(data)
+
 	local activeObjective = nil
 	local nextObjective = nil
 	local recentlyCompleted = nil
 	local allObjectives = {}
+
 	for _, objectiveId in ipairs(ObjectiveConfig.Order) do
 		local def = ObjectiveConfig.Objectives[objectiveId]
 		local entry = state.byId[objectiveId]
+
 		if def and entry then
 			local isVisible = self:isVisible(state, def)
 			local item = {
@@ -300,13 +330,13 @@ function ObjectiveService:getClientSummary(player)
 				progressText = tostring(entry.progressText or "0/1"),
 				visibility = isVisible and "visible" or "locked",
 			}
+
 			table.insert(allObjectives, item)
+
 			if isVisible and item.status == STATE_ACTIVE and not activeObjective then
 				activeObjective = item
 			end
-			if isVisible and (not nextObjective) and (item.status == STATE_NOT_STARTED or item.status == STATE_ACTIVE) then
-				nextObjective = item
-			end
+
 			if item.status == STATE_CLAIMED then
 				if not recentlyCompleted or (entry.claimedAt or 0) > (recentlyCompleted.claimedAt or 0) then
 					recentlyCompleted = {
@@ -318,12 +348,41 @@ function ObjectiveService:getClientSummary(player)
 			end
 		end
 	end
+
 	table.sort(allObjectives, function(a, b)
 		if a.stage == b.stage then
 			return a.id < b.id
 		end
 		return a.stage < b.stage
 	end)
+	local visibleObjectives = {}
+	for _, item in ipairs(allObjectives) do
+		if item.visibility == "visible" then
+			table.insert(visibleObjectives, item)
+		end
+	end
+	if activeObjective then
+		local foundActive = false
+		for _, item in ipairs(allObjectives) do
+			if item.id == activeObjective.id then
+				foundActive = true
+			elseif foundActive and item.visibility == "visible" and (item.status == STATE_ACTIVE or item.status == STATE_NOT_STARTED) then
+				nextObjective = item
+				break
+			end
+		end
+	end
+
+	-- Fallback: first later visible not-started objective.
+	if not nextObjective then
+		for _, item in ipairs(allObjectives) do
+			if item.visibility == "visible" and item.status == STATE_NOT_STARTED then
+				nextObjective = item
+				break
+			end
+		end
+	end
+
 	local unlocked = {}
 	for key, isUnlocked in pairs(state.unlockedFeatures or {}) do
 		if isUnlocked == true then
@@ -331,12 +390,19 @@ function ObjectiveService:getClientSummary(player)
 		end
 	end
 	table.sort(unlocked)
+	local visibleObjectives = {}
+	for _, item in ipairs(allObjectives) do
+		if item.visibility == "visible" then
+			table.insert(visibleObjectives, item)
+		end
+	end
 	return {
 		active = activeObjective and { activeObjective } or {},
 		activeObjective = activeObjective,
 		nextObjective = nextObjective,
 		recentlyCompleted = recentlyCompleted,
 		objectives = allObjectives,
+		visibleObjectives = visibleObjectives,
 		unlockedFeatures = unlocked,
 	}
 end
