@@ -25,6 +25,23 @@ end
 local UI_MODE_STARTER = "starter"
 local UI_MODE_GAMEPLAY = "gameplay"
 
+local function getBerryPlantDefsFromBuildableConfig()
+	local shrubCfg = BuildableConfig.berry_shrub and BuildableConfig.berry_shrub.berryPlanting or {}
+	local order = shrubCfg.berryOrder or {}
+	local berryTypes = shrubCfg.berryTypes or {}
+	local defs = {}
+	for _, key in ipairs(order) do
+		local def = berryTypes[key]
+		if def then
+			table.insert(defs, {
+				key = key,
+				label = tostring(def.label or key),
+			})
+		end
+	end
+	return defs
+end
+
 local function getStarterPanel()
 	local player = Players.LocalPlayer
 	local playerGui = player and player:FindFirstChild("PlayerGui")
@@ -742,6 +759,8 @@ function UIController:buildBuildAndToolMenu(gui)
 	useButton.Text = "Interact / Place"
 	useButton.Parent = levelTwo
 
+	local refresh = function() end
+
 	local plantHeader = Instance.new("TextLabel")
 	plantHeader.BackgroundTransparency = 1
 	plantHeader.Size = UDim2.fromOffset(284, 16)
@@ -753,15 +772,10 @@ function UIController:buildBuildAndToolMenu(gui)
 	plantHeader.Text = "Plant Berry Bush (consumes berry)"
 	plantHeader.Parent = levelTwo
 
-	local shrubCfg = BuildableConfig.berry_shrub and BuildableConfig.berry_shrub.berryPlanting or {}
-	local plantDefs = {}
-	local order = shrubCfg.berryOrder or {}
-	local berryTypes = shrubCfg.berryTypes or {}
-	for _, key in ipairs(order) do
-		local def = berryTypes[key]
-		if def then
-			table.insert(plantDefs, { key = key, label = tostring(def.label or key) })
-		end
+	local plantDefs = getBerryPlantDefsFromBuildableConfig()
+	if #plantDefs <= 0 then
+		plantHeader.Text = "Plant Berry Bush (config missing)"
+		plantHeader.TextColor3 = Color3.fromRGB(220, 170, 170)
 	end
 	local plantButtons = {}
 	for i, def in ipairs(plantDefs) do
@@ -842,8 +856,6 @@ function UIController:buildBuildAndToolMenu(gui)
 			self.build:handlePrimaryAction()
 		end
 	end)
-
-	local refresh
 
 	local function formatCost(cost)
 		local tokens = {}
