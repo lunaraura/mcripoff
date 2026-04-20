@@ -65,7 +65,12 @@ function SpawnService:getPartyAverageLevel(player)
 end
 
 function SpawnService:getMaxWildCap(playerCount)
-	return self.maxWildBase + math.max(0, playerCount) * self.maxWildPerPlayer
+	local baseCap = self.maxWildBase + math.max(0, playerCount) * self.maxWildPerPlayer
+	local nightCfg = self.spawnSettings.night or {}
+	if self.worldService:isNight() then
+		baseCap = math.floor(baseCap * (tonumber(nightCfg.maxWildCapMultiplier) or 1) + 0.5)
+	end
+	return baseCap
 end
 
 function SpawnService:getWildAliveCount()
@@ -231,16 +236,34 @@ function SpawnService:update(dt)
 	end
 	local picked = self:pickCandidate(candidates)
 	local point = picked.point
-	local tierKey, tierCfg = EcologyRules.pickTier()
+	local tod = self.worldService:getTimeOfDayNormalized()
+	local tierKey, tierCfg = EcologyRules.pickTierAtTime(tod)
 	local profile = EcologyRules.buildSpawnProfile(point, tierKey, tierCfg)
+	local variantKey, variantCfg = EcologyRules.pickWildVariant(tod)
+	if variantCfg then
+		for k, v in pairs(variantCfg.statMult or {}) do
+			profile.statMult[k] = (profile.statMult[k] or 1) * v
+		end
+		profile.sizeMult = (profile.sizeMult or 1) * (tonumber(variantCfg.sizeMult) or 1)
+	end
 	local speciesKey = self:pickWeightedSpecies(point.spawnWeights)
 	if not speciesKey then speciesKey = MathUtil.pickWeighted((BiomeConfig[point.biomeKey] or BiomeConfig.plains).spawns) end
 	local level = math.max(1, math.floor(self:getPartyAverageLevel(players[math.random(1, #players)]) * (1 + (point.levelBias or 0) * 0.45) + (math.random() * 2 - 1) * 0.8 + 0.5))
+	if self.worldService:isNight() then
+		level += tonumber(self.spawnSettings.night and self.spawnSettings.night.levelBonus) or 0
+	end
+	if variantKey == "elite" then
+		level += 1
+	elseif variantKey == "apex" then
+		level += 2
+	end
+	level = math.max(1, math.floor(level))
 	local moveset = self:buildMoveSet(speciesKey, level, profile)
 
 	local payload = {
 		mode = "wild",
 		wildTier = tierKey,
+		wildVariant = variantKey,
 		wildArchetype = profile.archetypeKey,
 		wildProfile = {
 			aggroMult = profile.aggroMult,
@@ -250,6 +273,8 @@ function SpawnService:update(dt)
 			sizeMult = profile.sizeMult,
 			timidness = profile.timidness,
 			commitment = profile.commitment,
+			rewardMult = variantCfg and tonumber(variantCfg.dropMult) or 1,
+			morphPointBonus = variantCfg and tonumber(variantCfg.morphPointBonus) or 0,
 		},
 		movesetOverride = moveset,
 		spawnAnchor = Vector3.new(point.x, point.y or 0, point.z),
@@ -289,9 +314,11 @@ function SpawnService:update(dt)
 		}
 		if self.spawnSettings.debugLogging == true then
 			print(string.format(
-				"[SpawnDebug] spawned wild id=%d species=%s chunk=%s dist=%.1f pos=(%.1f,%.1f,%.1f)",
+				"[SpawnDebug] spawned wild id=%d species=%s tier=%s variant=%s chunk=%s dist=%.1f pos=(%.1f,%.1f,%.1f)",
 				tonumber(creature.id) or -1,
 				tostring(creature.speciesKey),
+				tostring(tierKey),
+				tostring(variantKey or "none"),
 				tostring(creature.spawnChunkKey),
 				tonumber(picked.nearestPlayerDistance) or -1,
 				creature.pos.X, creature.pos.Y, creature.pos.Z

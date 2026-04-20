@@ -157,6 +157,7 @@ function CreatureService:attachModel(creature)
 	model:SetAttribute("CreatureMode", tostring(creature.mode or "unknown"))
 	model:SetAttribute("CreatureDefeated", creature.alive ~= true)
 	model:SetAttribute("CreatureLifecycle", tostring(creature.lifecycle or (creature.alive and "alive" or "defeated")))
+	model:SetAttribute("WildVariant", tostring(creature.wildVariant or "none"))
 	creature.model = model
 end
 
@@ -193,6 +194,7 @@ function CreatureService:updateModel(creature)
 		creature.model:SetAttribute("CreatureMode", tostring(creature.mode or "unknown"))
 		creature.model:SetAttribute("CreatureDefeated", creature.alive ~= true)
 		creature.model:SetAttribute("CreatureLifecycle", tostring(creature.lifecycle or (creature.alive and "alive" or "defeated")))
+		creature.model:SetAttribute("WildVariant", tostring(creature.wildVariant or "none"))
 		creature.model:SetAttribute("DefeatedExpiresAt", tonumber(creature.defeatedExpiresAt) or 0)
 		creature.model:SetAttribute("DefeatedOutcome", tostring(creature.defeatedOutcome or ""))
 		creature.model:SetAttribute("ManualCastState", tostring(creature.manualCastState or "idle"))
@@ -298,6 +300,12 @@ function CreatureService:getCreatureColor(creature)
 	if creature.alive ~= true and creature.mode == "wild" then
 		return Color3.fromRGB(125, 125, 125)
 	end
+	if creature.mode == "wild" and creature.wildVariant == "apex" then
+		return Color3.fromRGB(189, 106, 255)
+	end
+	if creature.mode == "wild" and creature.wildVariant == "elite" then
+		return Color3.fromRGB(255, 212, 88)
+	end
 	if creature.role == "passive" then return Color3.fromRGB(177, 229, 157) end
 	if creature.team == 0 then return Color3.fromRGB(120, 220, 255) end
 	if creature.wildTier == "big" then return Color3.fromRGB(242, 130, 104) end
@@ -309,7 +317,8 @@ function CreatureService:getCreatureVisualSize(creature)
 	local base = creature.modifiedStats and creature.modifiedStats.size or 3
 	local core = math.max(1.5, math.min(6, base * 0.45))
 	local tierScale = (creature.wildTier == "small" and 0.85) or (creature.wildTier == "big" and 1.25) or 1
-	local final = core * tierScale
+	local variantScale = (creature.wildVariant == "elite" and 1.15) or (creature.wildVariant == "apex" and 1.3) or 1
+	local final = core * tierScale * variantScale
 	return Vector3.new(final, final, final)
 end
 
@@ -318,13 +327,19 @@ function CreatureService:getCreatureTagText(creature)
 	if creature.mode == "pet" then
 		return string.format("%s Lv.%d", tostring(creature.speciesKey), level)
 	end
+	local variantPrefix = ""
+	if creature.mode == "wild" and creature.wildVariant == "elite" then
+		variantPrefix = "Elite "
+	elseif creature.mode == "wild" and creature.wildVariant == "apex" then
+		variantPrefix = "Apex "
+	end
 	if creature.alive ~= true and creature.mode == "wild" then
-		return string.format("%s Lv.%d (downed)", tostring(creature.speciesKey), level)
+		return string.format("%s%s Lv.%d (downed)", variantPrefix, tostring(creature.speciesKey), level)
 	end
 	if creature.role == "passive" then
 		return string.format("%s (passive)", tostring(creature.speciesKey))
 	end
-	return string.format("%s Lv.%d", tostring(creature.speciesKey), level)
+	return string.format("%s%s Lv.%d", variantPrefix, tostring(creature.speciesKey), level)
 end
 
 return CreatureService

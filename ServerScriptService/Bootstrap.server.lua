@@ -57,6 +57,7 @@ local ObjectiveService = require(Services:WaitForChild("ObjectiveService"))
 
 local playerDataService = PlayerDataService.new()
 local worldService = WorldService.new(remotes)
+worldService:applyDayNightVisuals()
 local inventoryService = InventoryService.new(playerDataService)
 local creatureService = CreatureService.new(worldService, playerDataService)
 local effectService = EffectService.new(worldService)

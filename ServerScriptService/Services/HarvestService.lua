@@ -1,5 +1,17 @@
 local HarvestService = {}
 HarvestService.__index = HarvestService
+
+local function scaleRewards(rewards, mult)
+	local out = {}
+	for _, reward in ipairs(rewards or {}) do
+		local entry = table.clone(reward)
+		if entry.amount then
+			entry.amount = math.max(1, math.floor((tonumber(entry.amount) or 1) * (tonumber(mult) or 1) + 0.5))
+		end
+		table.insert(out, entry)
+	end
+	return out
+end
 local CollectionService = game:GetService("CollectionService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -378,6 +390,10 @@ function HarvestService:tryHarvestCreature(player, targetId)
 			return false, "invalid target"
 		end
 		local rewards = c.drop or {}
+		local rewardMult = c.wildProfile and tonumber(c.wildProfile.rewardMult) or 1
+		if rewardMult > 1 then
+			rewards = scaleRewards(rewards, rewardMult)
+		end
 		if #rewards <= 0 then
 			return false, "nothing to harvest"
 		end
@@ -481,7 +497,8 @@ function HarvestService:tryTameDefeated(player, targetId)
 		return false, "failed to add owned creature"
 	end
 	if self.morphService then
-		self.morphService:awardPoints(player, owned.ownedId, 2)
+		local bonus = c.wildProfile and tonumber(c.wildProfile.morphPointBonus) or 0
+		self.morphService:awardPoints(player, owned.ownedId, 2 + bonus)
 	end
 	c.defeatedOutcome = "tame"
 	self.worldService:removeCreature(c.id)

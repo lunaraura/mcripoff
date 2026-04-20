@@ -61,6 +61,32 @@ local EcologyConfig = {
 		despawnAgeGrace = 22,
 		debugLogging = true,
 		debugLogInterval = 8,
+		night = {
+			tierWeightMultipliers = {
+				small = 0.7,
+				normal = 0.95,
+				big = 1.55,
+			},
+			maxWildCapMultiplier = 1.15,
+			levelBonus = 1.25,
+			variantChanceMult = 1.5,
+		},
+		variants = {
+			elite = {
+				weight = 0.035,
+				statMult = { maxHP = 1.35, pAtk = 1.22, eAtk = 1.22, spd = 1.07 },
+				sizeMult = 1.2,
+				dropMult = 1.6,
+				morphPointBonus = 1,
+			},
+			apex = {
+				weight = 0.008,
+				statMult = { maxHP = 1.8, pAtk = 1.5, eAtk = 1.5, spd = 1.12 },
+				sizeMult = 1.4,
+				dropMult = 2.5,
+				morphPointBonus = 3,
+			},
+		},
 		tiers = {
 			small = { team = 1, weight = 0.24, statMult = { maxHP = 0.86, pAtk = 0.9, eAtk = 0.9, spd = 1.05 }, sizeMult = 0.85, timidness = 1.35, commitment = 0.75, pursuitRange = 90, aggroMult = 0.72, targetNearPlayerBias = 0.55 },
 			normal = { team = 1, weight = 0.68, statMult = {}, sizeMult = 1, timidness = 1, commitment = 1, pursuitRange = 120, aggroMult = 1, targetNearPlayerBias = 0 },
@@ -83,6 +109,14 @@ local EcologyConfig = {
 		},
 	},
 	regen = {
+		dayNight = {
+			enabled = true,
+			dayLengthSeconds = 480,
+			startNormalized = 0.25,
+			nightStart = 0.75,
+			nightEnd = 0.25,
+			clockStartHour = 6,
+		},
 		-- Canonical v1 ecology policy: natural nodes are non-respawning.
 		-- Timer-based regrowth is reserved for explicit player-grown content only.
 		nodeMinSeconds = 20,
