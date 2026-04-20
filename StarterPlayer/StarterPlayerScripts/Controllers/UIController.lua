@@ -742,6 +742,42 @@ function UIController:buildBuildAndToolMenu(gui)
 	useButton.Text = "Interact / Place"
 	useButton.Parent = levelTwo
 
+	local plantHeader = Instance.new("TextLabel")
+	plantHeader.BackgroundTransparency = 1
+	plantHeader.Size = UDim2.fromOffset(284, 16)
+	plantHeader.Position = UDim2.fromOffset(8, 118)
+	plantHeader.TextXAlignment = Enum.TextXAlignment.Left
+	plantHeader.Font = Enum.Font.GothamBold
+	plantHeader.TextSize = 11
+	plantHeader.TextColor3 = Color3.fromRGB(205, 228, 205)
+	plantHeader.Text = "Plant Berry Bush (consumes berry)"
+	plantHeader.Parent = levelTwo
+
+	local plantDefs = {
+		{ key = "berry_red", label = "Red" },
+		{ key = "berry_yellow", label = "Yellow" },
+		{ key = "berry_blue", label = "Blue" },
+		{ key = "revive_berry", label = "Revive" },
+		{ key = "replenish_berry", label = "Replenish" },
+	}
+	local plantButtons = {}
+	for i, def in ipairs(plantDefs) do
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.fromOffset(136, 22)
+		local row = math.floor((i - 1) / 2)
+		local col = (i - 1) % 2
+		btn.Position = UDim2.fromOffset(8 + (col * 148), 138 + (row * 24))
+		btn.Text = string.format("Plant %s", def.label)
+		btn.Parent = levelTwo
+		btn.MouseButton1Click:Connect(function()
+			if self.build then
+				self.build:plantShrub(def.key)
+			end
+			refresh()
+		end)
+		plantButtons[def.key] = btn
+	end
+
 	local levelThree = Instance.new("Frame")
 	levelThree.Name = "LevelThree"
 	levelThree.Size = UDim2.new(1, -18, 1, -154)
@@ -857,6 +893,16 @@ function UIController:buildBuildAndToolMenu(gui)
 		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
 		local statusText = interactionHint ~= "" and interactionHint or tostring(placementReason)
 		selectedLabel.Text = string.format("Mode:%s  Tool:%s  Build:%s  Status:%s", tostring(buildMode or "-"), tostring(tool), tostring(buildKey), statusText)
+		for _, def in ipairs(plantDefs) do
+			local btn = plantButtons[def.key]
+			if btn then
+				local count = tonumber(Players.LocalPlayer:GetAttribute("Mat_" .. def.key)) or 0
+				btn.Text = string.format("Plant %s (x%d)", def.label, count)
+				btn.AutoButtonColor = count > 0
+				btn.BackgroundColor3 = count > 0 and Color3.fromRGB(46, 78, 56) or Color3.fromRGB(62, 48, 48)
+				btn.TextColor3 = count > 0 and Color3.fromRGB(235, 245, 235) or Color3.fromRGB(220, 188, 188)
+			end
+		end
 		mobilePlaceBtn.Visible = UserInputService.TouchEnabled and (buildMode == true) and (self.uiMode == UI_MODE_GAMEPLAY) and (not self.hiddenUi)
 		objectiveHeader.Visible = not (levelTwo.Visible or levelThree.Visible)
 		objectiveList.Visible = objectiveHeader.Visible

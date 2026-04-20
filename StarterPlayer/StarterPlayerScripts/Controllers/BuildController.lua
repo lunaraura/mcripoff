@@ -232,7 +232,7 @@ end
 function BuildController:getBuildableEntries()
 	local entries = {}
 	for key, def in pairs(BuildableConfig) do
-		if def and def.placement then
+		if def and def.placement and key ~= "berry_shrub" then
 			table.insert(entries, {
 				key = key,
 				label = def.name or key,
