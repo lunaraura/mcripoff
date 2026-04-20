@@ -38,9 +38,32 @@ local BuildableConfig = {
 
 	berry_shrub = {
 		name = "Berry Shrub",
-		cost = {},
+		berryPlanting = {
+			berryOrder = { "berry_red", "berry_yellow", "berry_blue", "revive_berry", "replenish_berry" },
+			berryTypes = {
+				berry_red = { label = "Red", yield = 2, baseColor = { 200, 85, 85 } },
+				berry_yellow = { label = "Yellow", yield = 2, baseColor = { 230, 210, 110 } },
+				berry_blue = { label = "Blue", yield = 2, baseColor = { 110, 180, 255 } },
+				revive_berry = { label = "Revive", yield = 1, baseColor = { 150, 120, 240 } },
+				replenish_berry = { label = "Replenish", yield = 1, baseColor = { 90, 200, 220 } },
+			},
+			growth = {
+				durationSeconds = 90,
+				stageThresholds = {
+					planted = 0.0,
+					growing = 0.35,
+					mature = 1.0,
+				},
+			},
+			stageVisuals = {
+				planted = { size = { 2.6, 2.2, 2.6 }, darken = 0.55 },
+				growing = { size = { 3.6, 3.2, 3.6 }, darken = 0.25 },
+				mature = { size = { 4.4, 4.0, 4.4 }, darken = 0.0 },
+			},
+			plantingCostSource = "consume_selected_berry_item",
+		},
 		harvesting = {
-			interval = 20,
+			interval = 90,
 			provides = {},
 		},
 		placement = {

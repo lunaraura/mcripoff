@@ -19,30 +19,51 @@ function BuildService.new(worldService, inventoryService)
 	return setmetatable({ worldService = worldService, inventoryService = inventoryService, objectiveService = nil, nextBuildId = 1, buildables = {} }, BuildService)
 end
 
-local SHRUB_BERRY_KEYS = {
-	berry_red = true,
-	berry_yellow = true,
-	berry_blue = true,
-	revive_berry = true,
-	replenish_berry = true,
-}
-local SHRUB_GROWTH_SECONDS = 90
-local SHRUB_YIELD_AMOUNT = 2
+local function getBerryPlantingConfig()
+	local shrubDef = PlacementRules.getBuildDef("berry_shrub")
+	return (shrubDef and shrubDef.berryPlanting) or {}
+end
+
+local function getBerryTypeDef(berryKey)
+	local cfg = getBerryPlantingConfig()
+	local berryTypes = cfg.berryTypes or {}
+	return berryTypes[berryKey]
+end
+
+local function getGrowthDurationSeconds()
+	local cfg = getBerryPlantingConfig()
+	return math.max(5, math.floor(tonumber(cfg.growth and cfg.growth.durationSeconds) or 90))
+end
+
+local function getStageThreshold(stageKey, fallback)
+	local cfg = getBerryPlantingConfig()
+	local thresholds = cfg.growth and cfg.growth.stageThresholds or {}
+	return tonumber(thresholds[stageKey]) or fallback
+end
+
+local function getStageVisual(stageKey)
+	local cfg = getBerryPlantingConfig()
+	local visuals = cfg.stageVisuals or {}
+	return visuals[stageKey] or {}
+end
+
+local function berryKeyAllowed(berryKey)
+	return getBerryTypeDef(berryKey) ~= nil
+end
+
+local function getShrubYieldAmount(berryKey)
+	local def = getBerryTypeDef(berryKey) or {}
+	return math.max(1, math.floor(tonumber(def.yield) or 1))
+end
 
 local function getShrubDisplayColor(berryKey, stage)
-	local colorMap = {
-		berry_red = Color3.fromRGB(200, 85, 85),
-		berry_yellow = Color3.fromRGB(230, 210, 110),
-		berry_blue = Color3.fromRGB(110, 180, 255),
-		revive_berry = Color3.fromRGB(150, 120, 240),
-		replenish_berry = Color3.fromRGB(90, 200, 220),
-	}
-	local base = colorMap[berryKey] or Color3.fromRGB(160, 220, 120)
-	if stage == "planted" then
-		return base:Lerp(Color3.fromRGB(50, 60, 50), 0.55)
-	end
-	if stage == "growing" then
-		return base:Lerp(Color3.fromRGB(95, 125, 95), 0.25)
+	local def = getBerryTypeDef(berryKey) or {}
+	local rgb = def.baseColor or { 160, 220, 120 }
+	local base = Color3.fromRGB(tonumber(rgb[1]) or 160, tonumber(rgb[2]) or 220, tonumber(rgb[3]) or 120)
+	local visual = getStageVisual(stage)
+	local darken = math.clamp(tonumber(visual.darken) or 0, 0, 0.8)
+	if darken > 0 then
+		return base:Lerp(Color3.fromRGB(50, 60, 50), darken)
 	end
 	return base
 end
@@ -101,12 +122,13 @@ function BuildService:getShrubGrowthStage(build, now)
 	now = now or self.worldService.time
 	if build.key ~= "berry_shrub" then return nil end
 	local plantedAt = tonumber(build.shrubPlantedAt) or now
-	local matureAt = tonumber(build.shrubMatureAt) or (plantedAt + SHRUB_GROWTH_SECONDS)
+	local matureAt = tonumber(build.shrubMatureAt) or (plantedAt + getGrowthDurationSeconds())
 	if now >= matureAt then
 		return "mature"
 	end
 	local progress = math.clamp((now - plantedAt) / math.max(1, matureAt - plantedAt), 0, 1)
-	if progress < 0.35 then
+	local growingThreshold = math.clamp(getStageThreshold("growing", 0.35), 0, 1)
+	if progress < growingThreshold then
 		return "planted"
 	end
 	return "growing"
@@ -122,13 +144,13 @@ function BuildService:refreshShrubVisual(build)
 	part:SetAttribute("GrowthStage", stage)
 	part:SetAttribute("Mature", stage == "mature")
 	part.Color = getShrubDisplayColor(build.shrubBerryKey, stage)
-	if stage == "planted" then
-		part.Size = Vector3.new(2.6, 2.2, 2.6)
-	elseif stage == "growing" then
-		part.Size = Vector3.new(3.6, 3.2, 3.6)
-	else
-		part.Size = Vector3.new(4.4, 4.0, 4.4)
-	end
+	local visual = getStageVisual(stage)
+	local size = visual.size or { 4.4, 4.0, 4.4 }
+	part.Size = Vector3.new(
+		tonumber(size[1]) or 4.4,
+		tonumber(size[2]) or 4.0,
+		tonumber(size[3]) or 4.4
+	)
 end
 
 function BuildService:getCellAtPosition(pos)
@@ -268,7 +290,7 @@ function BuildService:getResolvedHarvestRewards(build)
 		table.insert(rewards, { key = (key == "bait" and "lure_meat" or key), amount = amount })
 	end
 	if build.key == "berry_shrub" and build.shrubBerryKey then
-		table.insert(rewards, { key = build.shrubBerryKey, amount = SHRUB_YIELD_AMOUNT })
+		table.insert(rewards, { key = build.shrubBerryKey, amount = getShrubYieldAmount(build.shrubBerryKey) })
 	end
 	return rewards
 end
@@ -279,7 +301,7 @@ function BuildService:tryPlantShrub(player, payload)
 		return false, { reasonCode = "FEATURE_LOCKED_PLANTER" }
 	end
 	local berryKey = tostring(payload.berryKey or "berry_red")
-	if not SHRUB_BERRY_KEYS[berryKey] then
+	if not berryKeyAllowed(berryKey) then
 		return false, { reasonCode = "INVALID_BERRY_KEY" }
 	end
 	if self.inventoryService:getCount(player, berryKey) < 1 then
@@ -307,12 +329,12 @@ function BuildService:tryPlantShrub(player, payload)
 		ownerUserId = player.UserId,
 		pos = snapped,
 		rotationY = 0,
-		nextHarvestAt = plantedAt + SHRUB_GROWTH_SECONDS,
+		nextHarvestAt = plantedAt + getGrowthDurationSeconds(),
 		lastEffectAt = 0,
 		harvest = harvest,
 		shrubBerryKey = berryKey,
 		shrubPlantedAt = plantedAt,
-		shrubMatureAt = plantedAt + SHRUB_GROWTH_SECONDS,
+		shrubMatureAt = plantedAt + getGrowthDurationSeconds(),
 		shrubStage = "planted",
 		record = { reasonCode = PlacementRules.Reason.OK, createdAt = self.worldService.time },
 	}
@@ -342,7 +364,7 @@ function BuildService:tryHarvestBuild(player)
 	local rewards = self:getResolvedHarvestRewards(best)
 	if best.key == "berry_shrub" then
 		best.shrubPlantedAt = self.worldService.time
-		best.shrubMatureAt = self.worldService.time + SHRUB_GROWTH_SECONDS
+		best.shrubMatureAt = self.worldService.time + getGrowthDurationSeconds()
 		best.nextHarvestAt = best.shrubMatureAt
 		best.shrubStage = "planted"
 		self:refreshShrubVisual(best)

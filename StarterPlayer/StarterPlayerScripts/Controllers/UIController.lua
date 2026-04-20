@@ -753,13 +753,16 @@ function UIController:buildBuildAndToolMenu(gui)
 	plantHeader.Text = "Plant Berry Bush (consumes berry)"
 	plantHeader.Parent = levelTwo
 
-	local plantDefs = {
-		{ key = "berry_red", label = "Red" },
-		{ key = "berry_yellow", label = "Yellow" },
-		{ key = "berry_blue", label = "Blue" },
-		{ key = "revive_berry", label = "Revive" },
-		{ key = "replenish_berry", label = "Replenish" },
-	}
+	local shrubCfg = BuildableConfig.berry_shrub and BuildableConfig.berry_shrub.berryPlanting or {}
+	local plantDefs = {}
+	local order = shrubCfg.berryOrder or {}
+	local berryTypes = shrubCfg.berryTypes or {}
+	for _, key in ipairs(order) do
+		local def = berryTypes[key]
+		if def then
+			table.insert(plantDefs, { key = key, label = tostring(def.label or key) })
+		end
+	end
 	local plantButtons = {}
 	for i, def in ipairs(plantDefs) do
 		local btn = Instance.new("TextButton")
