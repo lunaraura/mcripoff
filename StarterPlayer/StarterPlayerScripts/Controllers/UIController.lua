@@ -3,7 +3,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -109,13 +108,6 @@ function UIController:refreshUiMode()
 	if self.objectiveToastLabel and not showGameplay then
 		self.objectiveToastLabel.Visible = false
 	end
-	if not showGameplay then
-		for _, entry in pairs(self.petWorldBars or {}) do
-			if entry and entry.gui then
-				entry.gui.Enabled = false
-			end
-		end
-	end
 end
 
 function UIController:openOptionsFromUtilityPanel()
@@ -178,7 +170,6 @@ function UIController.new(buildController, itemController, partyController, comm
 		lastObjectiveToastAt = 0,
 		itemBarWindowStart = 1,
 		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
-		petWorldBars = {},
 	}, UIController)
 end
 
@@ -290,57 +281,18 @@ function UIController:buildUi()
 		self:refreshUiMode()
 	end)
 
-	-- Main gameplay HUD (active pet + abilities + commands + gameplay status)
+		-- Main gameplay HUD (stance controls + ability hotbar only)
 	local activeHud = Instance.new("Frame")
 	activeHud.Name = "MainGameplayHud"
 	activeHud.AnchorPoint = Vector2.new(0.5, 1)
-	activeHud.Size = UDim2.new(0.62, 0, 0.19, 0)
+	activeHud.Size = UDim2.new(0.62, 0, 0.13, 0)
 	activeHud.Position = UDim2.new(0.5, 0, 0.89, 0)
 	activeHud.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	activeHud.BackgroundTransparency = 0.12
 	activeHud.Parent = gui
 	self.mainGameplayHud = activeHud
 	self.activePetFrame = activeHud
-	attachSizeConstraint(activeHud, 320, 132, 860, 236)
-
-	local petName = Instance.new("TextLabel")
-	petName.Name = "PetName"
-	petName.BackgroundTransparency = 1
-	petName.Size = UDim2.new(1, -12, 0, 20)
-	petName.Position = UDim2.fromOffset(6, 4)
-	petName.Font = Enum.Font.GothamBold
-	petName.TextSize = 15
-	petName.TextXAlignment = Enum.TextXAlignment.Left
-	petName.TextColor3 = Color3.fromRGB(235, 245, 255)
-	petName.Text = "Active Pet"
-	petName.Parent = activeHud
-	self.activePetNameLabel = petName
-
-	local status = Instance.new("TextLabel")
-	status.Name = "GameplayStatus"
-	status.BackgroundTransparency = 1
-	status.Size = UDim2.new(1, -12, 0, 16)
-	status.Position = UDim2.fromOffset(6, 24)
-	status.Font = Enum.Font.Code
-	status.TextSize = 12
-	status.TextXAlignment = Enum.TextXAlignment.Left
-	status.TextColor3 = Color3.fromRGB(195, 220, 240)
-	status.Text = "Mode:AUTO  Stance:FOLLOW  Slot:1"
-	status.Parent = activeHud
-	self.gameplayStatusLabel = status
-
-	local objectiveLabel = Instance.new("TextLabel")
-	objectiveLabel.Name = "ObjectiveHudLabel"
-	objectiveLabel.BackgroundTransparency = 1
-	objectiveLabel.Size = UDim2.new(1, -12, 0, 16)
-	objectiveLabel.Position = UDim2.fromOffset(6, 60)
-	objectiveLabel.Font = Enum.Font.Code
-	objectiveLabel.TextSize = 12
-	objectiveLabel.TextXAlignment = Enum.TextXAlignment.Left
-	objectiveLabel.TextColor3 = Color3.fromRGB(215, 232, 180)
-	objectiveLabel.Text = "Objective: --"
-	objectiveLabel.Parent = activeHud
-	self.objectiveLabel = objectiveLabel
+	attachSizeConstraint(activeHud, 320, 84, 860, 152)
 
 	local objectiveToast = Instance.new("TextLabel")
 	objectiveToast.Name = "ObjectiveToastLabel"
@@ -388,7 +340,7 @@ function UIController:buildUi()
 
 	self:setUiMode(UI_MODE_STARTER)
 	self:refreshObjectiveHud()
-	self:fitPanelToChildren(self.mainGameplayHud, 150, 280, 10)
+	self:fitPanelToChildren(self.mainGameplayHud, 96, 170, 8)
 	self:fitPanelToChildren(self.itemBarPanel, 72, 140, 10)
 	self:fitPanelToChildren(self.buildToolPanel, 220, 520, 12)
 	self:fitPanelToChildren(self.optionsPanel, 150, 340, 8)
@@ -415,14 +367,6 @@ function UIController:sendCommandFromUi(kind)
 end
 
 function UIController:refreshCommandPanel()
-	if self.gameplayStatusLabel then
-		self.gameplayStatusLabel.Text = string.format(
-			"Mode:%s  Stance:%s  Slot:%s",
-			tostring(self.controlMode or "AUTO"),
-			tostring(self.stance or "FOLLOW"),
-			tostring(self.activeSlot or 1)
-		)
-	end
 	for key, btn in pairs(self.commandButtons or {}) do
 		btn.BackgroundColor3 = (self.activeCommand == key) and Color3.fromRGB(70, 105, 145) or Color3.fromRGB(40, 45, 58)
 	end
@@ -442,25 +386,30 @@ function UIController:showObjectiveToast(text)
 end
 
 function UIController:refreshObjectiveHud()
-	if not self.objectiveLabel then return end
 	local summary = self.objectiveSummary or {}
 	local active = summary.activeObjective or ((summary.active and summary.active[1]) or nil)
 	local nextObj = summary.nextObjective
 	if active then
 		local progressText = tostring(active.progressText or string.format("%d/%d", tonumber(active.progressCurrent) or 0, tonumber(active.progressGoal) or 1))
 		local line = string.format("Objective: %s (%s)", tostring(active.label or active.id or "--"), progressText)
-		self.objectiveLabel.Text = line
+		if self.objectiveLabel then
+			self.objectiveLabel.Text = line
+		end
 		if self.alwaysObjectiveLine then
 			self.alwaysObjectiveLine.Text = line
 		end
 	elseif nextObj then
 		local line = string.format("Next: %s", tostring(nextObj.label or nextObj.id or "--"))
-		self.objectiveLabel.Text = line
+		if self.objectiveLabel then
+			self.objectiveLabel.Text = line
+		end
 		if self.alwaysObjectiveLine then
 			self.alwaysObjectiveLine.Text = line
 		end
 	else
-		self.objectiveLabel.Text = "Objectives complete"
+		if self.objectiveLabel then
+			self.objectiveLabel.Text = "Objectives complete"
+		end
 		if self.alwaysObjectiveLine then
 			self.alwaysObjectiveLine.Text = "Objectives complete"
 		end
@@ -542,7 +491,7 @@ function UIController:buildCommandPanel(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "CommandPanel"
 	panel.Size = UDim2.new(1, -12, 0, 26)
-	panel.Position = UDim2.fromOffset(6, 42)
+	panel.Position = UDim2.fromOffset(6, 6)
 	panel.BackgroundTransparency = 1
 	panel.Parent = parent
 	self.commandPanel = panel
@@ -1079,141 +1028,6 @@ function UIController:buildItemBar(gui)
 	end)
 end
 
-function UIController:createPetWorldBar(petId)
-	local gui = Instance.new("BillboardGui")
-	gui.Name = string.format("PetWorldBar_%s", tostring(petId))
-	gui.AlwaysOnTop = true
-	gui.LightInfluence = 0
-	gui.MaxDistance = 110
-	gui.Size = UDim2.fromOffset(120, 54)
-	gui.StudsOffset = Vector3.new(0, 4.2, 0)
-	gui.Enabled = false
-	gui.Parent = self.gui
-
-	local host = Instance.new("Frame")
-	host.BackgroundColor3 = Color3.fromRGB(18, 22, 28)
-	host.BackgroundTransparency = 0.15
-	host.Size = UDim2.fromScale(1, 1)
-	host.Parent = gui
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 4)
-	corner.Parent = host
-
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.Padding = UDim.new(0, 3)
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment = Enum.VerticalAlignment.Center
-	layout.Parent = host
-
-	local function addBar(labelText, fillColor)
-		local row = Instance.new("Frame")
-		row.BackgroundTransparency = 1
-		row.Size = UDim2.new(1, -8, 0, 14)
-		row.Parent = host
-
-		local label = Instance.new("TextLabel")
-		label.BackgroundTransparency = 1
-		label.Size = UDim2.fromOffset(20, 12)
-		label.Position = UDim2.fromOffset(0, 1)
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 9
-		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.TextColor3 = Color3.fromRGB(225, 235, 245)
-		label.Text = labelText
-		label.Parent = row
-
-		local track = Instance.new("Frame")
-		track.BackgroundColor3 = Color3.fromRGB(45, 52, 64)
-		track.BorderSizePixel = 0
-		track.Size = UDim2.new(1, -26, 0, 8)
-		track.Position = UDim2.fromOffset(22, 3)
-		track.Parent = row
-
-		local trackCorner = Instance.new("UICorner")
-		trackCorner.CornerRadius = UDim.new(0, 4)
-		trackCorner.Parent = track
-
-		local fill = Instance.new("Frame")
-		fill.BackgroundColor3 = fillColor
-		fill.BorderSizePixel = 0
-		fill.Size = UDim2.fromScale(1, 1)
-		fill.Parent = track
-
-		local fillCorner = Instance.new("UICorner")
-		fillCorner.CornerRadius = UDim.new(0, 4)
-		fillCorner.Parent = fill
-
-		return fill
-	end
-
-	return {
-		gui = gui,
-		hpFill = addBar("HP", Color3.fromRGB(214, 78, 78)),
-		stFill = addBar("ST", Color3.fromRGB(234, 198, 92)),
-		enFill = addBar("EN", Color3.fromRGB(92, 166, 235)),
-		petId = petId,
-	}
-end
-
-function UIController:resolvePetAdornee(petId)
-	local world = Workspace:FindFirstChild("World")
-	local models = world and world:FindFirstChild("CreatureModels")
-	if not models then return nil end
-	for _, model in ipairs(models:GetChildren()) do
-		if model:IsA("Model") and model.PrimaryPart and tonumber(model:GetAttribute("CreatureId")) == tonumber(petId) then
-			return model.PrimaryPart
-		end
-	end
-	return nil
-end
-
-function UIController:setPetBarRatio(fill, currentValue, maxValue)
-	if not fill then return end
-	local maxV = math.max(1, tonumber(maxValue) or 1)
-	local current = math.clamp(tonumber(currentValue) or 0, 0, maxV)
-	local ratio = math.clamp(current / maxV, 0, 1)
-	fill.Size = UDim2.fromScale(ratio, 1)
-end
-
-function UIController:updateWorldPetBars(pets)
-	local activeIds = {}
-	local localPlayer = Players.LocalPlayer
-	local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-	for _, pet in ipairs(pets or {}) do
-		local petId = tonumber(pet and pet.petId)
-		if petId then
-			activeIds[petId] = true
-			local entry = self.petWorldBars[petId]
-			if not entry then
-				entry = self:createPetWorldBar(petId)
-				self.petWorldBars[petId] = entry
-			end
-			local show = self.uiMode == UI_MODE_GAMEPLAY and (not self.hiddenUi)
-			show = show and tostring(pet.state or "alive") == "alive"
-			local adornee = show and self:resolvePetAdornee(petId) or nil
-			if show and adornee and root then
-				local dist = (root.Position - adornee.Position).Magnitude
-				if dist > 120 then
-					show = false
-				end
-			end
-			entry.gui.Adornee = adornee
-			entry.gui.Enabled = show and adornee ~= nil
-			self:setPetBarRatio(entry.hpFill, pet.hp, pet.maxHP)
-			self:setPetBarRatio(entry.stFill, pet.stamina, pet.maxStamina or pet.stamina)
-			self:setPetBarRatio(entry.enFill, pet.energy, pet.maxEnergy or pet.energy)
-		end
-	end
-	for petId, entry in pairs(self.petWorldBars) do
-		if not activeIds[petId] then
-			entry.gui:Destroy()
-			self.petWorldBars[petId] = nil
-		end
-	end
-end
-
 function UIController:updatePetHud(payload)
 	local pets = payload and payload.pets or {}
 
@@ -1277,19 +1091,6 @@ function UIController:updatePetHud(payload)
 	end
 	local activePet = pets[self.activeSlot or 1]
 	self.activePetHud = activePet
-
-	if self.activePetNameLabel then
-		if not activePet then
-			self.activePetNameLabel.Text = "Active Pet: (empty)"
-		else
-			local displayName = tostring(activePet.name or activePet.species or "?")
-			local level = tonumber(activePet.level) or 1
-			local state = tostring(activePet.state or "alive")
-			self.activePetNameLabel.Text = string.format("%s  Lv %d  [%s]", displayName, level, state)
-		end
-	end
-	self.activePetHud = pets[self.activeSlot or 1]
-	self:updateWorldPetBars(pets)
 	self:refreshCommandPanel()
 	self:refreshAbilityHotbar()
 end
@@ -1298,7 +1099,7 @@ function UIController:buildAbilityHotbar(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "AbilityHotbar"
 	panel.Size = UDim2.new(1, -12, 0, 52)
-	panel.Position = UDim2.fromOffset(6, 84)
+	panel.Position = UDim2.fromOffset(6, 36)
 	panel.BackgroundTransparency = 1
 	panel.Parent = parent
 	self.hotbarPanel = panel

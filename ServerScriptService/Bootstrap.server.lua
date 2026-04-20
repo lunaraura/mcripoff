@@ -527,7 +527,6 @@ local function pushPetHud()
 					end
 				end
 				petPayload[i] = {
-					petId = isAlive and pet.id or nil,
 					species = owned.speciesKey,
 					name = owned.nickname,
 					level = pet and pet.level or owned.level,
@@ -535,9 +534,7 @@ local function pushPetHud()
 					hp = isAlive and pet.currentHP or 0,
 					maxHP = (isAlive and pet.modifiedStats.maxHP) or (pet and pet.modifiedStats and pet.modifiedStats.maxHP) or 0,
 					stamina = isAlive and pet.currentStamina or 0,
-					maxStamina = (isAlive and pet.modifiedStats.stamina) or (pet and pet.modifiedStats and pet.modifiedStats.stamina) or 0,
 					energy = isAlive and pet.currentEnergy or 0,
-					maxEnergy = (isAlive and pet.modifiedStats.energy) or (pet and pet.modifiedStats and pet.modifiedStats.energy) or 0,
 					command = isAlive and (pet.command and pet.command.type or "auto") or nil,
 					commandTargetId = isAlive and (pet.command and tonumber(pet.command.targetId) or nil) or nil,
 					targetId = isAlive and (pet.intent and pet.intent.targetId or nil) or nil,
