@@ -54,8 +54,13 @@ local EcologyConfig = {
 		chunkCap = 4,
 		spacing = 20,
 		noSpawnInnerRadius = 55,
+		visibleSpawnMaxDistance = 220,
+		preferredSpawnDistance = 130,
+		spawnAttemptInterval = 1.0,
 		despawnDistance = 320,
 		despawnAgeGrace = 22,
+		debugLogging = true,
+		debugLogInterval = 8,
 		tiers = {
 			small = { team = 1, weight = 0.24, statMult = { maxHP = 0.86, pAtk = 0.9, eAtk = 0.9, spd = 1.05 }, sizeMult = 0.85, timidness = 1.35, commitment = 0.75, pursuitRange = 90, aggroMult = 0.72, targetNearPlayerBias = 0.55 },
 			normal = { team = 1, weight = 0.68, statMult = {}, sizeMult = 1, timidness = 1, commitment = 1, pursuitRange = 120, aggroMult = 1, targetNearPlayerBias = 0 },
@@ -88,6 +93,7 @@ local EcologyConfig = {
 		SPAWN_TOO_CLOSE_WILD = "SPAWN_TOO_CLOSE_WILD",
 		SPAWN_CHUNK_CAP = "SPAWN_CHUNK_CAP",
 		SPAWN_TERRAIN = "SPAWN_TERRAIN",
+		SPAWN_TOO_FAR_PLAYER = "SPAWN_TOO_FAR_PLAYER",
 		ECOLOGY_BLOCKED = "ECOLOGY_BLOCKED",
 	},
 }

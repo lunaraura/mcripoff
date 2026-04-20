@@ -20,12 +20,41 @@ function SpawnService.new(worldService, creatureService)
 		worldService = worldService,
 		creatureService = creatureService,
 		timer = 0,
-		interval = 1.5,
+		interval = tonumber(settings.spawnAttemptInterval) or 1.0,
 		maxWildBase = 10,
 		maxWildPerPlayer = 8,
 		spawnSettings = settings,
 		lastRejection = nil,
+		rejectionCounts = {},
+		lastDebugLogAt = 0,
+		lastSpawnDebug = nil,
 	}, SpawnService)
+end
+
+function SpawnService:noteRejection(reason)
+	if not reason then return end
+	self.lastRejection = reason
+	self.rejectionCounts[reason] = (self.rejectionCounts[reason] or 0) + 1
+end
+
+function SpawnService:emitDebugSummary(players, candidatesCount)
+	if self.spawnSettings.debugLogging ~= true then return end
+	if (self.worldService.time - (self.lastDebugLogAt or 0)) < (tonumber(self.spawnSettings.debugLogInterval) or 8) then return end
+	self.lastDebugLogAt = self.worldService.time
+	local pieces = {}
+	for reason, count in pairs(self.rejectionCounts) do
+		table.insert(pieces, string.format("%s=%d", tostring(reason), tonumber(count) or 0))
+	end
+	table.sort(pieces)
+	local summary = #pieces > 0 and table.concat(pieces, "  ") or "none"
+	print(string.format("[SpawnDebug] t=%.1f players=%d wildAlive=%d candidates=%d rejections: %s",
+		self.worldService.time,
+		#players,
+		self:getWildAliveCount(),
+		tonumber(candidatesCount) or 0,
+		summary
+	))
+	self.rejectionCounts = {}
 end
 
 function SpawnService:getPartyAverageLevel(player)
@@ -66,18 +95,24 @@ function SpawnService:getAllCandidateSpawnPoints(players)
 			for _, point in ipairs(chunk.spawnPoints or {}) do
 				local cellOk = point.terrainClass == "ground"
 				if not cellOk then
-					self.lastRejection = EcologyRules.Reason.SPAWN_TERRAIN
+					self:noteRejection(EcologyRules.Reason.SPAWN_TERRAIN)
 				else
-					local nearPlayer = false
+					local nearestPlayerDistance = math.huge
 					for _, player in ipairs(players) do
 						local root = player.Character and player.Character.PrimaryPart
-						if root and (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(point.x, 0, point.z)).Magnitude < (settings.noSpawnInnerRadius or 55) then
-							nearPlayer = true
-							break
+						if root then
+							local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(point.x, 0, point.z)).Magnitude
+							if d < nearestPlayerDistance then
+								nearestPlayerDistance = d
+							end
 						end
 					end
-					if nearPlayer then
-						self.lastRejection = EcologyRules.Reason.SPAWN_TOO_CLOSE_PLAYER
+					local minDistance = settings.noSpawnInnerRadius or 55
+					local maxVisibleDistance = settings.visibleSpawnMaxDistance or 220
+					if nearestPlayerDistance < minDistance then
+						self:noteRejection(EcologyRules.Reason.SPAWN_TOO_CLOSE_PLAYER)
+					elseif nearestPlayerDistance > maxVisibleDistance then
+						self:noteRejection(EcologyRules.Reason.SPAWN_TOO_FAR_PLAYER)
 					else
 						local nearWild = false
 						for _, c in ipairs(self.worldService.creatures) do
@@ -87,15 +122,23 @@ function SpawnService:getAllCandidateSpawnPoints(players)
 							end
 						end
 						if nearWild then
-							self.lastRejection = EcologyRules.Reason.SPAWN_TOO_CLOSE_WILD
+							self:noteRejection(EcologyRules.Reason.SPAWN_TOO_CLOSE_WILD)
 						else
-							table.insert(points, { point = point, chunk = chunk, score = math.max(0.05, 1 + (point.levelBias or 0) * 0.35) })
+							local preferredDistance = tonumber(settings.preferredSpawnDistance) or 130
+							local distanceBias = 1 - math.clamp(math.abs(nearestPlayerDistance - preferredDistance) / math.max(20, maxVisibleDistance), 0, 0.9)
+							local score = math.max(0.05, (1 + (point.levelBias or 0) * 0.35) * (0.35 + distanceBias))
+							table.insert(points, {
+								point = point,
+								chunk = chunk,
+								score = score,
+								nearestPlayerDistance = nearestPlayerDistance,
+							})
 						end
 					end
 				end
 			end
 		else
-			self.lastRejection = EcologyRules.Reason.SPAWN_CHUNK_CAP
+			self:noteRejection(EcologyRules.Reason.SPAWN_CHUNK_CAP)
 		end
 	end
 	return points
@@ -116,6 +159,7 @@ end
 function SpawnService:cleanupDistantUnengagedWilds(players)
 	local settings = self.spawnSettings
 	local kept = {}
+	local removedCount = 0
 	for _, c in ipairs(self.worldService.creatures) do
 		local remove = false
 		if c.mode == "wild" and c.alive then
@@ -132,11 +176,15 @@ function SpawnService:cleanupDistantUnengagedWilds(players)
 		if remove then
 			self.worldService.creaturesById[c.id] = nil
 			if c.model then c.model:Destroy() end
+			removedCount += 1
 		else
 			table.insert(kept, c)
 		end
 	end
 	self.worldService.creatures = kept
+	if removedCount > 0 and self.spawnSettings.debugLogging == true then
+		print(string.format("[SpawnDebug] cleanup removed distant wilds: %d", removedCount))
+	end
 end
 
 function SpawnService:pickWeightedSpecies(spawnWeights)
@@ -165,7 +213,11 @@ function SpawnService:update(dt)
 	local players = Players:GetPlayers()
 	if #players == 0 then return end
 	self:cleanupDistantUnengagedWilds(players)
-	if self:getWildAliveCount() >= self:getMaxWildCap(#players) then return end
+	if self:getWildAliveCount() >= self:getMaxWildCap(#players) then
+		self:noteRejection("GLOBAL_WILD_CAP_REACHED")
+		self:emitDebugSummary(players, 0)
+		return
+	end
 
 	for _, player in ipairs(players) do
 		local root = player.Character and player.Character.PrimaryPart
@@ -173,7 +225,10 @@ function SpawnService:update(dt)
 	end
 
 	local candidates = self:getAllCandidateSpawnPoints(players)
-	if #candidates == 0 then return end
+	if #candidates == 0 then
+		self:emitDebugSummary(players, 0)
+		return
+	end
 	local picked = self:pickCandidate(candidates)
 	local point = picked.point
 	local tierKey, tierCfg = EcologyRules.pickTier()
@@ -201,14 +256,49 @@ function SpawnService:update(dt)
 		y = point.y or 0,
 		level = level,
 	}
-	local creature = self.creatureService:spawnFromSpawnPayload(speciesKey, {
-		team = profile.team,
-		x = point.x,
-		z = point.z,
-		opts = payload,
-	})
+	local ok, creature = pcall(function()
+		return self.creatureService:spawnFromSpawnPayload(speciesKey, {
+			team = profile.team,
+			x = point.x,
+			z = point.z,
+			opts = payload,
+		})
+	end)
+	if not ok or not creature then
+		self:noteRejection("RUNTIME_CREATURE_CREATE_FAILED")
+		if self.spawnSettings.debugLogging == true then
+			warn(string.format("[SpawnDebug] spawn runtime failure species=%s biome=%s err=%s", tostring(speciesKey), tostring(point.biomeKey), tostring(creature)))
+		end
+		self:emitDebugSummary(players, #candidates)
+		return
+	end
 	creature.spawnTime = self.worldService.time
 	creature.spawnChunkKey = picked.chunk and picked.chunk.key or nil
+	if not (creature.model and creature.model.Parent) then
+		self:noteRejection("MODEL_CREATION_FAILED")
+		if self.spawnSettings.debugLogging == true then
+			warn(string.format("[SpawnDebug] model missing after spawn creatureId=%s species=%s", tostring(creature.id), tostring(creature.speciesKey)))
+		end
+	else
+		self.lastSpawnDebug = {
+			creatureId = creature.id,
+			speciesKey = creature.speciesKey,
+			nearestPlayerDistance = picked.nearestPlayerDistance,
+			chunkKey = creature.spawnChunkKey,
+			pos = creature.pos,
+		}
+		if self.spawnSettings.debugLogging == true then
+			print(string.format(
+				"[SpawnDebug] spawned wild id=%d species=%s chunk=%s dist=%.1f pos=(%.1f,%.1f,%.1f)",
+				tonumber(creature.id) or -1,
+				tostring(creature.speciesKey),
+				tostring(creature.spawnChunkKey),
+				tonumber(picked.nearestPlayerDistance) or -1,
+				creature.pos.X, creature.pos.Y, creature.pos.Z
+			))
+		end
+	end
+	self:emitDebugSummary(players, #candidates)
 end
 
 return SpawnService
