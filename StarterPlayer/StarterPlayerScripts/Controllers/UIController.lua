@@ -8,6 +8,7 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
+local BuildableConfig = require(Config:WaitForChild("BuildableConfig"))
 local Items = Shared:WaitForChild("Items")
 local ItemUseRules = require(Items:WaitForChild("ItemUseRules"))
 
@@ -55,6 +56,10 @@ function UIController:setUtilityPanelsVisibility(opts)
 	opts = opts or {}
 	self.optionsOpen = opts.options == true
 	self.managementState.open = opts.management == true
+	self.buildMenuOpen = opts.buildMenu == true
+	if self.optionsOpen or self.managementState.open or self.buildMenuOpen then
+		self.menuDropdownOpen = false
+	end
 	self:refreshUiMode()
 	if self.managementState.open then
 		self.managementState.layer = self.managementState.layer or "root"
@@ -92,21 +97,22 @@ end
 function UIController:refreshUiMode()
 	local inGameplay = self.uiMode == UI_MODE_GAMEPLAY
 	local showGameplay = inGameplay and (not self.hiddenUi)
+	local sections = self.sectionVisibility or {}
 	local starterPanel = getStarterPanel()
 	if starterPanel then
 		starterPanel.Visible = (self.uiMode == UI_MODE_STARTER)
 	end
 	if self.mainGameplayHud then
-		self.mainGameplayHud.Visible = showGameplay
+		self.mainGameplayHud.Visible = showGameplay and sections.petCommands ~= false and self.commandPanelOpen == true
 	end
 	if self.alwaysObjectiveLine then
-		self.alwaysObjectiveLine.Visible = inGameplay
+		self.alwaysObjectiveLine.Visible = showGameplay and sections.objectiveLine ~= false
 	end
 	if self.buildToolPanel then
-		self.buildToolPanel.Visible = showGameplay
+		self.buildToolPanel.Visible = showGameplay and sections.utilityMenu ~= false and self.buildMenuOpen == true
 	end
 	if self.itemBarPanel then
-		self.itemBarPanel.Visible = showGameplay
+		self.itemBarPanel.Visible = showGameplay and sections.itemBar ~= false
 	end
 	if self.optionsPanel then
 		self.optionsPanel.Visible = showGameplay and self.optionsOpen == true
@@ -115,8 +121,17 @@ function UIController:refreshUiMode()
 		self.managementPanel.Visible = showGameplay and self.managementState.open == true
 	end
 	if self.hideUiButton then
-		self.hideUiButton.Text = self.hiddenUi and "Show UI" or "Hide UI"
+		self.hideUiButton.Text = self.visibilityManagerOpen and "UI ▴" or "UI ▾"
 		self.hideUiButton.Visible = inGameplay
+	end
+	if self.visibilityManagerPanel then
+		self.visibilityManagerPanel.Visible = inGameplay and self.visibilityManagerOpen == true
+	end
+	if self.menuLauncherButton then
+		self.menuLauncherButton.Visible = inGameplay and (sections.utilityMenu ~= false)
+	end
+	if self.menuDropdown then
+		self.menuDropdown.Visible = inGameplay and (sections.utilityMenu ~= false) and self.menuDropdownOpen == true and (not self.hiddenUi)
 	end
 	if self.mobilePlaceBuildButton then
 		local buildMode = self.build and self.build.buildMode
@@ -131,6 +146,7 @@ function UIController:openOptionsFromUtilityPanel()
 	self:setUtilityPanelsVisibility({
 		options = true,
 		management = false,
+		buildMenu = false,
 	})
 end
 
@@ -138,6 +154,7 @@ function UIController:openCreatureManagementFromUtilityPanel()
 	self:setUtilityPanelsVisibility({
 		options = false,
 		management = true,
+		buildMenu = false,
 	})
 	self.managementState.layer = "root"
 	self:refreshCreatureManagementMenu()
@@ -176,6 +193,16 @@ function UIController.new(buildController, itemController, partyController, comm
 		starterChosen = false,
 		optionsOpen = false,
 		hiddenUi = false,
+		menuDropdownOpen = false,
+		visibilityManagerOpen = false,
+		commandPanelOpen = false,
+		buildMenuOpen = false,
+		sectionVisibility = {
+			itemBar = true,
+			petCommands = false,
+			utilityMenu = true,
+			objectiveLine = true,
+		},
 		hotbarSlots = {},
 		hotbarStatusLabel = nil,
 		activeCommand = "follow",
@@ -203,6 +230,7 @@ function UIController:bind()
 	end)
 	self.petHudUpdate.OnClientEvent:Connect(function(payload)
 		local meta = payload and payload.meta or {}
+		local wasStarterChosen = self.starterChosen == true
 		self.activeSlot = tonumber(meta.activeSlot) or self.activeSlot
 		self.controlMode = tostring(meta.controlMode or self.controlMode)
 		self.stance = tostring(meta.stance or self.stance)
@@ -210,6 +238,9 @@ function UIController:bind()
 			self.starterChosen = meta.starterChosen == true
 		end
 		self:setUiMode(self.starterChosen and UI_MODE_GAMEPLAY or UI_MODE_STARTER)
+		if (not wasStarterChosen) and self.starterChosen == true then
+			self:applyDefaultUiVisibility()
+		end
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
 		self.managementData = meta.management or self.managementData
@@ -278,25 +309,27 @@ function UIController:buildUi()
 	gui.Parent = player:WaitForChild("PlayerGui")
 	self.gui = gui
 
-	-- Hide UI button
+	-- UI visibility manager button
 	local hideBtn = Instance.new("TextButton")
 	hideBtn.Name = "HideUIButton"
 	hideBtn.AnchorPoint = Vector2.new(0, 0)
-	hideBtn.Size = UDim2.new(0.14, 0, 0.045, 0)
+	hideBtn.Size = UDim2.new(0, 88, 0, 30)
 	hideBtn.Position = UDim2.new(0.015, 0, 0.015, 0)
 	hideBtn.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	hideBtn.TextColor3 = Color3.fromRGB(235, 245, 255)
 	hideBtn.Font = Enum.Font.GothamBold
 	hideBtn.TextSize = 12
-	hideBtn.Text = "Hide UI"
+	hideBtn.Text = "UI ▾"
 	hideBtn.Parent = gui
 	self.hideUiButton = hideBtn
-	attachSizeConstraint(hideBtn, 88, 28, 180, 44)
+	attachSizeConstraint(hideBtn, 80, 28, 120, 40)
 
 	hideBtn.MouseButton1Click:Connect(function()
-		self.hiddenUi = not self.hiddenUi
+		self.visibilityManagerOpen = not self.visibilityManagerOpen
 		self:refreshUiMode()
 	end)
+	self:buildVisibilityManager(gui)
+	self:buildCompactMenu(gui)
 
 		-- Main gameplay HUD (stance controls + ability hotbar only)
 	local activeHud = Instance.new("Frame")
@@ -361,6 +394,161 @@ function UIController:buildUi()
 	self:fitPanelToChildren(self.itemBarPanel, 72, 140, 10)
 	self:fitPanelToChildren(self.buildToolPanel, 220, 520, 12)
 	self:fitPanelToChildren(self.optionsPanel, 150, 340, 8)
+end
+
+function UIController:applyDefaultUiVisibility()
+	self.hiddenUi = false
+	self.menuDropdownOpen = false
+	self.visibilityManagerOpen = false
+	self.commandPanelOpen = false
+	self.buildMenuOpen = false
+	self.optionsOpen = false
+	self.managementState.open = false
+	self.sectionVisibility.itemBar = true
+	self.sectionVisibility.petCommands = false
+	self.sectionVisibility.utilityMenu = true
+	self.sectionVisibility.objectiveLine = true
+	self:refreshUiMode()
+end
+
+function UIController:buildCompactMenu(gui)
+	local menuButton = Instance.new("TextButton")
+	menuButton.Name = "MenuLauncherButton"
+	menuButton.AnchorPoint = Vector2.new(1, 0)
+	menuButton.Size = UDim2.fromOffset(96, 30)
+	menuButton.Position = UDim2.new(0.985, 0, 0.015, 0)
+	menuButton.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+	menuButton.TextColor3 = Color3.fromRGB(235, 245, 255)
+	menuButton.Font = Enum.Font.GothamBold
+	menuButton.TextSize = 12
+	menuButton.Text = "Menu ▾"
+	menuButton.ZIndex = 50
+	menuButton.Parent = gui
+	self.menuLauncherButton = menuButton
+
+	local dropdown = Instance.new("Frame")
+	dropdown.Name = "MenuDropdown"
+	dropdown.AnchorPoint = Vector2.new(1, 0)
+	dropdown.Size = UDim2.fromOffset(200, 150)
+	dropdown.Position = UDim2.new(0.985, 0, 0.055, 0)
+	dropdown.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+	dropdown.BackgroundTransparency = 0.08
+	dropdown.ZIndex = 50
+	dropdown.Visible = false
+	dropdown.Parent = gui
+	self.menuDropdown = dropdown
+
+	local function addMenuButton(y, label, fn)
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1, -12, 0, 26)
+		btn.Position = UDim2.fromOffset(6, y)
+		btn.BackgroundColor3 = Color3.fromRGB(38, 44, 58)
+		btn.TextColor3 = Color3.fromRGB(235, 245, 255)
+		btn.Font = Enum.Font.Gotham
+		btn.TextSize = 12
+		btn.TextXAlignment = Enum.TextXAlignment.Left
+		btn.Text = "  " .. label
+		btn.ZIndex = 51
+		btn.Parent = dropdown
+		btn.MouseButton1Click:Connect(fn)
+		return btn
+	end
+
+	menuButton.MouseButton1Click:Connect(function()
+		self.menuDropdownOpen = not self.menuDropdownOpen
+		menuButton.Text = self.menuDropdownOpen and "Menu ▴" or "Menu ▾"
+		self:refreshUiMode()
+	end)
+
+	addMenuButton(6, "Build / Action", function()
+		self.buildMenuOpen = not self.buildMenuOpen
+		self.optionsOpen = false
+		self.managementState.open = false
+		self.menuDropdownOpen = false
+		menuButton.Text = "Menu ▾"
+		self:refreshUiMode()
+	end)
+	addMenuButton(36, "Creature Management", function()
+		self.menuDropdownOpen = false
+		menuButton.Text = "Menu ▾"
+		self:openCreatureManagementFromUtilityPanel()
+	end)
+	addMenuButton(66, "Pet Commands", function()
+		self.commandPanelOpen = not self.commandPanelOpen
+		self.menuDropdownOpen = false
+		menuButton.Text = "Menu ▾"
+		self:refreshUiMode()
+	end)
+	addMenuButton(96, "Options", function()
+		self.menuDropdownOpen = false
+		menuButton.Text = "Menu ▾"
+		self:openOptionsFromUtilityPanel()
+	end)
+end
+
+function UIController:buildVisibilityManager(gui)
+	local panel = Instance.new("Frame")
+	panel.Name = "UIVisibilityManager"
+	panel.AnchorPoint = Vector2.new(0, 0)
+	panel.Size = UDim2.fromOffset(220, 188)
+	panel.Position = UDim2.new(0.015, 0, 0.055, 0)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+	panel.BackgroundTransparency = 0.1
+	panel.ZIndex = 60
+	panel.Visible = false
+	panel.Parent = gui
+	self.visibilityManagerPanel = panel
+
+	local function addToggle(y, text, onClick)
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1, -12, 0, 24)
+		btn.Position = UDim2.fromOffset(6, y)
+		btn.BackgroundColor3 = Color3.fromRGB(38, 44, 58)
+		btn.TextColor3 = Color3.fromRGB(235, 245, 255)
+		btn.Font = Enum.Font.Gotham
+		btn.TextSize = 12
+		btn.TextXAlignment = Enum.TextXAlignment.Left
+		btn.Text = "  " .. text
+		btn.ZIndex = 61
+		btn.Parent = panel
+		btn.MouseButton1Click:Connect(onClick)
+	end
+
+	addToggle(8, "Toggle Item Bar", function()
+		self.sectionVisibility.itemBar = not (self.sectionVisibility.itemBar ~= false)
+		self:refreshUiMode()
+	end)
+	addToggle(36, "Toggle Pet Commands", function()
+		self.sectionVisibility.petCommands = not (self.sectionVisibility.petCommands ~= false)
+		if self.sectionVisibility.petCommands == false then
+			self.commandPanelOpen = false
+		end
+		self:refreshUiMode()
+	end)
+	addToggle(64, "Toggle Utility Menu", function()
+		self.sectionVisibility.utilityMenu = not (self.sectionVisibility.utilityMenu ~= false)
+		if self.sectionVisibility.utilityMenu == false then
+			self.menuDropdownOpen = false
+			self.buildMenuOpen = false
+		end
+		self:refreshUiMode()
+	end)
+	addToggle(92, "Toggle Objective Line", function()
+		self.sectionVisibility.objectiveLine = not (self.sectionVisibility.objectiveLine ~= false)
+		self:refreshUiMode()
+	end)
+	addToggle(124, "Hide All", function()
+		self.hiddenUi = true
+		self.menuDropdownOpen = false
+		self.buildMenuOpen = false
+		self.commandPanelOpen = false
+		self.optionsOpen = false
+		self.managementState.open = false
+		self:refreshUiMode()
+	end)
+	addToggle(152, "Show Default", function()
+		self:applyDefaultUiVisibility()
+	end)
 end
 
 function UIController:toggleCommandPanelMode()
@@ -546,7 +734,7 @@ function UIController:buildOptionsMenu(gui)
 	panel.Position = UDim2.new(0.99, 0, 0.02, 0)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
-	panel.ZIndex = 40
+	panel.ZIndex = 90
 	panel.Visible = false
 	panel.Parent = gui
 	self.optionsPanel = panel
@@ -554,15 +742,26 @@ function UIController:buildOptionsMenu(gui)
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Text = "Options (O to toggle)"
+	title.Text = "Options"
 	title.Font = Enum.Font.GothamBold
 	title.TextSize = 14
 	title.TextColor3 = Color3.fromRGB(235, 245, 255)
 	title.Size = UDim2.new(1, -12, 0, 22)
 	title.Position = UDim2.fromOffset(8, 4)
 	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.ZIndex = 41
+	title.ZIndex = 91
 	title.Parent = panel
+
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.fromOffset(74, 22)
+	closeBtn.Position = UDim2.new(1, -82, 0, 4)
+	closeBtn.Text = "Close"
+	closeBtn.ZIndex = 91
+	closeBtn.Parent = panel
+	closeBtn.MouseButton1Click:Connect(function()
+		self.optionsOpen = false
+		self:refreshUiMode()
+	end)
 
 	self:createOptionRow(panel, 1, "RadiusChunks", "Chunk Radius", 2, 31, 1)
 	self:createOptionRow(panel, 2, "PetLeashDistance", "Pet Leash", 35, 160, 5)
@@ -579,7 +778,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	text.TextXAlignment = Enum.TextXAlignment.Left
 	text.Size = UDim2.fromOffset(160, 22)
 	text.Position = UDim2.fromOffset(10, y)
-	text.ZIndex = 41
+	text.ZIndex = 91
 	text.Parent = panel
 
 	local minus = Instance.new("TextButton")
@@ -588,7 +787,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	minus.TextSize = 16
 	minus.Size = UDim2.fromOffset(26, 22)
 	minus.Position = UDim2.fromOffset(172, y)
-	minus.ZIndex = 41
+	minus.ZIndex = 91
 	minus.Parent = panel
 
 	local plus = Instance.new("TextButton")
@@ -597,7 +796,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	plus.TextSize = 16
 	plus.Size = UDim2.fromOffset(26, 22)
 	plus.Position = UDim2.fromOffset(238, y)
-	plus.ZIndex = 41
+	plus.ZIndex = 91
 	plus.Parent = panel
 
 	local valueLabel = Instance.new("TextLabel")
@@ -608,7 +807,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	valueLabel.TextXAlignment = Enum.TextXAlignment.Center
 	valueLabel.Size = UDim2.fromOffset(36, 22)
 	valueLabel.Position = UDim2.fromOffset(200, y)
-	valueLabel.ZIndex = 41
+	valueLabel.ZIndex = 91
 	valueLabel.Parent = panel
 
 	local function refresh()
@@ -634,10 +833,11 @@ end
 function UIController:toggleOptionsMenu()
 	if self.uiMode ~= UI_MODE_GAMEPLAY then return end
 	if not self.optionsPanel then return end
-	local nextVisible = not self.optionsPanel.Visible
+	local nextVisible = not self.optionsOpen
 	self:setUtilityPanelsVisibility({
 		options = nextVisible,
 		management = false,
+		buildMenu = false,
 	})
 end
 
