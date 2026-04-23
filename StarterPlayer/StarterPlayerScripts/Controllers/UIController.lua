@@ -140,6 +140,9 @@ function UIController:refreshUiMode()
 	if self.objectiveToastLabel and not showGameplay then
 		self.objectiveToastLabel.Visible = false
 	end
+	if self.contextActionStrip then
+		self.contextActionStrip.Visible = showGameplay and self.contextActionState and self.contextActionState.visible == true
+	end
 end
 
 function UIController:openOptionsFromUtilityPanel()
@@ -218,6 +221,7 @@ function UIController.new(buildController, itemController, partyController, comm
 		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
 		gamePhase = "intro_scene",
 		introSequenceRunning = false,
+		contextActionState = { visible = false, label = "", detail = "" },
 	}, UIController)
 end
 
@@ -397,6 +401,7 @@ function UIController:buildUi()
 	self:buildOptionsMenu(gui)
 	self:buildBuildAndToolMenu(gui)
 	self:buildItemBar(gui)
+	self:buildContextActionStrip(gui)
 	self:buildCreatureManagementMenu(gui)
 
 	-- utility/build menu should be top-right compact
@@ -1379,6 +1384,95 @@ function UIController:buildItemBar(gui)
 			task.wait(0.2)
 		end
 	end)
+end
+
+function UIController:buildContextActionStrip(gui)
+	local panel = Instance.new("Frame")
+	panel.Name = "ContextActionStrip"
+	panel.AnchorPoint = Vector2.new(0.5, 1)
+	panel.Size = UDim2.fromOffset(420, 60)
+	panel.Position = UDim2.new(0.5, 0, 0.90, 0)
+	panel.BackgroundColor3 = Color3.fromRGB(22, 28, 36)
+	panel.BackgroundTransparency = 0.14
+	panel.Visible = false
+	panel.Parent = gui
+	panel.ZIndex = 45
+	self.contextActionStrip = panel
+	attachSizeConstraint(panel, 260, 50, 520, 80)
+
+	local title = Instance.new("TextLabel")
+	title.Name = "ActionTitle"
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, -138, 0, 24)
+	title.Position = UDim2.fromOffset(10, 4)
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 14
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextColor3 = Color3.fromRGB(236, 244, 255)
+	title.Text = "Context Action"
+	title.Parent = panel
+	title.ZIndex = 46
+	self.contextActionTitle = title
+
+	local detail = Instance.new("TextLabel")
+	detail.Name = "ActionDetail"
+	detail.BackgroundTransparency = 1
+	detail.Size = UDim2.new(1, -138, 0, 24)
+	detail.Position = UDim2.fromOffset(10, 28)
+	detail.Font = Enum.Font.Code
+	detail.TextSize = 12
+	detail.TextXAlignment = Enum.TextXAlignment.Left
+	detail.TextColor3 = Color3.fromRGB(202, 220, 238)
+	detail.Text = ""
+	detail.Parent = panel
+	detail.ZIndex = 46
+	self.contextActionDetail = detail
+
+	local button = Instance.new("TextButton")
+	button.Name = "ActionButton"
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Size = UDim2.fromOffset(120, 40)
+	button.Position = UDim2.new(1, -8, 0.5, 0)
+	button.BackgroundColor3 = Color3.fromRGB(58, 96, 78)
+	button.TextColor3 = Color3.fromRGB(236, 247, 240)
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 14
+	button.Text = "Interact"
+	button.Parent = panel
+	button.ZIndex = 46
+	button.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:handlePrimaryAction()
+		end
+	end)
+	self.contextActionButton = button
+
+	task.spawn(function()
+		while panel.Parent do
+			self:refreshContextActionStrip()
+			task.wait(0.12)
+		end
+	end)
+end
+
+function UIController:refreshContextActionStrip()
+	if not (self.build and self.contextActionStrip) then return end
+	local ctx = self.build.getContextActionState and self.build:getContextActionState() or { visible = false }
+	self.contextActionState = {
+		visible = ctx.visible == true,
+		label = tostring(ctx.label or ""),
+		detail = tostring(ctx.detail or ""),
+	}
+	if self.contextActionTitle then
+		self.contextActionTitle.Text = self.contextActionState.label ~= "" and self.contextActionState.label or "Context Action"
+	end
+	if self.contextActionDetail then
+		self.contextActionDetail.Text = self.contextActionState.detail or ""
+	end
+	if self.contextActionButton then
+		self.contextActionButton.Text = (ctx.kind == "tame" and "Capture") or "Harvest"
+	end
+	self:refreshUiMode()
 end
 
 function UIController:updatePetHud(payload)

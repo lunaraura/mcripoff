@@ -35,6 +35,12 @@ function BuildController.new()
 		lastInteractionHint = "",
 		lastPromptUpdate = 0,
 		promptGui = nil,
+		contextActionState = {
+			visible = false,
+			label = "",
+			detail = "",
+			kind = nil,
+		},
 	}, BuildController)
 	self:createInteractionPrompt()
 	return self
@@ -145,19 +151,23 @@ function BuildController:getPromptText()
 	self.currentTargetType = targetType
 	
 	if not target then
+		self.contextActionState = { visible = false, label = "", detail = "", kind = nil }
 		return ""
 	end
 	
 	local toolDef = HarvestConfig.getToolDef(self.selectedTool)
 	if not toolDef then
+		self.contextActionState = { visible = false, label = "", detail = "", kind = nil }
 		return ""
 	end
 	if not self:isFeatureUnlockedForTool(self.selectedTool) then
+		self.contextActionState = { visible = false, label = "", detail = "", kind = nil }
 		return "Locked: complete objective to unlock tool"
 	end
 	
 	-- Generate context-appropriate prompt
 	if targetType == "node" then
+		self.contextActionState = { visible = false, label = "", detail = "", kind = nil }
 		local nodeType = target:GetAttribute("NodeType") or target.Name:lower()
 		local obstacleDef = HarvestConfig.getObstacleDef(nodeType)
 		
@@ -168,6 +178,7 @@ function BuildController:getPromptText()
 		end
 		
 	elseif targetType == "berry_bush" then
+		self.contextActionState = { visible = false, label = "", detail = "", kind = nil }
 		local berryType = target.Name:match("BerryBush_(.+)") or "berry"
 		
 		if toolDef.mode == "gather_tool" then
@@ -179,11 +190,24 @@ function BuildController:getPromptText()
 		local player = Players.LocalPlayer
 		local lureCount = tonumber(player:GetAttribute("Mat_lure_berry")) or 0
 		if lureCount > 0 then
+			self.contextActionState = {
+				visible = true,
+				label = "Capture (Lure Berry)",
+				detail = string.format("Lure berries: %d · Press [E] or click", lureCount),
+				kind = "tame",
+			}
 			return "[E] Use lure berry / Harvest"
 		end
+		self.contextActionState = {
+			visible = true,
+			label = "Harvest Defeated Wild",
+			detail = "Need 1 lure berry to capture · Press [E] or click",
+			kind = "harvest_only",
+		}
 		return "[E] Harvest (need lure berry to tame)"
 	end
 	
+	self.contextActionState = { visible = false, label = "", detail = "", kind = nil }
 	return "[E] Interact"
 end
 
@@ -197,6 +221,10 @@ function BuildController:updateInteractionPrompt()
 		self.lastInteractionHint = ""
 	end
 	return
+end
+
+function BuildController:getContextActionState()
+	return self.contextActionState or { visible = false, label = "", detail = "", kind = nil }
 end
 
 function BuildController:selectTool(toolKey)
