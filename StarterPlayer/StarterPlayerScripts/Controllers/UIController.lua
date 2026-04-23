@@ -170,6 +170,8 @@ function UIController.new(buildController, itemController, partyController, comm
 		requestContextAction = remotes:WaitForChild("RequestContextAction"),
 		requestCreatureManageRemote = remotes:WaitForChild("RequestCreatureManage"),
 		creatureManageResultRemote = remotes:WaitForChild("CreatureManageResult"),
+		gamePhaseUpdate = remotes:WaitForChild("GamePhaseUpdate"),
+		requestIntroComplete = remotes:WaitForChild("RequestIntroComplete"),
 		build = buildController,
 		items = itemController,
 		party = partyController,
@@ -214,6 +216,8 @@ function UIController.new(buildController, itemController, partyController, comm
 		lastObjectiveToastAt = 0,
 		itemBarWindowStart = 1,
 		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
+		gamePhase = "intro_scene",
+		introSequenceRunning = false,
 	}, UIController)
 end
 
@@ -237,6 +241,9 @@ function UIController:bind()
 		if meta.starterChosen ~= nil then
 			self.starterChosen = meta.starterChosen == true
 		end
+		if meta.gamePhase then
+			self:setGamePhase(meta.gamePhase)
+		end
 		self:setUiMode(self.starterChosen and UI_MODE_GAMEPLAY or UI_MODE_STARTER)
 		if (not wasStarterChosen) and self.starterChosen == true then
 			self:applyDefaultUiVisibility()
@@ -252,6 +259,9 @@ function UIController:bind()
 		self:refreshCreatureManagementMenu()
 		
 	end)
+	self.gamePhaseUpdate.OnClientEvent:Connect(function(payload)
+		self:setGamePhase(payload and payload.phase)
+	end)
 	self.creatureManageResultRemote.OnClientEvent:Connect(function(payload)
 		if payload and payload.reason then
 			local color = payload.ok and "#a8ffd7" or "#ffb3b3"
@@ -266,6 +276,12 @@ function UIController:bind()
 	end)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
+		if self.gamePhase == "intro_scene" then
+			if input.KeyCode == Enum.KeyCode.Space and self.requestIntroComplete then
+				self.requestIntroComplete:FireServer({ skipped = true })
+			end
+			return
+		end
 		if input.KeyCode == Enum.KeyCode.O then
 			self:toggleOptionsMenu()
 		elseif input.KeyCode == Enum.KeyCode.M then
@@ -308,6 +324,7 @@ function UIController:buildUi()
 	gui.IgnoreGuiInset = false
 	gui.Parent = player:WaitForChild("PlayerGui")
 	self.gui = gui
+	self:buildIntroOverlay(gui)
 
 	-- UI visibility manager button
 	local hideBtn = Instance.new("TextButton")
@@ -548,6 +565,81 @@ function UIController:buildVisibilityManager(gui)
 	end)
 	addToggle(152, "Show Default", function()
 		self:applyDefaultUiVisibility()
+	end)
+end
+
+function UIController:setGamePhase(phase)
+	self.gamePhase = tostring(phase or "intro_scene")
+	if self.introOverlay then
+		self.introOverlay.Visible = self.gamePhase == "intro_scene"
+	end
+	if self.gamePhase == "intro_scene" then
+		self:runIntroSequence()
+	end
+end
+
+function UIController:buildIntroOverlay(gui)
+	local overlay = Instance.new("Frame")
+	overlay.Name = "IntroOverlay"
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.BackgroundColor3 = Color3.fromRGB(8, 10, 14)
+	overlay.BackgroundTransparency = 0.15
+	overlay.ZIndex = 120
+	overlay.Visible = false
+	overlay.Parent = gui
+	self.introOverlay = overlay
+
+	local message = Instance.new("TextLabel")
+	message.Name = "IntroMessage"
+	message.AnchorPoint = Vector2.new(0.5, 0.5)
+	message.Position = UDim2.fromScale(0.5, 0.45)
+	message.Size = UDim2.fromOffset(580, 120)
+	message.BackgroundTransparency = 1
+	message.TextColor3 = Color3.fromRGB(232, 240, 255)
+	message.Font = Enum.Font.GothamBold
+	message.TextSize = 24
+	message.TextWrapped = true
+	message.ZIndex = 121
+	message.Text = "..."
+	message.Parent = overlay
+	self.introMessageLabel = message
+
+	local skipHint = Instance.new("TextButton")
+	skipHint.AnchorPoint = Vector2.new(0.5, 0)
+	skipHint.Position = UDim2.fromScale(0.5, 0.62)
+	skipHint.Size = UDim2.fromOffset(200, 30)
+	skipHint.BackgroundColor3 = Color3.fromRGB(30, 38, 52)
+	skipHint.TextColor3 = Color3.fromRGB(220, 235, 255)
+	skipHint.Font = Enum.Font.Gotham
+	skipHint.TextSize = 14
+	skipHint.ZIndex = 121
+	skipHint.Text = "Skip Intro"
+	skipHint.Parent = overlay
+	skipHint.MouseButton1Click:Connect(function()
+		if self.requestIntroComplete then
+			self.requestIntroComplete:FireServer({ skipped = true })
+		end
+	end)
+end
+
+function UIController:runIntroSequence()
+	if self.introSequenceRunning or not self.introMessageLabel then return end
+	self.introSequenceRunning = true
+	local lines = {
+		"Welcome, tamer.",
+		"This island responds to patience and care.",
+		"Gather a few heal berries, then the wilds will awaken.",
+	}
+	task.spawn(function()
+		for _, line in ipairs(lines) do
+			if self.gamePhase ~= "intro_scene" then break end
+			self.introMessageLabel.Text = line
+			task.wait(1.8)
+		end
+		if self.gamePhase == "intro_scene" and self.requestIntroComplete then
+			self.requestIntroComplete:FireServer({ skipped = false })
+		end
+		self.introSequenceRunning = false
 	end)
 end
 

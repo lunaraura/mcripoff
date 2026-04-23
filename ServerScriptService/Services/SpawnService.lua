@@ -14,11 +14,12 @@ local ChunkSystem = require(script.Parent.Parent.Systems.ChunkSystem)
 local SpawnService = {}
 SpawnService.__index = SpawnService
 
-function SpawnService.new(worldService, creatureService)
+function SpawnService.new(worldService, creatureService, gamePhaseService)
 	local settings = EcologyRules.getSpawnSettings()
 	return setmetatable({
 		worldService = worldService,
 		creatureService = creatureService,
+		gamePhaseService = gamePhaseService,
 		timer = 0,
 		interval = tonumber(settings.spawnAttemptInterval) or 1.0,
 		maxWildBase = 10,
@@ -217,19 +218,25 @@ function SpawnService:update(dt)
 	self.timer = 0
 	local players = Players:GetPlayers()
 	if #players == 0 then return end
+	local spawnPlayers = (self.gamePhaseService and self.gamePhaseService:getSpawnEligiblePlayers(players)) or players
 	self:cleanupDistantUnengagedWilds(players)
-	if self:getWildAliveCount() >= self:getMaxWildCap(#players) then
+	if #spawnPlayers == 0 then
+		self:noteRejection("SPAWN_GATED_BY_PHASE")
+		self:emitDebugSummary(players, 0)
+		return
+	end
+	if self:getWildAliveCount() >= self:getMaxWildCap(#spawnPlayers) then
 		self:noteRejection("GLOBAL_WILD_CAP_REACHED")
 		self:emitDebugSummary(players, 0)
 		return
 	end
 
-	for _, player in ipairs(players) do
+	for _, player in ipairs(spawnPlayers) do
 		local root = player.Character and player.Character.PrimaryPart
 		if root then ChunkSystem.ensureLoaded(self.worldService, root.Position.X, root.Position.Z) end
 	end
 
-	local candidates = self:getAllCandidateSpawnPoints(players)
+	local candidates = self:getAllCandidateSpawnPoints(spawnPlayers)
 	if #candidates == 0 then
 		self:emitDebugSummary(players, 0)
 		return
@@ -248,7 +255,7 @@ function SpawnService:update(dt)
 	end
 	local speciesKey = self:pickWeightedSpecies(point.spawnWeights)
 	if not speciesKey then speciesKey = MathUtil.pickWeighted((BiomeConfig[point.biomeKey] or BiomeConfig.plains).spawns) end
-	local level = math.max(1, math.floor(self:getPartyAverageLevel(players[math.random(1, #players)]) * (1 + (point.levelBias or 0) * 0.45) + (math.random() * 2 - 1) * 0.8 + 0.5))
+	local level = math.max(1, math.floor(self:getPartyAverageLevel(spawnPlayers[math.random(1, #spawnPlayers)]) * (1 + (point.levelBias or 0) * 0.45) + (math.random() * 2 - 1) * 0.8 + 0.5))
 	if self.worldService:isNight() then
 		level += tonumber(self.spawnSettings.night and self.spawnSettings.night.levelBonus) or 0
 	end

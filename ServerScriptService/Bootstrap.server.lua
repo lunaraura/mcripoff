@@ -39,6 +39,8 @@ local remotes = {	RequestPetCommand = ensureRemote("RequestPetCommand"),
 	ItemUseResult = ensureRemote("ItemUseResult"),
 	RequestCreatureManage = ensureRemote("RequestCreatureManage"),
 	CreatureManageResult = ensureRemote("CreatureManageResult"),
+	GamePhaseUpdate = ensureRemote("GamePhaseUpdate"),
+	RequestIntroComplete = ensureRemote("RequestIntroComplete"),
 }
 
 local WorldService = require(Services:WaitForChild("WorldService"))
@@ -54,6 +56,7 @@ local MorphService = require(Services:WaitForChild("MorphService"))
 local PlayerDataService = require(Services:WaitForChild("PlayerDataService"))
 local BerryService = require(Services:WaitForChild("BerryService"))
 local ObjectiveService = require(Services:WaitForChild("ObjectiveService"))
+local GamePhaseService = require(Services:WaitForChild("GamePhaseService"))
 
 local playerDataService = PlayerDataService.new()
 local worldService = WorldService.new(remotes)
@@ -63,12 +66,13 @@ local creatureService = CreatureService.new(worldService, playerDataService)
 local effectService = EffectService.new(worldService)
 local combatService = CombatService.new(worldService, effectService)
 local aiService = AIService.new(worldService)
-local spawnService = SpawnService.new(worldService, creatureService)
 local harvestService = HarvestService.new(worldService, inventoryService)
 local buildService = BuildService.new(worldService, inventoryService)
 local morphService = MorphService.new(playerDataService, creatureService)
 local berryService = BerryService.new(worldService, inventoryService, creatureService, playerDataService)
 local objectiveService = ObjectiveService.new(playerDataService, inventoryService, worldService)
+local gamePhaseService = GamePhaseService.new(worldService, objectiveService, remotes)
+local spawnService = SpawnService.new(worldService, creatureService, gamePhaseService)
 harvestService:configure(playerDataService, creatureService, morphService)
 buildService:configureObjectiveService(objectiveService)
 combatService:configureProgression(playerDataService, morphService)
@@ -77,6 +81,9 @@ inventoryService:setGrantListener(function(player, reward)
 end)
 playerDataService:setOwnedLevelChangedListener(function(player, payload)
 	objectiveService:recordObjectiveEvent(player, "pet_level_reached", payload)
+end)
+objectiveService:addObjectiveClaimedListener(function(player)
+	gamePhaseService:onObjectiveProgress(player)
 end)
 local hudTimer = 0
 local hudReplicationCache = {}
@@ -179,6 +186,7 @@ Players.PlayerAdded:Connect(function(player)
 	player:SetAttribute("PetDesignatedTargetSlot1", nil)
 	player:SetAttribute("PetDesignatedTargetSlot2", nil)
 	objectiveService:initPlayer(player)
+	gamePhaseService:initPlayer(player)
 	player.CharacterAdded:Connect(function()
 		task.wait(0.3)
 		creatureService:HydrateParty(player)
@@ -187,9 +195,14 @@ end)
 
 Players.PlayerRemoving:Connect(function(player)
 	hudReplicationCache[player.UserId] = nil
+	gamePhaseService:removePlayer(player)
 end)
 
 remotes.RequestStarterChoice.OnServerEvent:Connect(function(player, payload)
+	if gamePhaseService:isActionBlocked(player) then
+		worldService:pushEventLog(player, "Finish intro before selecting a starter.", "#bfe2ff")
+		return
+	end
 	payload = payload or {}
 	local speciesKey = payload.speciesKey
 	local ok = playerDataService:chooseStarter(player, speciesKey)
@@ -205,6 +218,10 @@ remotes.RequestStarterChoice.OnServerEvent:Connect(function(player, payload)
 end)
 
 remotes.RequestPetCommand.OnServerEvent:Connect(function(player, payload)
+	if gamePhaseService:isActionBlocked(player) then
+		worldService:pushEventLog(player, "Intro in progress. Please continue.", "#bfe2ff")
+		return
+	end
 	payload = payload or {}
 	local command = payload.command or {}
 	local function sanitizeCommand(input)
@@ -314,6 +331,10 @@ end)
 
 
 remotes.RequestCreatureManage.OnServerEvent:Connect(function(player, payload)
+	if gamePhaseService:isActionBlocked(player) then
+		worldService:pushEventLog(player, "Intro in progress. Please continue.", "#bfe2ff")
+		return
+	end
 	payload = payload or {}
 	local action = tostring(payload.action or "")
 	local ownedId = tonumber(payload.ownedId)
@@ -353,6 +374,10 @@ remotes.RequestCreatureManage.OnServerEvent:Connect(function(player, payload)
 	end
 end)
 remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
+	if gamePhaseService:isActionBlocked(player) then
+		pushManualCastResult(player, nil, { ok = false, code = "intro_blocked" })
+		return
+	end
 	payload = payload or {}
 	local requestedSlot = tonumber(payload.slot)
 	if requestedSlot ~= 1 and requestedSlot ~= 2 then
@@ -421,6 +446,10 @@ remotes.RequestManualCast.OnServerEvent:Connect(function(player, payload)
 end)
 
 remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
+	if gamePhaseService:isActionBlocked(player) then
+		worldService:pushEventLog(player, "Intro in progress...", "#bfe2ff")
+		return
+	end
 	payload = payload or {}
 	local ok = false
 	if payload.action == "harvestCreature" and payload.targetId then
@@ -465,10 +494,18 @@ remotes.RequestContextAction.OnServerEvent:Connect(function(player, payload)
 end)
 
 remotes.UseBerry.OnServerEvent:Connect(function(player, payload)
+	if gamePhaseService:isActionBlocked(player) then return end
 	payload = payload or {}
 	local targetSlot = tonumber(payload.targetSlot)
 	local targetOwnedId = tonumber(payload.targetOwnedId)
 	berryService:tryUseBerry(player, payload.kind, targetSlot, targetOwnedId)
+end)
+
+remotes.RequestIntroComplete.OnServerEvent:Connect(function(player, payload)
+	payload = payload or {}
+	local reason = payload.skipped and "intro_skipped" or "intro_complete"
+	gamePhaseService:completeIntro(player, reason)
+	gamePhaseService:onObjectiveProgress(player)
 end)
 
 remotes.RequestClientOption.OnServerEvent:Connect(function(player, payload)
@@ -609,6 +646,7 @@ local function pushPetHud()
 					stance = tostring(player:GetAttribute("PetStance") or "FOLLOW"),
 					activeDesignatedTargetId = tonumber(player:GetAttribute("ActiveDesignatedTargetId")),
 					starterChosen = player:GetAttribute("StarterChosen") == true,
+					gamePhase = gamePhaseService:getPlayerPhase(player),
 					objectives = objectiveService:getClientSummary(player),
 					management = { party = managedParty, reserve = managedReserve, items = managedItems },
 				},
