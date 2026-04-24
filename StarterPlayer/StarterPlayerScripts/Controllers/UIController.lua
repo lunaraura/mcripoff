@@ -1525,12 +1525,17 @@ function UIController:updatePetHud(payload)
 						cooldownSummary
 					)
 				else
+					local autoRevive = tonumber(pet.autoReviveRemaining)
+					local reviveLine = autoRevive and autoRevive > 0
+						and string.format("Auto-revive in %ds", math.max(1, math.ceil(autoRevive)))
+						or "Use revive on this slot"
 					label.Text = string.format(
-						"Slot %d  %s  Lv %d\nDEFEATED\nHP 0/%d\nUse revive on this slot",
+						"Slot %d  %s  Lv %d\nDEFEATED\nHP 0/%d\n%s",
 						i,
 						displayName,
 						tostring(pet.level or 1),
-						math.max(maxHp, 0)
+						math.max(maxHp, 0),
+						reviveLine
 					)
 				end
 			end

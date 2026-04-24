@@ -581,6 +581,8 @@ local function pushPetHud()
 					commandIgnoreReason = isAlive and (pet.debugAI and pet.debugAI.commandIgnoreReason or nil) or nil,
 					manualCastState = isAlive and (pet.manualCastState or "idle") or "idle",
 					manualCastCode = isAlive and (pet.lastManualCastResult and pet.lastManualCastResult.code or pet.manualCastNote or "-") or "-",
+					autoReviveAt = (not isAlive) and (tonumber(owned.autoReviveAt) or nil) or nil,
+					autoReviveRemaining = (not isAlive and tonumber(owned.autoReviveAt)) and math.max(0, (tonumber(owned.autoReviveAt) or 0) - worldService.time) or nil,
 					commandOverride = isAlive and (worldService.time <= (pet.commandOverrideUntil or 0)) or false,
 					cooldowns = cooldowns,
 					moveset = table.clone((isAlive and pet.moveset) or (owned.moveset) or {}),
@@ -607,6 +609,8 @@ local function pushPetHud()
 				stamina = alive and math.floor((runtime.currentStamina or 0) + 0.5) or 0,
 				energy = alive and math.floor((runtime.currentEnergy or 0) + 0.5) or 0,
 				compositeKey = owned.compositeKey,
+				autoReviveAt = tonumber(owned.autoReviveAt) or nil,
+				autoReviveRemaining = tonumber(owned.autoReviveAt) and math.max(0, (tonumber(owned.autoReviveAt) or 0) - worldService.time) or nil,
 				location = location,
 				slotOrIndex = slotOrIndex,
 			}
@@ -697,10 +701,14 @@ RunService.Heartbeat:Connect(function(dt)
 		if (not creature.alive) and creature.mode == "pet" and creature.ownerUserId and creature.ownedId then
 			local owner = Players:GetPlayerByUserId(creature.ownerUserId)
 			if owner then
-				playerDataService:setOwnedDefeated(owner, creature.ownedId, true)
+				local autoReviveDelay = playerDataService:getOwnedPetAutoReviveSeconds()
+				playerDataService:setOwnedDefeated(owner, creature.ownedId, true, worldService.time, autoReviveDelay)
+				creature.defeatedAt = creature.defeatedAt or worldService.time
+				creature.autoReviveAt = creature.autoReviveAt or (worldService.time + autoReviveDelay)
 			end
 		end
 	end
+	playerDataService:tickOwnedPetAutoRevives(worldService.time, creatureService, worldService)
 	worldService:removeDead()
 	hudTimer += dt
 	if hudTimer >= 0.25 then
