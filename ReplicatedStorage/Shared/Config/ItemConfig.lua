@@ -36,6 +36,13 @@ local ItemConfig = {
 		useCooldown = 0.5,
 		effect = { kind = "revive", hpPercent = 0.5 },
 	},
+	lure_berry = {
+		label = "Lure Berry",
+		aliases = { "lure" },
+		itemType = "material",
+		targeting = "none",
+		targetType = "none",
+	},
 }
 
 return ItemConfig

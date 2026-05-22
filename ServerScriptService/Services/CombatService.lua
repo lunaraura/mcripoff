@@ -30,6 +30,7 @@ end
 
 local CombatService = {}
 CombatService.__index = CombatService
+local DEFEATED_WILD_TIMEOUT_SECONDS = 60
 
 -- Cast phase constants
 local CAST_PHASE = {
@@ -211,6 +212,12 @@ function CombatService:applyDamagePacket(source, target, ability)
 	if target.currentHP <= 0 then
 		target.alive = false
 		target.lifecycle = "defeated"
+		if target.mode == "wild" then
+			target.defeatedAt = self.worldService.time
+			target.defeatedExpiresAt = self.worldService.time + DEFEATED_WILD_TIMEOUT_SECONDS
+			target.defeatedOutcome = nil
+			target.defeatedInteractedBy = nil
+		end
 		if self.playerDataService and source and source.ownerUserId and source.ownedId then
 			local player = game:GetService("Players"):GetPlayerByUserId(source.ownerUserId)
 			if player then

@@ -15,6 +15,20 @@ local function mergedMultipliers(a, b)
 	return out
 end
 
+local function pickTierFromWeights(weights)
+	local wSmall = tonumber(weights.small) or 0
+	local wNormal = tonumber(weights.normal) or 0
+	local wBig = tonumber(weights.big) or 0
+	local total = wSmall + wNormal + wBig
+	if total <= 0 then
+		return "normal", EcologyConfig.spawn.tiers.normal
+	end
+	local r = math.random() * total
+	if r < wSmall then return "small", EcologyConfig.spawn.tiers.small end
+	if r < (wSmall + wNormal) then return "normal", EcologyConfig.spawn.tiers.normal end
+	return "big", EcologyConfig.spawn.tiers.big
+end
+
 function EcologyRules.normalizeCell(cell)
 	cell.yGround = cell.yGround or cell.yG or 0
 	cell.yWater = cell.yWater or cell.yW or 0
@@ -42,12 +56,28 @@ function EcologyRules.canHostNode(cell)
 end
 
 function EcologyRules.pickTier()
-	local r = math.random()
-	local wSmall = EcologyConfig.spawn.tiers.small.weight
-	local wNormal = EcologyConfig.spawn.tiers.normal.weight
-	if r < wSmall then return "small", EcologyConfig.spawn.tiers.small end
-	if r < wSmall + wNormal then return "normal", EcologyConfig.spawn.tiers.normal end
-	return "big", EcologyConfig.spawn.tiers.big
+	return pickTierFromWeights({
+		small = EcologyConfig.spawn.tiers.small.weight,
+		normal = EcologyConfig.spawn.tiers.normal.weight,
+		big = EcologyConfig.spawn.tiers.big.weight,
+	})
+end
+
+function EcologyRules.pickTierAtTime(timeOfDayNormalized)
+	local weights = {
+		small = EcologyConfig.spawn.tiers.small.weight,
+		normal = EcologyConfig.spawn.tiers.normal.weight,
+		big = EcologyConfig.spawn.tiers.big.weight,
+	}
+	local nightCfg = EcologyConfig.spawn.night or {}
+	local isNight = (timeOfDayNormalized or 0) >= 0.75 or (timeOfDayNormalized or 0) < 0.25
+	if isNight then
+		local mults = nightCfg.tierWeightMultipliers or {}
+		weights.small *= tonumber(mults.small) or 1
+		weights.normal *= tonumber(mults.normal) or 1
+		weights.big *= tonumber(mults.big) or 1
+	end
+	return pickTierFromWeights(weights)
 end
 
 function EcologyRules.pickArchetype(biomeKey)
@@ -75,6 +105,24 @@ function EcologyRules.buildSpawnProfile(point, tierKey, tierCfg)
 		abilityPool = archeCfg.abilityPool,
 		abilitySlots = archeCfg.abilitySlots,
 	}
+end
+
+function EcologyRules.pickWildVariant(timeOfDayNormalized)
+	local variants = EcologyConfig.spawn.variants or {}
+	local entries = {}
+	local nightCfg = EcologyConfig.spawn.night or {}
+	local isNight = (timeOfDayNormalized or 0) >= 0.75 or (timeOfDayNormalized or 0) < 0.25
+	local chanceMult = isNight and (tonumber(nightCfg.variantChanceMult) or 1) or 1
+	for variantKey, cfg in pairs(variants) do
+		table.insert(entries, {
+			key = variantKey,
+			weight = (tonumber(cfg.weight) or 0) * chanceMult,
+		})
+	end
+	table.sort(entries, function(a, b) return a.key < b.key end)
+	local picked = MathUtil.pickWeighted(entries)
+	if not picked then return nil, nil end
+	return picked, variants[picked]
 end
 
 function EcologyRules.getSpawnSettings()

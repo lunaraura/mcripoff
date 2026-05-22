@@ -1,4 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local SpeciesConfig = require(Config:WaitForChild("SpeciesConfig"))
@@ -9,6 +10,10 @@ local StatProgression = require(Creatures:WaitForChild("StatProgression"))
 
 local PlayerDataService = {}
 PlayerDataService.__index = PlayerDataService
+local OWNED_PET_AUTO_REVIVE_SECONDS = 25
+local AUTO_REVIVE_HP_PERCENT = 0.45
+local AUTO_REVIVE_STAMINA_PERCENT = 0.35
+local AUTO_REVIVE_ENERGY_PERCENT = 0.35
 
 local ALLOWED_STARTERS = {
 	dog = true,
@@ -18,7 +23,11 @@ local ALLOWED_STARTERS = {
 }
 
 function PlayerDataService.new()
-	return setmetatable({ dataByUserId = {}, onOwnedLevelChanged = nil }, PlayerDataService)
+	return setmetatable({
+		dataByUserId = {},
+		onOwnedLevelChanged = nil,
+		ownedPetAutoReviveSeconds = OWNED_PET_AUTO_REVIVE_SECONDS,
+	}, PlayerDataService)
 end
 
 function PlayerDataService:setOwnedLevelChangedListener(listener)
@@ -37,7 +46,7 @@ function PlayerDataService:getOrCreate(player)
 				red = 0, yellow = 0, blue = 0,
 				berry_red = 0, berry_yellow = 0, berry_blue = 0,
 				revive_berry = 0, replenish_berry = 0,
-				lure_meat = 0, crystal_shard = 0, water_glob = 0,
+				lure_meat = 0, lure_berry = 0, crystal_shard = 0, water_glob = 0,
 				node_demolisher = 0, berry_planter = 0,
 			},
 		morphPoints = 0,
@@ -324,11 +333,28 @@ function PlayerDataService:addOwnedFromRuntime(player, runtimeCreature)
 	return owned, "reserve", #data.reserve
 end
 
-function PlayerDataService:setOwnedDefeated(player, ownedId, isDefeated)
+function PlayerDataService:getOwnedPetAutoReviveSeconds()
+	return tonumber(self.ownedPetAutoReviveSeconds) or OWNED_PET_AUTO_REVIVE_SECONDS
+end
+
+function PlayerDataService:setOwnedDefeated(player, ownedId, isDefeated, now, overrideDelay)
 	local data = self:getOrCreate(player)
 	local owned = data.ownedCreatures[ownedId]
 	if not owned then return false end
-	owned.isDefeated = isDefeated and true or false
+	local nextDefeated = isDefeated and true or false
+	local wasDefeated = owned.isDefeated == true
+	owned.isDefeated = nextDefeated
+	if nextDefeated then
+		local t = tonumber(now) or os.clock()
+		if not wasDefeated then
+			owned.defeatedAt = t
+			local delay = tonumber(overrideDelay) or self:getOwnedPetAutoReviveSeconds()
+			owned.autoReviveAt = t + math.max(1, delay)
+		end
+	else
+		owned.defeatedAt = nil
+		owned.autoReviveAt = nil
+	end
 	return true
 end
 
@@ -338,7 +364,7 @@ function PlayerDataService:revivePartySlots(player)
 		local ownedId = data.partySlots[slot]
 		local owned = ownedId and data.ownedCreatures[ownedId] or nil
 		if owned then
-			owned.isDefeated = false
+			self:setOwnedDefeated(player, ownedId, false)
 		end
 	end
 	return true
@@ -350,8 +376,45 @@ function PlayerDataService:revivePartySlot(player, slot)
 	local ownedId = data.partySlots[slot]
 	local owned = ownedId and data.ownedCreatures[ownedId] or nil
 	if not owned then return false end
-	owned.isDefeated = false
+	self:setOwnedDefeated(player, ownedId, false)
 	return true
+end
+
+function PlayerDataService:tickOwnedPetAutoRevives(worldTime, creatureService, worldService)
+	for userId, data in pairs(self.dataByUserId) do
+		local player = Players:GetPlayerByUserId(userId)
+		if player then
+			local revivedOwnedIds = {}
+			for slot = 1, 2 do
+				local ownedId = data.partySlots[slot]
+				local owned = ownedId and data.ownedCreatures[ownedId] or nil
+				if owned and owned.isDefeated == true then
+					local autoReviveAt = tonumber(owned.autoReviveAt) or math.huge
+					if (tonumber(worldTime) or 0) >= autoReviveAt then
+						self:setOwnedDefeated(player, ownedId, false)
+						table.insert(revivedOwnedIds, ownedId)
+					end
+				end
+			end
+			if #revivedOwnedIds > 0 and creatureService then
+				creatureService:respawnPartyFromOwned(player)
+				for _, ownedId in ipairs(revivedOwnedIds) do
+					local runtime = worldService and worldService:getRuntimeCreatureForOwnedId(player.UserId, ownedId) or nil
+					if runtime and runtime.alive then
+						runtime.currentHP = math.max(1, math.floor((runtime.modifiedStats.maxHP or 1) * AUTO_REVIVE_HP_PERCENT))
+						runtime.currentStamina = math.max(1, math.floor((runtime.modifiedStats.stamina or 1) * AUTO_REVIVE_STAMINA_PERCENT))
+						runtime.currentEnergy = math.max(1, math.floor((runtime.modifiedStats.energy or 1) * AUTO_REVIVE_ENERGY_PERCENT))
+						if creatureService.syncOwnedFromRuntime then
+							creatureService:syncOwnedFromRuntime(player, ownedId, runtime)
+						end
+					end
+				end
+				if worldService then
+					worldService:pushEventLog(player, "A pet has auto-revived.", "#bfe2ff")
+				end
+			end
+		end
+	end
 end
 
 function PlayerDataService:addOwnedXP(player, ownedId, amount)

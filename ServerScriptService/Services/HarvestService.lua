@@ -1,5 +1,17 @@
 local HarvestService = {}
 HarvestService.__index = HarvestService
+
+local function scaleRewards(rewards, mult)
+	local out = {}
+	for _, reward in ipairs(rewards or {}) do
+		local entry = table.clone(reward)
+		if entry.amount then
+			entry.amount = math.max(1, math.floor((tonumber(entry.amount) or 1) * (tonumber(mult) or 1) + 0.5))
+		end
+		table.insert(out, entry)
+	end
+	return out
+end
 local CollectionService = game:GetService("CollectionService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,9 +21,27 @@ local EcologyRules = require(Ecology:WaitForChild("EcologyRules"))
 local Config = Shared:WaitForChild("Config")
 local HarvestConfig = require(Config:WaitForChild("HarvestConfig"))
 local FloraSystem = require(script.Parent.Parent.Systems.FloraSystem)
+local DEFEATED_WILD_TIMEOUT_SECONDS = 60
 
 function HarvestService.new(worldService, inventoryService)
 	return setmetatable({ worldService = worldService, inventoryService = inventoryService }, HarvestService)
+end
+
+function HarvestService:isDefeatedWildTarget(creature)
+	return creature
+		and creature.mode == "wild"
+		and creature.lifecycle == "defeated"
+		and creature.alive ~= true
+		and creature.defeatedOutcome == nil
+		and (tonumber(creature.defeatedExpiresAt) or -1) > self.worldService.time
+end
+
+function HarvestService:ensureDefeatedWindow(creature)
+	if not creature or creature.mode ~= "wild" or creature.alive == true then return end
+	local now = self.worldService.time
+	creature.lifecycle = "defeated"
+	creature.defeatedAt = tonumber(creature.defeatedAt) or now
+	creature.defeatedExpiresAt = tonumber(creature.defeatedExpiresAt) or (creature.defeatedAt + DEFEATED_WILD_TIMEOUT_SECONDS)
 end
 
 function HarvestService:hasToolInInventory(player, toolKey)
@@ -346,16 +376,37 @@ function HarvestService:tryHarvestCreature(player, targetId)
 		return false, "invalid target"
 	end
 	if not c.alive then
-		if c._harvested then
-			return false, "already harvested"
+		self:ensureDefeatedWindow(c)
+		if not self:isDefeatedWildTarget(c) then
+			if c.defeatedOutcome == "harvest" then
+				return false, "already harvested"
+			end
+			if c.defeatedOutcome == "tame" then
+				return false, "already tamed"
+			end
+			if (tonumber(c.defeatedExpiresAt) or 0) <= self.worldService.time then
+				return false, "target expired"
+			end
+			return false, "invalid target"
 		end
 		local rewards = c.drop or {}
+		local rewardMult = c.wildProfile and tonumber(c.wildProfile.rewardMult) or 1
+		if rewardMult > 1 then
+			rewards = scaleRewards(rewards, rewardMult)
+		end
 		if #rewards <= 0 then
 			return false, "nothing to harvest"
 		end
+		c.defeatedOutcome = "claiming"
+		c.defeatedInteractedBy = player.UserId
 		local granted = self.inventoryService:grant(player, rewards)
+		if not granted then
+			c.defeatedOutcome = nil
+			c.defeatedInteractedBy = nil
+			return false, "harvest_failed"
+		end
 		self.worldService:pushEventLog(player, string.format("Harvested defeated %s", c.speciesKey), "#ffd9a8")
-		c._harvested = true
+		c.defeatedOutcome = "harvest"
 		self.worldService:removeCreature(c.id)
 		return true, granted
 	end
@@ -367,7 +418,7 @@ function HarvestService:tryHarvestCreature(player, targetId)
 	end
 	local granted = self.inventoryService:grant(player, c.harvestDrop)
 	if c.speciesKey == "sheeplet" then
-		local berryKinds = { "berry_red", "berry_yellow", "berry_blue" }
+		local berryKinds = { "berry_red", "berry_yellow", "berry_blue", "lure_berry" }
 		local berryKey = berryKinds[math.random(1, #berryKinds)]
 		local berryGrant = self.inventoryService:grant(player, { { key = berryKey, amount = 1 } })
 		for _, item in ipairs(berryGrant) do
@@ -405,21 +456,51 @@ function HarvestService:tryTameDefeated(player, targetId)
 		return false, "player data unavailable"
 	end
 	local c = self.worldService:getCreatureById(targetId)
-	if not c or c.alive or c.mode ~= "wild" then
-		return false, "invalid tame target"
+	if not c then
+		return false, "target already despawned"
 	end
-	local hasBait = self.inventoryService:getCount(player, "lure_meat") > 0
+	self:ensureDefeatedWindow(c)
+	if c.alive or c.mode ~= "wild" then
+		return false, "target not defeated"
+	end
+	if (tonumber(c.defeatedExpiresAt) or 0) <= self.worldService.time then
+		return false, "target expired"
+	end
+	if c.defeatedOutcome == "harvest" then
+		return false, "target already harvested"
+	end
+	if c.defeatedOutcome == "tame" then
+		return false, "target already claimed"
+	end
+	if c.defeatedOutcome ~= nil then
+		return false, "target busy"
+	end
+	c.defeatedOutcome = "claiming"
+	c.defeatedInteractedBy = player.UserId
+	local hasBait = self.inventoryService:getCount(player, "lure_berry") > 0
 	if not hasBait then
-		return false, "need lure_meat"
+		c.defeatedOutcome = nil
+		c.defeatedInteractedBy = nil
+		return false, "need lure_berry"
 	end
-	self.inventoryService:tryConsume(player, "lure_meat", 1)
+	local consumed = self.inventoryService:tryConsume(player, "lure_berry", 1)
+	if not consumed then
+		c.defeatedOutcome = nil
+		c.defeatedInteractedBy = nil
+		return false, "need lure_berry"
+	end
 	local owned, destination, slotOrIndex = self.playerDataService:addOwnedFromRuntime(player, c)
 	if not owned then
+		self.inventoryService:grant(player, { { key = "lure_berry", amount = 1 } })
+		c.defeatedOutcome = nil
+		c.defeatedInteractedBy = nil
 		return false, "failed to add owned creature"
 	end
 	if self.morphService then
-		self.morphService:awardPoints(player, owned.ownedId, 2)
+		local bonus = c.wildProfile and tonumber(c.wildProfile.morphPointBonus) or 0
+		self.morphService:awardPoints(player, owned.ownedId, 2 + bonus)
 	end
+	c.defeatedOutcome = "tame"
 	self.worldService:removeCreature(c.id)
 	if destination == "party" and self.creatureService then
 		self.creatureService:respawnPartyFromOwned(player)
@@ -436,7 +517,7 @@ function HarvestService:tryTameNearestDefeated(player, radius)
 	end
 	local best, bestD = nil, radius or 16
 	for _, c in ipairs(self.worldService.creatures) do
-		if (not c.alive) and c.mode == "wild" then
+		if self:isDefeatedWildTarget(c) then
 			local d = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(c.pos.X, 0, c.pos.Z)).Magnitude
 			if d < bestD then
 				best = c
@@ -448,6 +529,23 @@ function HarvestService:tryTameNearestDefeated(player, radius)
 		return false, "no tame target nearby"
 	end
 	return self:tryTameDefeated(player, best.id)
+end
+
+function HarvestService:tickDefeatedWilds()
+	local now = self.worldService.time
+	local expiredIds = {}
+	for _, c in ipairs(self.worldService.creatures) do
+		if c.mode == "wild" and c.alive ~= true and c.lifecycle == "defeated" then
+			self:ensureDefeatedWindow(c)
+			if c.defeatedOutcome == nil and now >= (tonumber(c.defeatedExpiresAt) or 0) then
+				c.defeatedOutcome = "expired"
+				table.insert(expiredIds, c.id)
+			end
+		end
+	end
+	for _, id in ipairs(expiredIds) do
+		self.worldService:removeCreature(id)
+	end
 end
 
 return HarvestService

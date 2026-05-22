@@ -5,6 +5,16 @@ local EffectConfig = require(Config:WaitForChild("EffectConfig"))
 
 local EffectService = {}
 EffectService.__index = EffectService
+local DEFEATED_WILD_TIMEOUT_SECONDS = 60
+
+local function markDefeatedWild(worldService, creature)
+	if not creature or creature.mode ~= "wild" then return end
+	local now = worldService and worldService.time or os.clock()
+	creature.defeatedAt = creature.defeatedAt or now
+	creature.defeatedExpiresAt = creature.defeatedExpiresAt or (now + DEFEATED_WILD_TIMEOUT_SECONDS)
+	creature.defeatedOutcome = creature.defeatedOutcome or nil
+	creature.defeatedInteractedBy = creature.defeatedInteractedBy or nil
+end
 
 local STATUS_DEFS = EffectConfig.statuses
 local REACTIONS = EffectConfig.reactions
@@ -18,6 +28,7 @@ local STATUS_RUNTIME = {
 			if creature.currentHP <= 0 then
 				creature.alive = false
 				creature.lifecycle = "defeated"
+				markDefeatedWild(self.worldService, creature)
 			end
 		end,
 	},
@@ -29,6 +40,7 @@ local STATUS_RUNTIME = {
 			if creature.currentHP <= 0 then
 				creature.alive = false
 				creature.lifecycle = "defeated"
+				markDefeatedWild(self.worldService, creature)
 			end
 		end,
 	},

@@ -36,7 +36,9 @@ end
 function ItemUseRules.getDisplayItems()
 	local out = {}
 	for key, def in pairs(ItemConfig) do
-		table.insert(out, { key = key, label = def.label, targeting = def.targeting })
+		if (def.itemType or "consumable") == "consumable" then
+			table.insert(out, { key = key, label = def.label, targeting = def.targeting })
+		end
 	end
 	table.sort(out, function(a, b) return a.key < b.key end)
 	return out

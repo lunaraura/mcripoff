@@ -22,9 +22,15 @@ function ObjectiveService.new(playerDataService, inventoryService, worldService)
 		playerDataService = playerDataService,
 		inventoryService = inventoryService,
 		worldService = worldService,
+		objectiveClaimedListeners = {},
 	}, ObjectiveService)
 	self:validateDefinitions()
 	return self
+end
+
+function ObjectiveService:addObjectiveClaimedListener(listener)
+	if type(listener) ~= "function" then return end
+	table.insert(self.objectiveClaimedListeners, listener)
 end
 
 local function ensureObjectiveState(data)
@@ -204,6 +210,9 @@ function ObjectiveService:claimObjective(player, objectiveId, def, entry)
 		self:applyReward(player, reward)
 	end
 	self.worldService:pushEventLog(player, string.format("Objective complete: %s", tostring(def.label or objectiveId)), "#a8ffd7")
+	for _, listener in ipairs(self.objectiveClaimedListeners or {}) do
+		listener(player, objectiveId, def, entry)
+	end
 end
 
 function ObjectiveService:evaluateObjectives(player)

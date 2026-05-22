@@ -1,5 +1,10 @@
 local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Terrain = workspace.Terrain
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local EcologyConfig = require(Config:WaitForChild("EcologyConfig"))
 local ChunkSystem = require(script.Parent.Parent.Systems.ChunkSystem)
 local BiomeSystem = require(script.Parent.Parent.Systems.BiomeSystem)
 
@@ -21,8 +26,19 @@ local WorldService = {}
 WorldService.__index = WorldService
 
 function WorldService.new(remotes)
+	local dayNightCfg = (EcologyConfig.regen and EcologyConfig.regen.dayNight) or {}
+	local dayLength = math.max(60, tonumber(dayNightCfg.dayLengthSeconds) or 480)
+	local startNormalized = tonumber(dayNightCfg.startNormalized) or 0.25
 	return setmetatable({
 		time = 0,
+		timeOfDayNormalized = startNormalized % 1,
+		dayNight = {
+			enabled = dayNightCfg.enabled ~= false,
+			dayLengthSeconds = dayLength,
+			nightStart = tonumber(dayNightCfg.nightStart) or 0.75,
+			nightEnd = tonumber(dayNightCfg.nightEnd) or 0.25,
+			clockStartHour = tonumber(dayNightCfg.clockStartHour) or 6,
+		},
 		creatures = {},
 		creaturesById = {},
 		chunks = {},
@@ -33,6 +49,34 @@ function WorldService.new(remotes)
 		areaEffects = {},
 		remotes = remotes,
 	}, WorldService)
+end
+
+function WorldService:getTimeOfDayNormalized()
+	return self.timeOfDayNormalized or 0
+end
+
+function WorldService:isNight()
+	local t = self:getTimeOfDayNormalized()
+	local nightStart = self.dayNight and self.dayNight.nightStart or 0.75
+	local nightEnd = self.dayNight and self.dayNight.nightEnd or 0.25
+	if nightStart <= nightEnd then
+		return t >= nightStart and t < nightEnd
+	end
+	return t >= nightStart or t < nightEnd
+end
+
+function WorldService:applyDayNightVisuals()
+	if not (self.dayNight and self.dayNight.enabled) then return end
+	local t = self:getTimeOfDayNormalized()
+	Lighting:SetAttribute("WorldTimeNormalized", t)
+	Lighting:SetAttribute("IsNight", self:isNight())
+	Lighting.ClockTime = (t * 24 + (self.dayNight.clockStartHour or 6)) % 24
+	local daylight = math.clamp(math.sin(t * math.pi * 2 - math.pi * 0.5) * 0.5 + 0.5, 0, 1)
+	Lighting.Brightness = 1.0 + daylight * 2.2
+	Lighting.OutdoorAmbient = Color3.new(0.12 + daylight * 0.32, 0.13 + daylight * 0.34, 0.16 + daylight * 0.38)
+	Lighting.Ambient = Color3.new(0.08 + daylight * 0.2, 0.08 + daylight * 0.22, 0.11 + daylight * 0.24)
+	Lighting.FogColor = Color3.new(0.05 + daylight * 0.55, 0.07 + daylight * 0.59, 0.12 + daylight * 0.65)
+	Lighting.FogEnd = 330 + daylight * 520
 end
 
 function WorldService:addCreature(creature)
@@ -64,7 +108,12 @@ end
 function WorldService:removeDead()
 	local filtered = {}
 	for _, c in ipairs(self.creatures) do
-		if c.alive then
+		local keepDefeatedWild = (not c.alive)
+			and c.mode == "wild"
+			and c.lifecycle == "defeated"
+			and (c.defeatedOutcome == nil)
+			and ((tonumber(c.defeatedExpiresAt) or (self.time + 1)) > self.time)
+		if c.alive or keepDefeatedWild then
 			table.insert(filtered, c)
 		else
 			self.creaturesById[c.id] = nil
@@ -207,6 +256,11 @@ end
 
 function WorldService:stepTime(dt)
 	self.time += dt
+	if self.dayNight and self.dayNight.enabled then
+		local cycle = math.max(60, tonumber(self.dayNight.dayLengthSeconds) or 480)
+		self.timeOfDayNormalized = ((self.timeOfDayNormalized or 0) + (dt / cycle)) % 1
+		self:applyDayNightVisuals()
+	end
 end
 
 return WorldService

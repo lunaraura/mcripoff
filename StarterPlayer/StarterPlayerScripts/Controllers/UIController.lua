@@ -8,6 +8,7 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local AbilityConfig = require(Config:WaitForChild("AbilityConfig"))
+local BuildableConfig = require(Config:WaitForChild("BuildableConfig"))
 local Items = Shared:WaitForChild("Items")
 local ItemUseRules = require(Items:WaitForChild("ItemUseRules"))
 
@@ -25,6 +26,23 @@ end
 local UI_MODE_STARTER = "starter"
 local UI_MODE_GAMEPLAY = "gameplay"
 
+local function getBerryPlantDefsFromBuildableConfig()
+	local shrubCfg = BuildableConfig.berry_shrub and BuildableConfig.berry_shrub.berryPlanting or {}
+	local order = shrubCfg.berryOrder or {}
+	local berryTypes = shrubCfg.berryTypes or {}
+	local defs = {}
+	for _, key in ipairs(order) do
+		local def = berryTypes[key]
+		if def then
+			table.insert(defs, {
+				key = key,
+				label = tostring(def.label or key),
+			})
+		end
+	end
+	return defs
+end
+
 local function getStarterPanel()
 	local player = Players.LocalPlayer
 	local playerGui = player and player:FindFirstChild("PlayerGui")
@@ -38,6 +56,10 @@ function UIController:setUtilityPanelsVisibility(opts)
 	opts = opts or {}
 	self.optionsOpen = opts.options == true
 	self.managementState.open = opts.management == true
+	self.buildMenuOpen = opts.buildMenu == true
+	if self.optionsOpen or self.managementState.open or self.buildMenuOpen then
+		self.menuDropdownOpen = false
+	end
 	self:refreshUiMode()
 	if self.managementState.open then
 		self.managementState.layer = self.managementState.layer or "root"
@@ -75,21 +97,22 @@ end
 function UIController:refreshUiMode()
 	local inGameplay = self.uiMode == UI_MODE_GAMEPLAY
 	local showGameplay = inGameplay and (not self.hiddenUi)
+	local sections = self.sectionVisibility or {}
 	local starterPanel = getStarterPanel()
 	if starterPanel then
 		starterPanel.Visible = (self.uiMode == UI_MODE_STARTER)
 	end
 	if self.mainGameplayHud then
-		self.mainGameplayHud.Visible = showGameplay
+		self.mainGameplayHud.Visible = showGameplay and sections.petCommands ~= false and self.commandPanelOpen == true
 	end
 	if self.alwaysObjectiveLine then
-		self.alwaysObjectiveLine.Visible = inGameplay
+		self.alwaysObjectiveLine.Visible = showGameplay and sections.objectiveLine ~= false
 	end
 	if self.buildToolPanel then
-		self.buildToolPanel.Visible = showGameplay
+		self.buildToolPanel.Visible = showGameplay and sections.utilityMenu ~= false and self.buildMenuOpen == true
 	end
 	if self.itemBarPanel then
-		self.itemBarPanel.Visible = showGameplay
+		self.itemBarPanel.Visible = showGameplay and sections.itemBar ~= false
 	end
 	if self.optionsPanel then
 		self.optionsPanel.Visible = showGameplay and self.optionsOpen == true
@@ -98,8 +121,17 @@ function UIController:refreshUiMode()
 		self.managementPanel.Visible = showGameplay and self.managementState.open == true
 	end
 	if self.hideUiButton then
-		self.hideUiButton.Text = self.hiddenUi and "Show UI" or "Hide UI"
+		self.hideUiButton.Text = self.visibilityManagerOpen and "UI ▴" or "UI ▾"
 		self.hideUiButton.Visible = inGameplay
+	end
+	if self.visibilityManagerPanel then
+		self.visibilityManagerPanel.Visible = inGameplay and self.visibilityManagerOpen == true
+	end
+	if self.menuLauncherButton then
+		self.menuLauncherButton.Visible = inGameplay and (sections.utilityMenu ~= false)
+	end
+	if self.menuDropdown then
+		self.menuDropdown.Visible = inGameplay and (sections.utilityMenu ~= false) and self.menuDropdownOpen == true and (not self.hiddenUi)
 	end
 	if self.mobilePlaceBuildButton then
 		local buildMode = self.build and self.build.buildMode
@@ -108,12 +140,16 @@ function UIController:refreshUiMode()
 	if self.objectiveToastLabel and not showGameplay then
 		self.objectiveToastLabel.Visible = false
 	end
+	if self.contextActionStrip then
+		self.contextActionStrip.Visible = showGameplay and self.contextActionState and self.contextActionState.visible == true
+	end
 end
 
 function UIController:openOptionsFromUtilityPanel()
 	self:setUtilityPanelsVisibility({
 		options = true,
 		management = false,
+		buildMenu = false,
 	})
 end
 
@@ -121,6 +157,7 @@ function UIController:openCreatureManagementFromUtilityPanel()
 	self:setUtilityPanelsVisibility({
 		options = false,
 		management = true,
+		buildMenu = false,
 	})
 	self.managementState.layer = "root"
 	self:refreshCreatureManagementMenu()
@@ -136,6 +173,8 @@ function UIController.new(buildController, itemController, partyController, comm
 		requestContextAction = remotes:WaitForChild("RequestContextAction"),
 		requestCreatureManageRemote = remotes:WaitForChild("RequestCreatureManage"),
 		creatureManageResultRemote = remotes:WaitForChild("CreatureManageResult"),
+		gamePhaseUpdate = remotes:WaitForChild("GamePhaseUpdate"),
+		requestIntroComplete = remotes:WaitForChild("RequestIntroComplete"),
 		build = buildController,
 		items = itemController,
 		party = partyController,
@@ -159,6 +198,16 @@ function UIController.new(buildController, itemController, partyController, comm
 		starterChosen = false,
 		optionsOpen = false,
 		hiddenUi = false,
+		menuDropdownOpen = false,
+		visibilityManagerOpen = false,
+		commandPanelOpen = false,
+		buildMenuOpen = false,
+		sectionVisibility = {
+			itemBar = true,
+			petCommands = false,
+			utilityMenu = true,
+			objectiveLine = true,
+		},
 		hotbarSlots = {},
 		hotbarStatusLabel = nil,
 		activeCommand = "follow",
@@ -170,6 +219,9 @@ function UIController.new(buildController, itemController, partyController, comm
 		lastObjectiveToastAt = 0,
 		itemBarWindowStart = 1,
 		managementState = { layer = "root", selected = nil, open = false, pendingSwapPartySlot = nil, selectedItemKey = nil },
+		gamePhase = "intro_scene",
+		introSequenceRunning = false,
+		contextActionState = { visible = false, label = "", detail = "" },
 	}, UIController)
 end
 
@@ -186,13 +238,20 @@ function UIController:bind()
 	end)
 	self.petHudUpdate.OnClientEvent:Connect(function(payload)
 		local meta = payload and payload.meta or {}
+		local wasStarterChosen = self.starterChosen == true
 		self.activeSlot = tonumber(meta.activeSlot) or self.activeSlot
 		self.controlMode = tostring(meta.controlMode or self.controlMode)
 		self.stance = tostring(meta.stance or self.stance)
 		if meta.starterChosen ~= nil then
 			self.starterChosen = meta.starterChosen == true
 		end
+		if meta.gamePhase then
+			self:setGamePhase(meta.gamePhase)
+		end
 		self:setUiMode(self.starterChosen and UI_MODE_GAMEPLAY or UI_MODE_STARTER)
+		if (not wasStarterChosen) and self.starterChosen == true then
+			self:applyDefaultUiVisibility()
+		end
 		self.activeDesignatedTargetId = tonumber(meta.activeDesignatedTargetId)
 		self:updatePetHud(payload)
 		self.managementData = meta.management or self.managementData
@@ -203,6 +262,9 @@ function UIController:bind()
 		self:emitObjectiveDeltaFeedback(previousSummary, self.objectiveSummary)
 		self:refreshCreatureManagementMenu()
 		
+	end)
+	self.gamePhaseUpdate.OnClientEvent:Connect(function(payload)
+		self:setGamePhase(payload and payload.phase)
 	end)
 	self.creatureManageResultRemote.OnClientEvent:Connect(function(payload)
 		if payload and payload.reason then
@@ -218,6 +280,12 @@ function UIController:bind()
 	end)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
+		if self.gamePhase == "intro_scene" then
+			if input.KeyCode == Enum.KeyCode.Space and self.requestIntroComplete then
+				self.requestIntroComplete:FireServer({ skipped = true })
+			end
+			return
+		end
 		if input.KeyCode == Enum.KeyCode.O then
 			self:toggleOptionsMenu()
 		elseif input.KeyCode == Enum.KeyCode.M then
@@ -260,93 +328,42 @@ function UIController:buildUi()
 	gui.IgnoreGuiInset = false
 	gui.Parent = player:WaitForChild("PlayerGui")
 	self.gui = gui
+	self:buildIntroOverlay(gui)
 
-	-- Hide UI button
+	-- UI visibility manager button
 	local hideBtn = Instance.new("TextButton")
 	hideBtn.Name = "HideUIButton"
 	hideBtn.AnchorPoint = Vector2.new(0, 0)
-	hideBtn.Size = UDim2.new(0.14, 0, 0.045, 0)
+	hideBtn.Size = UDim2.new(0, 88, 0, 30)
 	hideBtn.Position = UDim2.new(0.015, 0, 0.015, 0)
 	hideBtn.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
 	hideBtn.TextColor3 = Color3.fromRGB(235, 245, 255)
 	hideBtn.Font = Enum.Font.GothamBold
 	hideBtn.TextSize = 12
-	hideBtn.Text = "Hide UI"
+	hideBtn.Text = "UI ▾"
 	hideBtn.Parent = gui
 	self.hideUiButton = hideBtn
-	attachSizeConstraint(hideBtn, 88, 28, 180, 44)
+	attachSizeConstraint(hideBtn, 80, 28, 120, 40)
 
 	hideBtn.MouseButton1Click:Connect(function()
-		self.hiddenUi = not self.hiddenUi
+		self.visibilityManagerOpen = not self.visibilityManagerOpen
 		self:refreshUiMode()
 	end)
+	self:buildVisibilityManager(gui)
+	self:buildCompactMenu(gui)
 
-	-- Main gameplay HUD (active pet + abilities + commands + gameplay status)
+		-- Main gameplay HUD (stance controls + ability hotbar only)
 	local activeHud = Instance.new("Frame")
 	activeHud.Name = "MainGameplayHud"
 	activeHud.AnchorPoint = Vector2.new(0.5, 1)
-	activeHud.Size = UDim2.new(0.62, 0, 0.19, 0)
+	activeHud.Size = UDim2.new(0.62, 0, 0.13, 0)
 	activeHud.Position = UDim2.new(0.5, 0, 0.89, 0)
 	activeHud.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	activeHud.BackgroundTransparency = 0.12
 	activeHud.Parent = gui
 	self.mainGameplayHud = activeHud
 	self.activePetFrame = activeHud
-	attachSizeConstraint(activeHud, 320, 132, 860, 236)
-
-	local petName = Instance.new("TextLabel")
-	petName.Name = "PetName"
-	petName.BackgroundTransparency = 1
-	petName.Size = UDim2.new(1, -12, 0, 20)
-	petName.Position = UDim2.fromOffset(6, 4)
-	petName.Font = Enum.Font.GothamBold
-	petName.TextSize = 15
-	petName.TextXAlignment = Enum.TextXAlignment.Left
-	petName.TextColor3 = Color3.fromRGB(235, 245, 255)
-	petName.Text = "Active Pet"
-	petName.Parent = activeHud
-	self.activePetNameLabel = petName
-
-	local petStats = Instance.new("TextLabel")
-	petStats.Name = "PetStats"
-	petStats.BackgroundTransparency = 1
-	petStats.Size = UDim2.new(1, -12, 0, 18)
-	petStats.Position = UDim2.fromOffset(6, 22)
-	petStats.Font = Enum.Font.Code
-	petStats.TextSize = 12
-	petStats.TextXAlignment = Enum.TextXAlignment.Left
-	petStats.TextYAlignment = Enum.TextYAlignment.Top
-	petStats.TextColor3 = Color3.fromRGB(220, 235, 255)
-	petStats.TextWrapped = false
-	petStats.Text = "Lv -- | HP --/-- | ST -- | EN --"
-	petStats.Parent = activeHud
-	self.activePetStatsLabel = petStats
-
-	local status = Instance.new("TextLabel")
-	status.Name = "GameplayStatus"
-	status.BackgroundTransparency = 1
-	status.Size = UDim2.new(1, -12, 0, 16)
-	status.Position = UDim2.fromOffset(6, 40)
-	status.Font = Enum.Font.Code
-	status.TextSize = 12
-	status.TextXAlignment = Enum.TextXAlignment.Left
-	status.TextColor3 = Color3.fromRGB(195, 220, 240)
-	status.Text = "Mode:AUTO  Stance:FOLLOW  Slot:1"
-	status.Parent = activeHud
-	self.gameplayStatusLabel = status
-
-	local objectiveLabel = Instance.new("TextLabel")
-	objectiveLabel.Name = "ObjectiveHudLabel"
-	objectiveLabel.BackgroundTransparency = 1
-	objectiveLabel.Size = UDim2.new(1, -12, 0, 16)
-	objectiveLabel.Position = UDim2.fromOffset(6, 76)
-	objectiveLabel.Font = Enum.Font.Code
-	objectiveLabel.TextSize = 12
-	objectiveLabel.TextXAlignment = Enum.TextXAlignment.Left
-	objectiveLabel.TextColor3 = Color3.fromRGB(215, 232, 180)
-	objectiveLabel.Text = "Objective: --"
-	objectiveLabel.Parent = activeHud
-	self.objectiveLabel = objectiveLabel
+	attachSizeConstraint(activeHud, 320, 84, 860, 152)
 
 	local objectiveToast = Instance.new("TextLabel")
 	objectiveToast.Name = "ObjectiveToastLabel"
@@ -384,6 +401,7 @@ function UIController:buildUi()
 	self:buildOptionsMenu(gui)
 	self:buildBuildAndToolMenu(gui)
 	self:buildItemBar(gui)
+	self:buildContextActionStrip(gui)
 	self:buildCreatureManagementMenu(gui)
 
 	-- utility/build menu should be top-right compact
@@ -394,10 +412,240 @@ function UIController:buildUi()
 
 	self:setUiMode(UI_MODE_STARTER)
 	self:refreshObjectiveHud()
-	self:fitPanelToChildren(self.mainGameplayHud, 150, 280, 10)
+	self:fitPanelToChildren(self.mainGameplayHud, 96, 170, 8)
 	self:fitPanelToChildren(self.itemBarPanel, 72, 140, 10)
 	self:fitPanelToChildren(self.buildToolPanel, 220, 520, 12)
 	self:fitPanelToChildren(self.optionsPanel, 150, 340, 8)
+end
+
+function UIController:applyDefaultUiVisibility()
+	self.hiddenUi = false
+	self.menuDropdownOpen = false
+	self.visibilityManagerOpen = false
+	self.commandPanelOpen = false
+	self.buildMenuOpen = false
+	self.optionsOpen = false
+	self.managementState.open = false
+	self.sectionVisibility.itemBar = true
+	self.sectionVisibility.petCommands = false
+	self.sectionVisibility.utilityMenu = true
+	self.sectionVisibility.objectiveLine = true
+	self:refreshUiMode()
+end
+
+function UIController:buildCompactMenu(gui)
+	local menuButton = Instance.new("TextButton")
+	menuButton.Name = "MenuLauncherButton"
+	menuButton.AnchorPoint = Vector2.new(1, 0)
+	menuButton.Size = UDim2.fromOffset(96, 30)
+	menuButton.Position = UDim2.new(0.985, 0, 0.015, 0)
+	menuButton.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+	menuButton.TextColor3 = Color3.fromRGB(235, 245, 255)
+	menuButton.Font = Enum.Font.GothamBold
+	menuButton.TextSize = 12
+	menuButton.Text = "Menu ▾"
+	menuButton.ZIndex = 50
+	menuButton.Parent = gui
+	self.menuLauncherButton = menuButton
+
+	local dropdown = Instance.new("Frame")
+	dropdown.Name = "MenuDropdown"
+	dropdown.AnchorPoint = Vector2.new(1, 0)
+	dropdown.Size = UDim2.fromOffset(200, 150)
+	dropdown.Position = UDim2.new(0.985, 0, 0.055, 0)
+	dropdown.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+	dropdown.BackgroundTransparency = 0.08
+	dropdown.ZIndex = 50
+	dropdown.Visible = false
+	dropdown.Parent = gui
+	self.menuDropdown = dropdown
+
+	local function addMenuButton(y, label, fn)
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1, -12, 0, 26)
+		btn.Position = UDim2.fromOffset(6, y)
+		btn.BackgroundColor3 = Color3.fromRGB(38, 44, 58)
+		btn.TextColor3 = Color3.fromRGB(235, 245, 255)
+		btn.Font = Enum.Font.Gotham
+		btn.TextSize = 12
+		btn.TextXAlignment = Enum.TextXAlignment.Left
+		btn.Text = "  " .. label
+		btn.ZIndex = 51
+		btn.Parent = dropdown
+		btn.MouseButton1Click:Connect(fn)
+		return btn
+	end
+
+	menuButton.MouseButton1Click:Connect(function()
+		self.menuDropdownOpen = not self.menuDropdownOpen
+		menuButton.Text = self.menuDropdownOpen and "Menu ▴" or "Menu ▾"
+		self:refreshUiMode()
+	end)
+
+	addMenuButton(6, "Build / Action", function()
+		self.buildMenuOpen = not self.buildMenuOpen
+		self.optionsOpen = false
+		self.managementState.open = false
+		self.menuDropdownOpen = false
+		menuButton.Text = "Menu ▾"
+		self:refreshUiMode()
+	end)
+	addMenuButton(36, "Creature Management", function()
+		self.menuDropdownOpen = false
+		menuButton.Text = "Menu ▾"
+		self:openCreatureManagementFromUtilityPanel()
+	end)
+	addMenuButton(66, "Pet Commands", function()
+		self.commandPanelOpen = not self.commandPanelOpen
+		self.menuDropdownOpen = false
+		menuButton.Text = "Menu ▾"
+		self:refreshUiMode()
+	end)
+	addMenuButton(96, "Options", function()
+		self.menuDropdownOpen = false
+		menuButton.Text = "Menu ▾"
+		self:openOptionsFromUtilityPanel()
+	end)
+end
+
+function UIController:buildVisibilityManager(gui)
+	local panel = Instance.new("Frame")
+	panel.Name = "UIVisibilityManager"
+	panel.AnchorPoint = Vector2.new(0, 0)
+	panel.Size = UDim2.fromOffset(220, 188)
+	panel.Position = UDim2.new(0.015, 0, 0.055, 0)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+	panel.BackgroundTransparency = 0.1
+	panel.ZIndex = 60
+	panel.Visible = false
+	panel.Parent = gui
+	self.visibilityManagerPanel = panel
+
+	local function addToggle(y, text, onClick)
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1, -12, 0, 24)
+		btn.Position = UDim2.fromOffset(6, y)
+		btn.BackgroundColor3 = Color3.fromRGB(38, 44, 58)
+		btn.TextColor3 = Color3.fromRGB(235, 245, 255)
+		btn.Font = Enum.Font.Gotham
+		btn.TextSize = 12
+		btn.TextXAlignment = Enum.TextXAlignment.Left
+		btn.Text = "  " .. text
+		btn.ZIndex = 61
+		btn.Parent = panel
+		btn.MouseButton1Click:Connect(onClick)
+	end
+
+	addToggle(8, "Toggle Item Bar", function()
+		self.sectionVisibility.itemBar = not (self.sectionVisibility.itemBar ~= false)
+		self:refreshUiMode()
+	end)
+	addToggle(36, "Toggle Pet Commands", function()
+		self.sectionVisibility.petCommands = not (self.sectionVisibility.petCommands ~= false)
+		if self.sectionVisibility.petCommands == false then
+			self.commandPanelOpen = false
+		end
+		self:refreshUiMode()
+	end)
+	addToggle(64, "Toggle Utility Menu", function()
+		self.sectionVisibility.utilityMenu = not (self.sectionVisibility.utilityMenu ~= false)
+		if self.sectionVisibility.utilityMenu == false then
+			self.menuDropdownOpen = false
+			self.buildMenuOpen = false
+		end
+		self:refreshUiMode()
+	end)
+	addToggle(92, "Toggle Objective Line", function()
+		self.sectionVisibility.objectiveLine = not (self.sectionVisibility.objectiveLine ~= false)
+		self:refreshUiMode()
+	end)
+	addToggle(124, "Hide All", function()
+		self.hiddenUi = true
+		self.menuDropdownOpen = false
+		self.buildMenuOpen = false
+		self.commandPanelOpen = false
+		self.optionsOpen = false
+		self.managementState.open = false
+		self:refreshUiMode()
+	end)
+	addToggle(152, "Show Default", function()
+		self:applyDefaultUiVisibility()
+	end)
+end
+
+function UIController:setGamePhase(phase)
+	self.gamePhase = tostring(phase or "intro_scene")
+	if self.introOverlay then
+		self.introOverlay.Visible = self.gamePhase == "intro_scene"
+	end
+	if self.gamePhase == "intro_scene" then
+		self:runIntroSequence()
+	end
+end
+
+function UIController:buildIntroOverlay(gui)
+	local overlay = Instance.new("Frame")
+	overlay.Name = "IntroOverlay"
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.BackgroundColor3 = Color3.fromRGB(8, 10, 14)
+	overlay.BackgroundTransparency = 0.15
+	overlay.ZIndex = 120
+	overlay.Visible = false
+	overlay.Parent = gui
+	self.introOverlay = overlay
+
+	local message = Instance.new("TextLabel")
+	message.Name = "IntroMessage"
+	message.AnchorPoint = Vector2.new(0.5, 0.5)
+	message.Position = UDim2.fromScale(0.5, 0.45)
+	message.Size = UDim2.fromOffset(580, 120)
+	message.BackgroundTransparency = 1
+	message.TextColor3 = Color3.fromRGB(232, 240, 255)
+	message.Font = Enum.Font.GothamBold
+	message.TextSize = 24
+	message.TextWrapped = true
+	message.ZIndex = 121
+	message.Text = "..."
+	message.Parent = overlay
+	self.introMessageLabel = message
+
+	local skipHint = Instance.new("TextButton")
+	skipHint.AnchorPoint = Vector2.new(0.5, 0)
+	skipHint.Position = UDim2.fromScale(0.5, 0.62)
+	skipHint.Size = UDim2.fromOffset(200, 30)
+	skipHint.BackgroundColor3 = Color3.fromRGB(30, 38, 52)
+	skipHint.TextColor3 = Color3.fromRGB(220, 235, 255)
+	skipHint.Font = Enum.Font.Gotham
+	skipHint.TextSize = 14
+	skipHint.ZIndex = 121
+	skipHint.Text = "Skip Intro"
+	skipHint.Parent = overlay
+	skipHint.MouseButton1Click:Connect(function()
+		if self.requestIntroComplete then
+			self.requestIntroComplete:FireServer({ skipped = true })
+		end
+	end)
+end
+
+function UIController:runIntroSequence()
+	if self.introSequenceRunning or not self.introMessageLabel then return end
+	self.introSequenceRunning = true
+	local lines = {
+		"Welcome, tamer.",
+		"This island responds to patience and care.",
+		"Gather a few heal berries, then the wilds will awaken.",
+	}
+	task.spawn(function()
+		for _, line in ipairs(lines) do
+			if self.gamePhase ~= "intro_scene" then break end
+			self.introMessageLabel.Text = line
+			task.wait(1.8)
+		end
+		if self.gamePhase == "intro_scene" and self.requestIntroComplete then
+			self.requestIntroComplete:FireServer({ skipped = false })
+		end
+		self.introSequenceRunning = false
+	end)
 end
 
 function UIController:toggleCommandPanelMode()
@@ -421,14 +669,6 @@ function UIController:sendCommandFromUi(kind)
 end
 
 function UIController:refreshCommandPanel()
-	if self.gameplayStatusLabel then
-		self.gameplayStatusLabel.Text = string.format(
-			"Mode:%s  Stance:%s  Slot:%s",
-			tostring(self.controlMode or "AUTO"),
-			tostring(self.stance or "FOLLOW"),
-			tostring(self.activeSlot or 1)
-		)
-	end
 	for key, btn in pairs(self.commandButtons or {}) do
 		btn.BackgroundColor3 = (self.activeCommand == key) and Color3.fromRGB(70, 105, 145) or Color3.fromRGB(40, 45, 58)
 	end
@@ -448,25 +688,30 @@ function UIController:showObjectiveToast(text)
 end
 
 function UIController:refreshObjectiveHud()
-	if not self.objectiveLabel then return end
 	local summary = self.objectiveSummary or {}
 	local active = summary.activeObjective or ((summary.active and summary.active[1]) or nil)
 	local nextObj = summary.nextObjective
 	if active then
 		local progressText = tostring(active.progressText or string.format("%d/%d", tonumber(active.progressCurrent) or 0, tonumber(active.progressGoal) or 1))
 		local line = string.format("Objective: %s (%s)", tostring(active.label or active.id or "--"), progressText)
-		self.objectiveLabel.Text = line
+		if self.objectiveLabel then
+			self.objectiveLabel.Text = line
+		end
 		if self.alwaysObjectiveLine then
 			self.alwaysObjectiveLine.Text = line
 		end
 	elseif nextObj then
 		local line = string.format("Next: %s", tostring(nextObj.label or nextObj.id or "--"))
-		self.objectiveLabel.Text = line
+		if self.objectiveLabel then
+			self.objectiveLabel.Text = line
+		end
 		if self.alwaysObjectiveLine then
 			self.alwaysObjectiveLine.Text = line
 		end
 	else
-		self.objectiveLabel.Text = "Objectives complete"
+		if self.objectiveLabel then
+			self.objectiveLabel.Text = "Objectives complete"
+		end
 		if self.alwaysObjectiveLine then
 			self.alwaysObjectiveLine.Text = "Objectives complete"
 		end
@@ -548,7 +793,7 @@ function UIController:buildCommandPanel(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "CommandPanel"
 	panel.Size = UDim2.new(1, -12, 0, 26)
-	panel.Position = UDim2.fromOffset(6, 58)
+	panel.Position = UDim2.fromOffset(6, 6)
 	panel.BackgroundTransparency = 1
 	panel.Parent = parent
 	self.commandPanel = panel
@@ -586,7 +831,7 @@ function UIController:buildOptionsMenu(gui)
 	panel.Position = UDim2.new(0.99, 0, 0.02, 0)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
 	panel.BackgroundTransparency = 0.2
-	panel.ZIndex = 40
+	panel.ZIndex = 90
 	panel.Visible = false
 	panel.Parent = gui
 	self.optionsPanel = panel
@@ -594,15 +839,26 @@ function UIController:buildOptionsMenu(gui)
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Text = "Options (O to toggle)"
+	title.Text = "Options"
 	title.Font = Enum.Font.GothamBold
 	title.TextSize = 14
 	title.TextColor3 = Color3.fromRGB(235, 245, 255)
 	title.Size = UDim2.new(1, -12, 0, 22)
 	title.Position = UDim2.fromOffset(8, 4)
 	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.ZIndex = 41
+	title.ZIndex = 91
 	title.Parent = panel
+
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.fromOffset(74, 22)
+	closeBtn.Position = UDim2.new(1, -82, 0, 4)
+	closeBtn.Text = "Close"
+	closeBtn.ZIndex = 91
+	closeBtn.Parent = panel
+	closeBtn.MouseButton1Click:Connect(function()
+		self.optionsOpen = false
+		self:refreshUiMode()
+	end)
 
 	self:createOptionRow(panel, 1, "RadiusChunks", "Chunk Radius", 2, 31, 1)
 	self:createOptionRow(panel, 2, "PetLeashDistance", "Pet Leash", 35, 160, 5)
@@ -619,7 +875,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	text.TextXAlignment = Enum.TextXAlignment.Left
 	text.Size = UDim2.fromOffset(160, 22)
 	text.Position = UDim2.fromOffset(10, y)
-	text.ZIndex = 41
+	text.ZIndex = 91
 	text.Parent = panel
 
 	local minus = Instance.new("TextButton")
@@ -628,7 +884,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	minus.TextSize = 16
 	minus.Size = UDim2.fromOffset(26, 22)
 	minus.Position = UDim2.fromOffset(172, y)
-	minus.ZIndex = 41
+	minus.ZIndex = 91
 	minus.Parent = panel
 
 	local plus = Instance.new("TextButton")
@@ -637,7 +893,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	plus.TextSize = 16
 	plus.Size = UDim2.fromOffset(26, 22)
 	plus.Position = UDim2.fromOffset(238, y)
-	plus.ZIndex = 41
+	plus.ZIndex = 91
 	plus.Parent = panel
 
 	local valueLabel = Instance.new("TextLabel")
@@ -648,7 +904,7 @@ function UIController:createOptionRow(panel, row, key, label, minV, maxV, step)
 	valueLabel.TextXAlignment = Enum.TextXAlignment.Center
 	valueLabel.Size = UDim2.fromOffset(36, 22)
 	valueLabel.Position = UDim2.fromOffset(200, y)
-	valueLabel.ZIndex = 41
+	valueLabel.ZIndex = 91
 	valueLabel.Parent = panel
 
 	local function refresh()
@@ -674,10 +930,11 @@ end
 function UIController:toggleOptionsMenu()
 	if self.uiMode ~= UI_MODE_GAMEPLAY then return end
 	if not self.optionsPanel then return end
-	local nextVisible = not self.optionsPanel.Visible
+	local nextVisible = not self.optionsOpen
 	self:setUtilityPanelsVisibility({
 		options = nextVisible,
 		management = false,
+		buildMenu = false,
 	})
 end
 
@@ -799,6 +1056,42 @@ function UIController:buildBuildAndToolMenu(gui)
 	useButton.Text = "Interact / Place"
 	useButton.Parent = levelTwo
 
+	local refresh = function() end
+
+	local plantHeader = Instance.new("TextLabel")
+	plantHeader.BackgroundTransparency = 1
+	plantHeader.Size = UDim2.fromOffset(284, 16)
+	plantHeader.Position = UDim2.fromOffset(8, 118)
+	plantHeader.TextXAlignment = Enum.TextXAlignment.Left
+	plantHeader.Font = Enum.Font.GothamBold
+	plantHeader.TextSize = 11
+	plantHeader.TextColor3 = Color3.fromRGB(205, 228, 205)
+	plantHeader.Text = "Plant Berry Bush (consumes berry)"
+	plantHeader.Parent = levelTwo
+
+	local plantDefs = getBerryPlantDefsFromBuildableConfig()
+	if #plantDefs <= 0 then
+		plantHeader.Text = "Plant Berry Bush (config missing)"
+		plantHeader.TextColor3 = Color3.fromRGB(220, 170, 170)
+	end
+	local plantButtons = {}
+	for i, def in ipairs(plantDefs) do
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.fromOffset(136, 22)
+		local row = math.floor((i - 1) / 2)
+		local col = (i - 1) % 2
+		btn.Position = UDim2.fromOffset(8 + (col * 148), 138 + (row * 24))
+		btn.Text = string.format("Plant %s", def.label)
+		btn.Parent = levelTwo
+		btn.MouseButton1Click:Connect(function()
+			if self.build then
+				self.build:plantShrub(def.key)
+			end
+			refresh()
+		end)
+		plantButtons[def.key] = btn
+	end
+
 	local levelThree = Instance.new("Frame")
 	levelThree.Name = "LevelThree"
 	levelThree.Size = UDim2.new(1, -18, 1, -154)
@@ -861,8 +1154,6 @@ function UIController:buildBuildAndToolMenu(gui)
 		end
 	end)
 
-	local refresh
-
 	local function formatCost(cost)
 		local tokens = {}
 		for mat, amt in pairs(cost or {}) do
@@ -914,6 +1205,16 @@ function UIController:buildBuildAndToolMenu(gui)
 		openBuildSelection.Text = levelThree.Visible and "Build Selection Open" or "Open Build Selection"
 		local statusText = interactionHint ~= "" and interactionHint or tostring(placementReason)
 		selectedLabel.Text = string.format("Mode:%s  Tool:%s  Build:%s  Status:%s", tostring(buildMode or "-"), tostring(tool), tostring(buildKey), statusText)
+		for _, def in ipairs(plantDefs) do
+			local btn = plantButtons[def.key]
+			if btn then
+				local count = tonumber(Players.LocalPlayer:GetAttribute("Mat_" .. def.key)) or 0
+				btn.Text = string.format("Plant %s (x%d)", def.label, count)
+				btn.AutoButtonColor = count > 0
+				btn.BackgroundColor3 = count > 0 and Color3.fromRGB(46, 78, 56) or Color3.fromRGB(62, 48, 48)
+				btn.TextColor3 = count > 0 and Color3.fromRGB(235, 245, 235) or Color3.fromRGB(220, 188, 188)
+			end
+		end
 		mobilePlaceBtn.Visible = UserInputService.TouchEnabled and (buildMode == true) and (self.uiMode == UI_MODE_GAMEPLAY) and (not self.hiddenUi)
 		objectiveHeader.Visible = not (levelTwo.Visible or levelThree.Visible)
 		objectiveList.Visible = objectiveHeader.Visible
@@ -1085,6 +1386,95 @@ function UIController:buildItemBar(gui)
 	end)
 end
 
+function UIController:buildContextActionStrip(gui)
+	local panel = Instance.new("Frame")
+	panel.Name = "ContextActionStrip"
+	panel.AnchorPoint = Vector2.new(0.5, 1)
+	panel.Size = UDim2.fromOffset(420, 60)
+	panel.Position = UDim2.new(0.5, 0, 0.90, 0)
+	panel.BackgroundColor3 = Color3.fromRGB(22, 28, 36)
+	panel.BackgroundTransparency = 0.14
+	panel.Visible = false
+	panel.Parent = gui
+	panel.ZIndex = 45
+	self.contextActionStrip = panel
+	attachSizeConstraint(panel, 260, 50, 520, 80)
+
+	local title = Instance.new("TextLabel")
+	title.Name = "ActionTitle"
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, -138, 0, 24)
+	title.Position = UDim2.fromOffset(10, 4)
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 14
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextColor3 = Color3.fromRGB(236, 244, 255)
+	title.Text = "Context Action"
+	title.Parent = panel
+	title.ZIndex = 46
+	self.contextActionTitle = title
+
+	local detail = Instance.new("TextLabel")
+	detail.Name = "ActionDetail"
+	detail.BackgroundTransparency = 1
+	detail.Size = UDim2.new(1, -138, 0, 24)
+	detail.Position = UDim2.fromOffset(10, 28)
+	detail.Font = Enum.Font.Code
+	detail.TextSize = 12
+	detail.TextXAlignment = Enum.TextXAlignment.Left
+	detail.TextColor3 = Color3.fromRGB(202, 220, 238)
+	detail.Text = ""
+	detail.Parent = panel
+	detail.ZIndex = 46
+	self.contextActionDetail = detail
+
+	local button = Instance.new("TextButton")
+	button.Name = "ActionButton"
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Size = UDim2.fromOffset(120, 40)
+	button.Position = UDim2.new(1, -8, 0.5, 0)
+	button.BackgroundColor3 = Color3.fromRGB(58, 96, 78)
+	button.TextColor3 = Color3.fromRGB(236, 247, 240)
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 14
+	button.Text = "Interact"
+	button.Parent = panel
+	button.ZIndex = 46
+	button.MouseButton1Click:Connect(function()
+		if self.build then
+			self.build:handlePrimaryAction()
+		end
+	end)
+	self.contextActionButton = button
+
+	task.spawn(function()
+		while panel.Parent do
+			self:refreshContextActionStrip()
+			task.wait(0.12)
+		end
+	end)
+end
+
+function UIController:refreshContextActionStrip()
+	if not (self.build and self.contextActionStrip) then return end
+	local ctx = self.build.getContextActionState and self.build:getContextActionState() or { visible = false }
+	self.contextActionState = {
+		visible = ctx.visible == true,
+		label = tostring(ctx.label or ""),
+		detail = tostring(ctx.detail or ""),
+	}
+	if self.contextActionTitle then
+		self.contextActionTitle.Text = self.contextActionState.label ~= "" and self.contextActionState.label or "Context Action"
+	end
+	if self.contextActionDetail then
+		self.contextActionDetail.Text = self.contextActionState.detail or ""
+	end
+	if self.contextActionButton then
+		self.contextActionButton.Text = (ctx.kind == "tame" and "Capture") or "Harvest"
+	end
+	self:refreshUiMode()
+end
+
 function UIController:updatePetHud(payload)
 	local pets = payload and payload.pets or {}
 
@@ -1135,12 +1525,17 @@ function UIController:updatePetHud(payload)
 						cooldownSummary
 					)
 				else
+					local autoRevive = tonumber(pet.autoReviveRemaining)
+					local reviveLine = autoRevive and autoRevive > 0
+						and string.format("Auto-revive in %ds", math.max(1, math.ceil(autoRevive)))
+						or "Use revive on this slot"
 					label.Text = string.format(
-						"Slot %d  %s  Lv %d\nDEFEATED\nHP 0/%d\nUse revive on this slot",
+						"Slot %d  %s  Lv %d\nDEFEATED\nHP 0/%d\n%s",
 						i,
 						displayName,
 						tostring(pet.level or 1),
-						math.max(maxHp, 0)
+						math.max(maxHp, 0),
+						reviveLine
 					)
 				end
 			end
@@ -1148,29 +1543,6 @@ function UIController:updatePetHud(payload)
 	end
 	local activePet = pets[self.activeSlot or 1]
 	self.activePetHud = activePet
-
-	if self.activePetNameLabel and self.activePetStatsLabel then
-		if not activePet then
-			self.activePetNameLabel.Text = "Active Pet: (empty)"
-			self.activePetStatsLabel.Text = "Lv -- | HP --/-- | ST -- | EN --"
-		else
-			local hp = math.floor((activePet.hp or 0) + 0.5)
-			local maxHp = math.floor((activePet.maxHP or 0) + 0.5)
-			local st = math.floor((activePet.stamina or 0) + 0.5)
-			local en = math.floor((activePet.energy or 0) + 0.5)
-			local displayName = tostring(activePet.name or activePet.species or "?")
-			local level = tonumber(activePet.level) or 1
-			local state = tostring(activePet.state or "alive")
-			self.activePetNameLabel.Text = string.format("%s  Lv %d  [%s]", displayName, level, state)
-			self.activePetStatsLabel.Text = string.format(
-				"HP %d/%d    ST %d    EN %d    Mode:%s    Stance:%s",
-				hp, maxHp, st, en,
-				tostring(self.controlMode or "AUTO"),
-				tostring(self.stance or "FOLLOW")
-			)
-		end
-	end
-	self.activePetHud = pets[self.activeSlot or 1]
 	self:refreshCommandPanel()
 	self:refreshAbilityHotbar()
 end
@@ -1179,7 +1551,7 @@ function UIController:buildAbilityHotbar(parent)
 	local panel = Instance.new("Frame")
 	panel.Name = "AbilityHotbar"
 	panel.Size = UDim2.new(1, -12, 0, 52)
-	panel.Position = UDim2.fromOffset(6, 100)
+	panel.Position = UDim2.fromOffset(6, 36)
 	panel.BackgroundTransparency = 1
 	panel.Parent = parent
 	self.hotbarPanel = panel

@@ -9,6 +9,61 @@ local CreatureRuntime = require(script.Parent.Parent.Runtime.CreatureRuntime)
 local CreatureService = {}
 CreatureService.__index = CreatureService
 
+local function ensurePetTagBars(tag)
+	local panel = tag:FindFirstChild("PetBars")
+	if panel then return panel end
+	panel = Instance.new("Frame")
+	panel.Name = "PetBars"
+	panel.BackgroundColor3 = Color3.fromRGB(18, 22, 28)
+	panel.BackgroundTransparency = 0.18
+	panel.BorderSizePixel = 0
+	panel.Size = UDim2.new(1, -6, 0, 44)
+	panel.Position = UDim2.fromOffset(3, 16)
+	panel.Parent = tag
+
+	local function addBar(name, y, color)
+		local label = Instance.new("TextLabel")
+		label.Name = name .. "_Label"
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromOffset(18, 10)
+		label.Position = UDim2.fromOffset(2, y)
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 8
+		label.TextColor3 = Color3.fromRGB(232, 238, 244)
+		label.Text = name
+		label.Parent = panel
+
+		local track = Instance.new("Frame")
+		track.Name = name .. "_Track"
+		track.BackgroundColor3 = Color3.fromRGB(46, 54, 68)
+		track.BorderSizePixel = 0
+		track.Size = UDim2.new(1, -24, 0, 6)
+		track.Position = UDim2.fromOffset(20, y + 2)
+		track.Parent = panel
+
+		local fill = Instance.new("Frame")
+		fill.Name = name .. "_Fill"
+		fill.BackgroundColor3 = color
+		fill.BorderSizePixel = 0
+		fill.Size = UDim2.fromScale(1, 1)
+		fill.Parent = track
+	end
+
+	addBar("HP", 2, Color3.fromRGB(214, 78, 78))
+	addBar("ST", 15, Color3.fromRGB(234, 198, 92))
+	addBar("EN", 28, Color3.fromRGB(92, 166, 235))
+	return panel
+end
+
+local function setTagBarFill(panel, key, current, maxValue)
+	if not panel then return end
+	local fill = panel:FindFirstChild(key .. "_Track") and panel[key .. "_Track"]:FindFirstChild(key .. "_Fill")
+	if not fill then return end
+	local maxV = math.max(1, tonumber(maxValue) or 1)
+	local ratio = math.clamp((tonumber(current) or 0) / maxV, 0, 1)
+	fill.Size = UDim2.fromScale(ratio, 1)
+end
+
 function CreatureService.new(worldService, playerDataService)
 	return setmetatable({ worldService = worldService, playerDataService = playerDataService }, CreatureService)
 end
@@ -77,24 +132,32 @@ function CreatureService:attachModel(creature)
 	local tag = Instance.new("BillboardGui")
 	tag.Name = "Tag"
 	tag.Adornee = mainPart
-	tag.Size = UDim2.fromOffset(120, 28)
-	tag.StudsOffset = Vector3.new(0, mainPart.Size.Y * 0.85, 0)
+	tag.Size = creature.mode == "pet" and UDim2.fromOffset(132, 66) or UDim2.fromOffset(120, 28)
+	tag.StudsOffset = Vector3.new(0, mainPart.Size.Y * (creature.mode == "pet" and 0.95 or 0.85), 0)
 	tag.AlwaysOnTop = true
-	tag.MaxDistance = 70
+	tag.MaxDistance = creature.mode == "pet" and 110 or 70
 	tag.Parent = model
 
 	local text = Instance.new("TextLabel")
 	text.BackgroundTransparency = 1
-	text.Size = UDim2.fromScale(1, 1)
+	text.Size = creature.mode == "pet" and UDim2.new(1, 0, 0, 16) or UDim2.fromScale(1, 1)
 	text.Font = Enum.Font.GothamBold
-	text.TextScaled = true
+	text.TextScaled = creature.mode ~= "pet"
+	text.TextSize = creature.mode == "pet" and 11 or 12
 	text.TextStrokeTransparency = 0.45
 	text.TextColor3 = Color3.fromRGB(240, 240, 240)
 	text.Text = self:getCreatureTagText(creature)
 	text.Parent = tag
+	if creature.mode == "pet" then
+		ensurePetTagBars(tag)
+	end
 
 	model.PrimaryPart = mainPart
 	model:SetAttribute("CreatureId", creature.id)
+	model:SetAttribute("CreatureMode", tostring(creature.mode or "unknown"))
+	model:SetAttribute("CreatureDefeated", creature.alive ~= true)
+	model:SetAttribute("CreatureLifecycle", tostring(creature.lifecycle or (creature.alive and "alive" or "defeated")))
+	model:SetAttribute("WildVariant", tostring(creature.wildVariant or "none"))
 	creature.model = model
 end
 
@@ -128,6 +191,12 @@ function CreatureService:updateModel(creature)
 			end
 		end
 		creature.model:SetAttribute("DesignatedTargetId", tonumber(creature.designatedTargetId) or -1)
+		creature.model:SetAttribute("CreatureMode", tostring(creature.mode or "unknown"))
+		creature.model:SetAttribute("CreatureDefeated", creature.alive ~= true)
+		creature.model:SetAttribute("CreatureLifecycle", tostring(creature.lifecycle or (creature.alive and "alive" or "defeated")))
+		creature.model:SetAttribute("WildVariant", tostring(creature.wildVariant or "none"))
+		creature.model:SetAttribute("DefeatedExpiresAt", tonumber(creature.defeatedExpiresAt) or 0)
+		creature.model:SetAttribute("DefeatedOutcome", tostring(creature.defeatedOutcome or ""))
 		creature.model:SetAttribute("ManualCastState", tostring(creature.manualCastState or "idle"))
 		creature.model:SetAttribute("ManualCastNote", tostring(creature.manualCastNote or "-"))
 		creature.model:SetAttribute("LastManualCastCode", tostring(creature.lastManualCastResult and creature.lastManualCastResult.code or "-"))
@@ -162,9 +231,15 @@ function CreatureService:updateModel(creature)
 		creature.model:SetAttribute("VisualSizeY", body.Size.Y)
 		local tag = creature.model:FindFirstChild("Tag")
 		if tag then
-			tag.StudsOffset = Vector3.new(0, body.Size.Y * 0.85, 0)
+			tag.StudsOffset = Vector3.new(0, body.Size.Y * (creature.mode == "pet" and 0.95 or 0.85), 0)
 			local lbl = tag:FindFirstChildOfClass("TextLabel")
 			if lbl then lbl.Text = self:getCreatureTagText(creature) end
+			if creature.mode == "pet" and creature.alive then
+				local panel = ensurePetTagBars(tag)
+				setTagBarFill(panel, "HP", creature.currentHP, creature.modifiedStats and creature.modifiedStats.maxHP)
+				setTagBarFill(panel, "ST", creature.currentStamina, creature.modifiedStats and creature.modifiedStats.stamina)
+				setTagBarFill(panel, "EN", creature.currentEnergy, creature.modifiedStats and creature.modifiedStats.energy)
+			end
 		end
 	end
 end
@@ -222,6 +297,15 @@ function CreatureService:getOrCreateCreatureModelsFolder()
 end
 
 function CreatureService:getCreatureColor(creature)
+	if creature.alive ~= true and creature.mode == "wild" then
+		return Color3.fromRGB(125, 125, 125)
+	end
+	if creature.mode == "wild" and creature.wildVariant == "apex" then
+		return Color3.fromRGB(189, 106, 255)
+	end
+	if creature.mode == "wild" and creature.wildVariant == "elite" then
+		return Color3.fromRGB(255, 212, 88)
+	end
 	if creature.role == "passive" then return Color3.fromRGB(177, 229, 157) end
 	if creature.team == 0 then return Color3.fromRGB(120, 220, 255) end
 	if creature.wildTier == "big" then return Color3.fromRGB(242, 130, 104) end
@@ -233,7 +317,8 @@ function CreatureService:getCreatureVisualSize(creature)
 	local base = creature.modifiedStats and creature.modifiedStats.size or 3
 	local core = math.max(1.5, math.min(6, base * 0.45))
 	local tierScale = (creature.wildTier == "small" and 0.85) or (creature.wildTier == "big" and 1.25) or 1
-	local final = core * tierScale
+	local variantScale = (creature.wildVariant == "elite" and 1.15) or (creature.wildVariant == "apex" and 1.3) or 1
+	local final = core * tierScale * variantScale
 	return Vector3.new(final, final, final)
 end
 
@@ -242,10 +327,19 @@ function CreatureService:getCreatureTagText(creature)
 	if creature.mode == "pet" then
 		return string.format("%s Lv.%d", tostring(creature.speciesKey), level)
 	end
+	local variantPrefix = ""
+	if creature.mode == "wild" and creature.wildVariant == "elite" then
+		variantPrefix = "Elite "
+	elseif creature.mode == "wild" and creature.wildVariant == "apex" then
+		variantPrefix = "Apex "
+	end
+	if creature.alive ~= true and creature.mode == "wild" then
+		return string.format("%s%s Lv.%d (downed)", variantPrefix, tostring(creature.speciesKey), level)
+	end
 	if creature.role == "passive" then
 		return string.format("%s (passive)", tostring(creature.speciesKey))
 	end
-	return string.format("%s Lv.%d", tostring(creature.speciesKey), level)
+	return string.format("%s%s Lv.%d", variantPrefix, tostring(creature.speciesKey), level)
 end
 
 return CreatureService

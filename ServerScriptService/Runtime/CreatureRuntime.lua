@@ -90,7 +90,10 @@ function CreatureRuntime.new(speciesKey, team, x, z, opts)
 		sizeMult = 1,
 		timidness = 1,
 		commitment = 1,
+		rewardMult = 1,
+		morphPointBonus = 0,
 	}
+	self.wildVariant = opts.wildVariant
 	self.wildArchetype = opts.wildArchetype
 	self:SetWildProfile(opts.wildTier or "normal", opts.wildProfile)
 	return self
@@ -106,6 +109,8 @@ function CreatureRuntime:SetWildProfile(tier, profile)
 	self.wildProfile.sizeMult = profile.sizeMult or 1
 	self.wildProfile.timidness = profile.timidness or 1
 	self.wildProfile.commitment = profile.commitment or 1
+	self.wildProfile.rewardMult = tonumber(profile.rewardMult) or 1
+	self.wildProfile.morphPointBonus = tonumber(profile.morphPointBonus) or 0
 	self:RebuildStats()
 end
 
